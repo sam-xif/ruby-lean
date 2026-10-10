@@ -1,4 +1,4 @@
-# b ** n by squaring: about log2(n) loop iterations instead of n.
+# b ** n by repeated multiplication: n multiplications.
 class Power
   def initialize(base)
     @base = base
@@ -6,14 +6,10 @@ class Power
 
   def raise_to(exponent)
     result = 1
-    square = @base
     left = exponent
     while left > 0
-      if left % 2 == 1
-        result = result * square
-      end
-      square = square * square
-      left = left / 2
+      result = result * @base
+      left = left - 1
     end
     result
   end

@@ -1,4 +1,4 @@
-# `Books/FastPower/` — a Ruby program proved correct
+# `Books/FastPower/` — two programs, one specification
 
 A *program book* is a Ruby program together with a statement of what it computes
 and a Lean proof of that statement against the model's `stepFn`. This is the
@@ -9,136 +9,163 @@ is the guide to writing another one, starting from `bin/new-book`.
 make books          # from the repository root; or `lake build` in books/
 ```
 
-## What a book proves
+## What the book proves
 
-The program ([`fast_power.rb`](fast_power.rb)) is exponentiation by
-squaring, done by a small stateful object:
+**The specification** ([`Spec.lean`](Spec.lean)) says what it is to compute a
+power, and nothing about how:
+
+```lean
+def PowerResult (b : Int) (n : Nat) (v : Value) (m' : Machine) : Prop :=
+  v = .int (b ^ n) ∧ m'.out = toString (b ^ n) ++ "\n"
+
+def ComputesPower (program : Int → Nat → Expr) : Prop :=
+  ∀ (b : Int) (n : Nat), ∃ v m', Runs (program b n) v m' ∧ PowerResult b n v m'
+```
+
+For every base `b` and exponent `n`, the program, run the way `rubycore` runs
+it (prelude booted first), terminates normally, prints `b ** n` on a line of
+its own and has the value `b ** n`. Normally means no exception, nothing the
+model does not support, no stuck state.
+
+**Two programs meet it.** [`slow_power.rb`](slow_power.rb) multiplies `n` times:
 
 ```ruby
-class Power
-  def initialize(base)
-    @base = base
-    @steps = 0
+def raise_to(exponent)
+  result = 1
+  left = exponent
+  while left > 0
+    result = result * @base
+    left = left - 1
   end
-
-  def steps
-    @steps
-  end
-
-  def raise_to(exponent)
-    result = 1
-    square = @base
-    left = exponent
-    while left > 0
-      if left % 2 == 1
-        result = result * square
-      end
-      square = square * square
-      left = left / 2
-      @steps = @steps + 1
-    end
-    result
-  end
+  result
 end
-
-power = Power.new(3)
-answer = power.raise_to(13)
-puts answer
-[answer, power.steps]
 ```
 
-With the two literals replaced by arbitrary integers `b` and `n`:
+[`fast_power.rb`](fast_power.rb) squares:
 
-```lean
-theorem fast_power_correct (b n : Int) :
-    ∃ v m', Runs (program b n) v m' ∧
-      m'.out = toString (b ^ n.toNat) ++ "\n" ∧
-      IsArray m'.heap v [.int (b ^ n.toNat), .int (bitLength n.toNat)]
+```ruby
+def raise_to(exponent)
+  result = 1
+  square = @base
+  left = exponent
+  while left > 0
+    if left % 2 == 1
+      result = result * square
+    end
+    square = square * square
+    left = left / 2
+  end
+  result
+end
 ```
 
-For every base and exponent, the program, run the way `rubycore` runs it
-(prelude booted first), terminates normally, prints `b ** n` on a line of its
-own, and has the value `[b ** n, s]`, where `s` is the number of loop iterations
-and equals the bit length of `n`. A negative exponent behaves as `0`.
-`fast_power_run` restates it per fuel: the run is either unfinished or has
-returned exactly that. It never raises, never leaves the modeled fragment and
-never gets stuck.
-
-That is the whole observation the differential tests compare (stdout, result,
-exception), proved for all inputs. The proof depends on `propext`,
-`Classical.choice` and `Quot.sound` only.
-
-## How a proof works
-
-The Lean kernel can evaluate `stepFn`, method dispatch included, on a machine
-whose integer inputs are variables. A straight-line stretch of execution is
-therefore proved by asking the kernel to run it:
+Both are a method of a small `Power` class, called as
+`Power.new(b).raise_to(n)`, whose result is printed and returned. With the two
+literals in each file replaced by arbitrary `b` and `n`
+([`Faster.lean`](Faster.lean)):
 
 ```lean
-theorem setup (b n : Int) :
-    stepN 61 (start (program b n)) = some (loopHead b n 1 b n 0) := by kernel_rfl
+theorem slow_computes_power : ComputesPower Slow.program
+theorem fast_computes_power : ComputesPower Fast.program
+```
+
+**The fast one is faster.** Running time is the number of machine transitions.
+
+```lean
+theorem Slow.computes_power : ComputesPowerIn Slow.program Slow.cost   -- cost n = 24 * n + 65
+theorem Fast.computes_power : ComputesPowerIn Fast.program Fast.cost
+
+theorem le_fast_cost (n : Nat) : 36 * bitLength n + 69 ≤ Fast.cost n
+theorem fast_cost_le (n : Nat) : Fast.cost n ≤ 43 * bitLength n + 69
+
+theorem fast_is_faster (b : Int) (n : Nat) (h : 6 ≤ n)
+    (hs : RunsIn (Slow.program b n) slow v m) (hf : RunsIn (Fast.program b n) fast v' m') :
+    fast < slow
+```
+
+The simple loop takes exactly `24 * n + 65` transitions. The squaring loop takes
+between 36 and 43 per binary digit of `n`, so its running time is logarithmic in
+the exponent. From `n = 6` on it takes strictly fewer transitions; the
+threshold is exact, because `slow_cost_lt_fast_cost` proves the simple loop
+takes fewer up to `n = 5`, where it does less work per iteration.
+
+Two things this measure does not say. It does not depend on the base: a
+transition that multiplies two integers counts as one however many digits they
+have, so this counts operations, not the time the arithmetic takes. And it is
+the model's transition count, which is not CRuby's instruction count.
+
+Every theorem depends on `propext`, `Classical.choice` and `Quot.sound` only.
+
+## How the proofs are written
+
+Each program is proved by **one inductive invariant over the machine**
+([`Lib/Invariant.lean`](../Lib/Invariant.lean)). A program's *cut points* are
+its start and the head of each loop. The invariant says which cut point the
+machine is at, what the loop invariant says about the machine's own frame
+there, and how many transitions remain. For the fast program:
+
+```lean
+inductive Inv (b : Int) (n : Nat) : Nat → Machine → Prop
+  | start : Inv b n (cost n) (start (program b n))
+  | loop (result square : Int) (left : Nat) (h : result * square ^ left = b ^ n) :
+      Inv b n (loopCost left) (loopHead b n result square left)
+```
+
+`loopHead b n result square left` is the machine at the loop test with those
+values in `raise_to`'s frame. Everything the loop leaves alone (the booted heap,
+class `Power`, the other frames) is taken from the machine the kernel computes
+and is not written out.
+
+The invariant is *inductive* when every machine it holds of either
+
+- runs on, in at least one transition, to another machine it holds of, with the
+  count reduced by exactly that many; or
+- finishes in exactly the count, in a state `PowerResult` accepts.
+
+`Inductive.returnsIn` turns an inductive invariant into the theorem: from the
+start the program terminates, in exactly `cost n` transitions, with the
+specified result. The count is the termination measure, since every advance
+spends at least one transition, so correctness and running time come from the
+same argument.
+
+Proving the invariant inductive takes one case per path between cut points. The
+fast program has four: start to loop, an odd iteration, an even iteration, and
+exit. Each case has two ingredients.
+
+**Execution** is checked by the kernel. The Lean kernel can evaluate `stepFn`,
+method dispatch included, on a machine whose integer inputs are variables, so a
+straight-line stretch is proved by asking it to run:
+
+```lean
+theorem setup (b : Int) (n : Nat) :
+    stepN 51 (start (program b n)) = some (loopHead b n 1 b n) := by kernel_rfl
 ```
 
 That line covers booting the prelude, defining `Power`, `Power.new(b)` running
-`initialize`, the call to `raise_to(n)` and its first three assignments, for all
-`b` and `n`.
+`initialize`, and the call to `raise_to(n)` up to the loop, for all `b` and `n`.
+The kernel stops only where the machine branches on a value that depends on a
+variable (`left > 0`, `left % 2 == 1`), and a lemma about what the builtin
+computed resolves each of those.
 
-The kernel stops where the machine branches on a value that depends on a
-variable, such as `left > 0`. Those are the only places a proof has to say
-anything. For `FastPower` that comes to:
-
-| Part | What it is | Size |
-|---|---|---|
-| States | The machine at the loop test as a function of `result`, `square`, `left`, `@steps`, and the two branch points inside an iteration | 3 definitions |
-| Segments | The stretches between those states, each `by kernel_rfl` | 10 one-line proofs |
-| Arithmetic | `result * square ^ left = b ^ n` is preserved; what `>`, `%`, `==`, `/` compute | about 30 lines, no Ruby in it |
-| Loop | Strong induction on `left` joining the above | about 35 lines |
-
-A state is not written out in full. `loopHead` takes everything the loop leaves
-alone (the booted heap, class `Power`, the four frames) from the machine the
-kernel computes, and spells out only what the loop changes.
-
-## Writing a book
-
-Each book is a directory under `Books/` holding the Ruby file, its exported
-JSON, and three Lean files.
-
-1. **`Program.lean`: the program as a term.** The exporter's AST with the
-   inputs abstracted and the subterms the proof mentions given names.
-   `Check.lean` has a `#guard` that decoding the JSON
-   (`ruby desugar/bin/export-json < prog.rb > prog.json`) gives exactly that
-   term.
-2. **Look at a concrete run.** `#eval trace 400 (start (program 3 2))` prints
-   every transition with the stack, frame-store size and heap size. This is
-   where the frame and object numbers come from.
-3. **Find the stop points.**
-   `#kernel_steps 400 fun (b n : Int) => start (program b n)` runs the kernel
-   on symbolic inputs and reports how far it got and what it could not decide.
-4. **`Proof.lean`: states, segments, arithmetic, induction.** Define the states
-   at the loop head and at each stop point and prove the segments between them
-   with `kernel_rfl`. A wrong state or step count is rejected by the kernel.
-   Resolve each stop with a lemma about the builtin's result.
-5. **`Check.lean`: the JSON guard and the axiom audit.**
-
-Two habits keep proofs fast. Establish arithmetic facts before any fact about a
-machine is in context, because `omega` times out trying to read one. And prefer
-`h ▸ …` or a helper lemma to `rw … at` on a hypothesis that mentions a machine.
-
-### [`Books/Lib/`](../Lib/)
+**Arithmetic** shows the loop invariant is re-established, for instance
+`result * square * (square * square) ^ (left / 2) = result * square ^ left` when
+`left` is odd. It is about integers and has no Ruby in it.
 
 | File | Contents |
 |---|---|
-| `Exec.lean` | `stepN`, `Reaches`, `Returns` and their algebra; `kernel_rfl`; `#kernel_steps`, `#kernel_whnf` |
-| `Boot.lean` | `start p`, the prelude-booted machine `rubycore` runs `p` on, with `boot_ok`; `Runs`; `IsArray` |
-| `Trace.lean` | `trace` and `showState`, for looking at concrete runs |
+| [`Spec.lean`](Spec.lean) | `ComputesPower`, and `ComputesPowerIn` for a running time |
+| [`Slow/`](Slow/), [`Fast/`](Fast/) | For each program: `Program.lean`, the program as a term; `Proof.lean`, its states, segments and invariant |
+| [`Faster.lean`](Faster.lean) | Both meet the specification; the bounds on the fast program; the comparison |
+| [`Check.lean`](Check.lean) | The terms are the exported programs; the axiom audit |
+| [`check.rb`](check.rb) | The theorems against CRuby and the model's binary |
 
 ## What is proved and what is tested
 
 | Link | Status |
 |---|---|
-| `program b n`, booted and run as `rubycore` does, prints and returns `b ^ n` | Proved, all `b`, `n` |
-| `fast_power.rb` desugars to `program 3 13` | Tested at build time (`#guard`), for the literals in the file |
-| CRuby does the same as the model | Tested by `check.rb` on 72 inputs (`make book-checks`) |
+| `Slow.program b n` and `Fast.program b n`, booted and run as `rubycore` does, print and return `b ^ n`, in the stated number of transitions | Proved, all `b`, `n` |
+| `slow_power.rb` and `fast_power.rb` desugar to `program 3 13` | Tested at build time (`#guard`), for the literals in the files |
+| CRuby prints and returns the same, and the model's binary takes the stated number of transitions | Tested by `check.rb` on 80 inputs per program (`make book-checks`) |
 
 The second link is a test because the JSON decoder is a `partial` function. The
 third is the model's standing obligation to agree with CRuby, which the
@@ -146,6 +173,9 @@ third is the model's standing obligation to agree with CRuby, which the
 
 ## Limits
 
+- **The exponent is a natural number.** The specification quantifies over
+  `n : Nat`. Both loops leave a negative exponent's `result` at 1, which is not
+  Ruby's `b ** n` there, and the book makes no claim about it.
 - **A user-defined method called inside a loop.** Activation frames are never
   reclaimed, so the frame store grows each iteration and the loop state stops
   being a closed term the kernel can evaluate. This needs a framing lemma for
@@ -153,7 +183,7 @@ third is the model's standing obligation to agree with CRuby, which the
 - **Blocks and iterators** (`each`, `times`, `map`). They live in the prelude,
   and each call pushes frames, so they meet the same problem.
 - **Strings, Arrays and Hashes as symbolic inputs.** Only integer inputs are
-  symbolic so far. Building an Array from symbolic integers works.
+  symbolic so far.
 - **Abstracting the inputs automatically.** `bin/new-book` generates
   `Program.lean` for the literal program; replacing literals with variables is
   done by hand, and the `#guard` is what makes that safe.

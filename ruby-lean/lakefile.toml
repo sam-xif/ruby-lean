@@ -39,3 +39,10 @@ root = "Main"
 [[lean_exe]]
 name = "genprelude"
 root = "GenPrelude"
+
+# Writes `RubyCore/Generated/BootedHeap.lean`: the state the prelude boot leaves
+# behind, as Lean terms. It runs the boot, so it depends on the whole model but
+# never on `RubyCore.Generated.BootedHeap` itself.
+[[lean_exe]]
+name = "genbootedheap"
+root = "GenBootedHeap"

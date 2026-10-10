@@ -7,7 +7,7 @@ Every proof is in `books/`, a Lake package that uses the model as a library. The
 |---|---|
 | [Type soundness](type-soundness.md) | A program the checker accepts never ends in an uncaught `NoMethodError`, `ArgumentError` or `TypeError` when the model runs it |
 | [Metatheory](metatheory.md) | Facts about the model itself: a relational definition of a step agrees with the executable one, and a general type-safety principle that needs no type system |
-| [FastPower](../guides/prove-a-program.md) | One Ruby program, exponentiation by squaring, computes `b ** n` for every `b` and `n` |
+| [FastPower](../guides/prove-a-program.md) | Two Ruby programs, a simple loop and exponentiation by squaring, both compute `b ** n` for every `b` and `n`, and the second takes fewer steps for every `n` from 6 up |
 
 `books/Books/Lib/` is not a book. It is the machinery for proving things about
 a single program.

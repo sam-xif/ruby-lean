@@ -33,6 +33,7 @@ import Books.Metatheory.Reachability.SorbetSafety
 import Books.Metatheory.Typing.Infer.Mono
 import Books.Metatheory.Typing.Infer.Decls
 import Books.Metatheory.Typing.Infer.Locals
+import Books.Metatheory.Heap.BootedHeap
 import Books.Metatheory.Typing.Judge.FreshClass
 import Books.Metatheory.Typing.Judge.FreshModule
 import Books.Metatheory.Typing.Judge.TableRet
@@ -55,6 +56,10 @@ import Books.Metatheory.Typing.Judge.TableRet
 -- `Saturated` hypothesis that `Probes/Ancestors.lean` decides.
 #print axioms RubyCore.Proof.ancestors_congr_grow
 #print axioms RubyCore.Proof.saturatedB_sound
+-- The prelude boot produces exactly the generated literal, so a program can be
+-- started on the literal without running the boot.
+#print axioms RubyCore.Proof.boot_eq_booted
+#print axioms RubyCore.Proof.initWithPrelude_eq_initOnBooted
 -- What the type-soundness book imports: what creating a fresh class or module
 -- does to the heap, and the declaration-table lemmas those rest on.
 #print axioms RubyCore.Proof.Judgment.evalExpr_class_fresh

@@ -61,7 +61,7 @@ never optional.
 | `books/Books/TypeSoundness/` | The type-soundness book: the theorem is in `Soundness.lean` |
 | `books/Books/TypeSoundness/Checker/` | The type checker the theorem is about. Entry point `validateD` in `Check/` |
 | `books/Books/Metatheory/` | Facts about the model |
-| `books/Books/FastPower/`, `books/Books/Lib/` | A proof about one Ruby program, and the library for writing more |
+| `books/Books/FastPower/`, `books/Books/Lib/` | Two Ruby programs proved to meet one specification and compared, and the library for writing more |
 | `books/Books/TypeSoundness/corpus/` | Typed programs the checker is measured on |
 | `desugar/` | Ruby to the model's core language |
 | `difftest/` | Differential testing against CRuby |

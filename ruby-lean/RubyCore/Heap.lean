@@ -628,11 +628,16 @@ def initHeap : Heap :=
     | some c => hKern.setClassPayload objectId { c with includes := [kernelId] }
     | Option.none => hKern
   -- `Float::NAN` / `Float::INFINITY`: real constants of the class object, not
-  -- methods, so they belong in the boot heap rather than in a rule.
+  -- methods, so they belong in the boot heap rather than in a rule. Given as
+  -- bit patterns, not as `0.0 / 0.0` and `1.0 / 0.0`: the sign of the NaN a
+  -- division produces depends on the processor, and a bit pattern is a term the
+  -- kernel can compare (`RubyCore/Generated/BootedHeap.lean`). CRuby's `NAN` is
+  -- the positive quiet NaN.
   let hBuiltins := match hBuiltins.classPayload? floatId with
     | some c => hBuiltins.setClassPayload floatId
         { c with consts := c.consts ++
-            [("NAN", Value.flt (0.0 / 0.0)), ("INFINITY", Value.flt (1.0 / 0.0))] }
+            [("NAN", Value.flt (Float.ofBits 0x7FF8000000000000)),
+             ("INFINITY", Value.flt (Float.ofBits 0x7FF0000000000000))] }
     | Option.none => hBuiltins
   let hBuiltins := match hBuiltins.classPayload? enumeratorId with
     | some c => hBuiltins.setClassPayload enumeratorId
