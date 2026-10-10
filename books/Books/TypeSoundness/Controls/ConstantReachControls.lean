@@ -21,8 +21,13 @@ private def hooks : List (String × MethodDef) :=
 private def eigenPayload : ClassPayload :=
   { superclass := some Boot.basicObjectId, name := "", attached := some 45, methods := hooks }
 private def eigenObj : Object := { klass := Boot.classId, payload := .cls eigenPayload }
+/-- The three scratch ids (`detached` at 45, its eigenclass at 46, and the fresh
+    `"Next"` object allocated on top at 47) sit immediately after the boot classes, so the
+    literal size is `Boot.mainId + 3`. Expressed in terms of `mainId` so adding a bootstrap
+    class (which moves `mainId`) cannot silently truncate the heap (issue #22). -/
+private def heapSize : Nat := Boot.mainId + 3
 private def h : Heap :=
-  { objs := ((((Array.replicate 47 (default : Object)).set! 0 basic).set! 1 root).set! 45 detached).set! 46 eigenObj }
+  { objs := ((((Array.replicate heapSize (default : Object)).set! 0 basic).set! 1 root).set! 45 detached).set! 46 eigenObj }
 private def m : Machine :=
   { ctl := .value .nil, heap := h,
     frames := #[{ self := .ref Boot.mainId, defmod := Boot.objectId, cref := [], kind := .toplevel }], stack := [0] }

@@ -498,9 +498,46 @@ def coreClsNames : List String :=
    "IOError", "FrozenError", "NotImplementedError"]
 
 /-- The boot metaclasses of Integer and String: `Integer === x` and `String === x` dispatch
-from here, where Module#=== is installed (checked at boot by `coreDataB`). -/
-def intMetaId : ObjId := 76
-def strMetaId : ObjId := 85
+from here, where Module#=== is installed (checked at boot by `coreDataB`).
+
+**Derived from the prelude-booted heap, not pinned to a literal** (issue #22).
+`Semantics.bootedMachine` is the same machine `bootOkB` checks, so these values track any
+bootstrap class or boot-time eigenclass automatically — adding one to `classTable` no longer
+requires editing this file. They are `opaque` to the kernel, so a proof that mentions them
+treats them as constants and never unfolds the prelude (which the kernel cannot reduce); the
+value is fixed and checked once, at definition time.
+
+The pair is still *checked*: `coreDataB`'s `classOf h intId == intMetaId` is evaluated at the
+booted heap by `#guard bootOkB`, and if the boot failed (the `.error` branch here) `intMetaId`
+is `0` and that guard is red. The `#eval` below additionally checks the non-degenerate case so
+the derivation cannot silently land on a `0` or a non-class object. -/
+opaque intMetaId : ObjId :=
+  match Semantics.bootedMachine with
+  | .ok m => classOf m.heap (.ref Boot.integerId)
+  | .error _ => 0
+opaque strMetaId : ObjId :=
+  match Semantics.bootedMachine with
+  | .ok m => classOf m.heap (.ref Boot.stringId)
+  | .error _ => 0
+
+-- The derived ids are real, distinct, class-shaped objects: what `Integer === x` and
+-- `String === x` must dispatch through. Evaluated at elaboration so a boot that did not produce
+-- them fails the build with the offending id and value named, rather than a bare
+-- `did not evaluate to true` (issue #22, acceptance criterion 2).
+#eval do
+  match Semantics.bootedMachine with
+  | .error e => throw (IO.userError s!"intMeta/strMeta derivation: prelude boot failed: {e}")
+  | .ok m =>
+    let ok (label : String) (id : ObjId) : IO Unit := do
+      if id == 0 then
+        throw (IO.userError s!"{label} derived as 0: the boot heap has no eigenclass for it")
+      else if (m.heap.classPayload? id).isSome then pure ()
+      else throw (IO.userError s!"{label} = {id} is not a class-shaped object at the boot heap")
+    ok "intMetaId" intMetaId
+    ok "strMetaId" strMetaId
+    if intMetaId == strMetaId then
+      throw (IO.userError s!"intMetaId and strMetaId are the same object ({intMetaId})")
+    else pure ()
 
 /-- **The core classes are what they are.**
 
