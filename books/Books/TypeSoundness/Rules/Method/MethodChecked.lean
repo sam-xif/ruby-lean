@@ -1,4 +1,4 @@
-import Checker.Check.MethodCheck
+import Books.TypeSoundness.Checker.Check.MethodCheck
 import Books.TypeSoundness.Soundness.Full
 import Books.TypeSoundness.Rules.Method.MethodState
 import Books.TypeSoundness.Rules.Instance.InstanceReturn

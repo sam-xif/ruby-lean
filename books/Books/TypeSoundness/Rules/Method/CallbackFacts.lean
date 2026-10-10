@@ -1,4 +1,4 @@
-import Checker.Static.CallbackFacts
+import Books.TypeSoundness.Checker.Static.CallbackFacts
 import Books.TypeSoundness.Rules.Method.BodyBoundCall
 
 /-! Alias facts name the actual supplied callback, including native Proc class.

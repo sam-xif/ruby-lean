@@ -1,6 +1,6 @@
 import Books.TypeSoundness.Rules.Method.MethodEntry
 import Books.TypeSoundness.Conformance.Core.Boot
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 
 /-! Ordinary code metadata must exclude the for callback's alternate binding path. -/
 namespace Checker.Soundness.Typed

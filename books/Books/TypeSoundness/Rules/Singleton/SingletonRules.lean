@@ -4,7 +4,7 @@ import Books.TypeSoundness.Rules.Singleton.SingletonImplicit
 import Books.TypeSoundness.Rules.Constructor.ConstructorImplicit
 import Books.TypeSoundness.Conformance.Class.ClassGuards
 import Books.TypeSoundness.Conformance.Names.NativeGuards
-import Checker.Guards.SingletonGuards
+import Books.TypeSoundness.Checker.Guards.SingletonGuards
 
 /-! Constructor-derived obligations for the own singleton fragment. -/
 set_option autoImplicit false

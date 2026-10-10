@@ -1,4 +1,4 @@
-import Checker.Guards.NativeGuards
+import Books.TypeSoundness.Checker.Guards.NativeGuards
 import Books.TypeSoundness.Conformance.Class.ClassNative
 import Books.TypeSoundness.Conformance.Names.DispatchName
 

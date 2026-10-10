@@ -1,4 +1,4 @@
-import Checker.Guards.ClassCtx
+import Books.TypeSoundness.Checker.Guards.ClassCtx
 import Books.TypeSoundness.Conformance.Core.State
 
 /-! Class entry obtains physical freshness from the incoming context, for every name.

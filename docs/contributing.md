@@ -8,7 +8,7 @@
 make check
 ```
 
-It builds the model and the checker, builds every proof, audits their axioms,
+It builds the model, the type checker and every proof, audits their axioms,
 runs the checker over its corpus, runs the model against CRuby, and builds these
 docs. It stops at the first failure and prints which check failed. Continuous
 integration runs the same targets on every pull request, and every one of them
@@ -20,21 +20,22 @@ While working, run the part you are changing:
 | You changed | Run |
 |---|---|
 | The model (`ruby-lean/RubyCore/`, `ruby-lean/prelude/`) | `make conformance`, then `make books` |
-| The checker (`ruby-lean/Checker/`) | `make soundness` |
+| The checker (`books/Books/TypeSoundness/Checker/`) | `make soundness` |
 | A proof (`books/`) | `make books`; `cd books && ./scripts/check-soundness.sh --proofs-only` |
 | The desugarer (`desugar/`) | `make desugar-test desugar-coverage` |
 | The differential tester (`difftest/`) | `make difftest-test` |
 | The docs | `make docs` |
 
-A change to the model or the checker can break a proof while `make lean` still
-passes, because the proofs are a separate Lake package. Always finish with
+A change to the model can break a proof while `make lean` still passes, because
+the proofs are a separate Lake package. Always finish with
 `make books`.
 
 ## Two boundaries
 
-**The checker imports nothing from the model.** `ruby-lean/Checker/` has its own
-copy of the syntax. The only place the two meet is the soundness proof in
-`books/Books/TypeSoundness/`. `ruby-lean/scripts/check-isolation.sh` enforces
+**The checker imports nothing from the model.**
+`books/Books/TypeSoundness/Checker/` has its own copy of the syntax, and imports
+nothing from the rest of its book either. The only place the checker and the
+model meet is the soundness proof around it. `books/scripts/check-isolation.sh` enforces
 this and `make soundness` runs it first.
 
 **Only `validateD` is trusted.** Sorbet, the annotation stripper, the desugarer
@@ -61,11 +62,11 @@ moved.
 
 ## Generated files
 
-`ruby-lean/RubyCore/Generated/` and `ruby-lean/Checker/Audit/` are written by
+`ruby-lean/RubyCore/Generated/` and `books/Books/TypeSoundness/Checker/Audit/` are written by
 scripts and committed. `make gen` regenerates them and `make gen-check` fails if
 one is stale. After editing `ruby-lean/prelude/prelude.rb`, a file under
 `ruby-lean/prelude/features/`, or a checker source under
-`ruby-lean/Checker/Check/`, run `make gen`.
+`books/Books/TypeSoundness/Checker/Check/`, run `make gen`.
 
 ## Adding Ruby to the model
 
@@ -98,13 +99,13 @@ program is not.
 A rule enters the checker together with the proof that it is sound.
 
 1. Add the rule as a constructor of the judgment in
-   `ruby-lean/Checker/Judgment/`.
+   `books/Books/TypeSoundness/Checker/Judgment/`.
 2. Prove its semantic obligation in `books/Books/TypeSoundness/Rules/`, and
    import that file from `books/Books/TypeSoundness/Registry/ActiveProofs.lean`.
 3. Enable the rule by adding its name to `clinkProfile` in
-   `ruby-lean/Checker/ClinkPolicy.lean`. An enabled rule with no proof fails the
+   `books/Books/TypeSoundness/Checker/ClinkPolicy.lean`. An enabled rule with no proof fails the
    build; a rule that is not enabled is refused by `validateD`.
-4. Teach `ruby-lean/scripts/emit_deriv.rb` to propose the rule. This script is
+4. Teach `books/scripts/emit_deriv.rb` to propose the rule. This script is
    untrusted, so it needs no proof.
 5. Add a program that needs the rule to `books/corpus/`, and beside it a
    near-identical program that must still be rejected. Each is a `NNN-name.rb`

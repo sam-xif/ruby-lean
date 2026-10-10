@@ -1,4 +1,4 @@
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 import Books.TypeSoundness.Registry.AuditBridge
 import Books.TypeSoundness.Conformance.Core.Boot
 

@@ -1,4 +1,4 @@
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 import Books.TypeSoundness.Conformance.Core.Trans
 
 /-! Main's native singleton inspect is distinct from Object#inspect. A top-level

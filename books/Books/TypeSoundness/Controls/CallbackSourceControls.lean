@@ -1,7 +1,7 @@
 import Books.TypeSoundness.Rules.Method.BodyDefine
 import Books.TypeSoundness.Rules.Method.BodySource
 import Books.TypeSoundness.Rules.Method.BodyChecked
-import Checker.Controls.CallbackBodyCheckControls
+import Books.TypeSoundness.Checker.Controls.CallbackBodyCheckControls
 import Books.TypeSoundness.Rules.Closure.FlowExpr
 import Books.TypeSoundness.Rules.Closure.FlowSequence
 

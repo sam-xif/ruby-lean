@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Conformance.Class.ClassHeaderStateActual
-import Checker.Guards.SubclassHeader
+import Books.TypeSoundness.Checker.Guards.SubclassHeader
 
 /-! Publish a fresh subclass header on the actual named/attached heap. The parent's
 allocator, dispatch and named chain transfer through the prepended fresh class. -/

@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Rules.Closure.ReadReturn
-import Checker.Static.LocalFacts
+import Books.TypeSoundness.Checker.Static.LocalFacts
 
 /-! Project body types onto the caller's physical slots. New body locals disappear;
 aliases are erased because their target may be one of those discarded locals. -/

@@ -1,4 +1,4 @@
-import Checker.Guards.MemberFrame
+import Books.TypeSoundness.Checker.Guards.MemberFrame
 import Books.TypeSoundness.Conformance.Instance.MethodHeap
 
 /-! Discharge definition freshness by actual heap owner, using named ancestry conformance. -/

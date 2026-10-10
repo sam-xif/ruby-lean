@@ -1,4 +1,4 @@
-import Checker.Guards.SingletonCtx
+import Books.TypeSoundness.Checker.Guards.SingletonCtx
 import Books.TypeSoundness.Conformance.Singleton.SingletonTable
 import Books.TypeSoundness.Conformance.Names.MemberDeclared
 

@@ -1,11 +1,11 @@
 # ruby-lean — top-level build.
 #
 # `make check` is the one command that says whether the repository is sound:
-# it builds the model and the checker, builds every proof, audits their axioms,
+# it builds the model, the type checker and every proof, audits their axioms,
 # and runs the model against CRuby. `make help` lists every target.
 #
 # Each part keeps its own build tool: Lake for the two Lean packages (ruby-lean/
-# is the model and the checker, books/ is the proofs about them), uv for
+# is the model, books/ is the proofs about it and the type checker), uv for
 # difftest/, Bundler for the Ruby gems, and shell scripts for the browser build.
 # This file names the targets and tracks the edges between those tools:
 #
@@ -110,7 +110,7 @@ gen: ## Regenerate every generated Lean source
 	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp && mv RubyCore/Generated/Prelude.lean.tmp RubyCore/Generated/Prelude.lean
 	cd $(PKG) && $(RUBY) scripts/gen_cruby_names.rb  > RubyCore/Generated/CRubyNames.lean
 	cd $(PKG) && $(RUBY) scripts/gen_unicode.rb --verify > RubyCore/Generated/Unicode.lean
-	cd $(PKG) && python3 scripts/generate_audited_checker.py
+	python3 books/scripts/generate_audited_checker.py
 
 gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	@set -e; fail=0; \
@@ -125,23 +125,27 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	if cmp -s $(STAMP)/Prelude.lean $(PRELUDE_LEAN); then echo "  fresh  RubyCore/Generated/Prelude.lean"; \
 	else echo "  STALE  RubyCore/Generated/Prelude.lean  (run: make gen)"; \
 	  diff $(PRELUDE_LEAN) $(STAMP)/Prelude.lean | head -40 | cut -c1-600; fail=1; fi; \
-	(cd $(PKG) && python3 scripts/generate_audited_checker.py --check) || fail=1; \
+	python3 books/scripts/generate_audited_checker.py --check || fail=1; \
 	exit $$fail
 
 # ── Lean ─────────────────────────────────────────────────────────────────────
 # Lake owns Lean incrementality, so these always run it (a no-op build takes
-# well under a second). `lean-exes` is the narrow one: the model and the
-# checker executables, which is all that `run`, `difftest` and `wasm` need. The
-# binaries are file targets on top so that the wasm rules rebuild only when Lake actually
-# relinked one. `lean` waits for `lean-exes` so two Lakes never share .lake/.
+# well under a second). `lean-exes` is the narrow one: the model's executable
+# and the checker's, which is all that `run`, `difftest` and `wasm` need. The
+# checker lives in books/, which uses ruby-lean/ as a library, so the two Lakes
+# run one after the other and never share ruby-lean/.lake. The binaries are file
+# targets on top so that the wasm rules rebuild only when Lake relinked one.
+
+CHECKER_BIN := books/.lake/build/bin
 
 lean-exes: $(PRELUDE_LEAN) ## Just the rubycore and validate-one executables
-	cd $(PKG) && $(LAKE) build --log-level=error rubycore validate-one
+	cd $(PKG) && $(LAKE) build --log-level=error rubycore
+	cd books && $(LAKE) build --log-level=error validate-one
 
-lean: lean-exes ## Build the Lean package: the model and the checker (the proofs are `make books`)
+lean: lean-exes ## Build the model's package (the checker and the proofs are `make books`)
 	cd $(PKG) && $(LAKE) build
 
-$(LEAN_BIN)/rubycore $(LEAN_BIN)/validate-one: lean-exes ;
+$(LEAN_BIN)/rubycore $(CHECKER_BIN)/validate-one: lean-exes ;
 
 # ── The proof books ──────────────────────────────────────────────────────────
 # books/ is a second Lake package that uses ruby-lean/ as a library, so these
@@ -238,9 +242,9 @@ WASM_LEAN_SRC := $(PKG)/wasm/build.sh $(PKG)/wasm/patch-runtime.py \
 WASM_RUBY_SRC := $(PKG)/wasm/ruby/build.sh $(PKG)/wasm/ruby/prune.py \
                  $(wildcard desugar/lib/*.rb) $(wildcard desugar/bin/*) \
                  $(wildcard difftest/ruby/*.rb) \
-                 $(PKG)/scripts/emit_deriv.rb $(PKG)/scripts/read_sigs.rb
+                 books/scripts/emit_deriv.rb books/scripts/read_sigs.rb
 
-$(STAMP)/wasm-lean: $(LEAN_BIN)/rubycore $(LEAN_BIN)/validate-one $(WASM_LEAN_SRC) | $(STAMP)
+$(STAMP)/wasm-lean: $(LEAN_BIN)/rubycore $(CHECKER_BIN)/validate-one $(WASM_LEAN_SRC) | $(STAMP)
 	cd $(PKG) && RUBYLEAN_WASM_CACHE=$(WASM_CACHE) wasm/build.sh rubycore validate-one
 	@touch $@
 

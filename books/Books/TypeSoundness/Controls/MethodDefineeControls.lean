@@ -1,6 +1,6 @@
 import Books.TypeSoundness.Rules.Method.MethodEntry
 import Books.TypeSoundness.Conformance.Core.Boot
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 
 /-! Ordinary metadata must establish the actual defining module of its activation. -/
 namespace Checker.Soundness.Typed

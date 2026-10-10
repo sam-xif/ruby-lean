@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Conformance.Names.RootLookup
-import Checker.Guards.ClassGuards
+import Books.TypeSoundness.Checker.Guards.ClassGuards
 
 /-! Discharge old-site Object reachability from the static ancestry guard. -/
 set_option autoImplicit false

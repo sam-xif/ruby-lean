@@ -1,4 +1,4 @@
-import Checker.Guards.ClassCtx
+import Books.TypeSoundness.Checker.Guards.ClassCtx
 import Books.TypeSoundness.Conformance.Singleton.SingletonRowsWrite
 
 /-! Publish an actually installed instance method. Preserve old records at other owners,

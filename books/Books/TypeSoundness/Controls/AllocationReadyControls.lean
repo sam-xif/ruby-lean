@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Conformance.Core.Boot
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 
 /-! The former allocator capability omitted native construction metadata. -/
 namespace Checker.Soundness.Typed

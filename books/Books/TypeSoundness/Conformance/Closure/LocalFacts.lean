@@ -1,4 +1,4 @@
-import Checker.Static.LocalFacts
+import Books.TypeSoundness.Checker.Static.LocalFacts
 import Books.TypeSoundness.Conformance.Closure.Reify
 import Books.TypeSoundness.Conformance.Closure.Bindings
 

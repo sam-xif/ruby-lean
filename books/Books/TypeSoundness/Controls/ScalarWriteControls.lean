@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Examples.ScalarWriteDerivations
-import Checker.Controls.ScalarWriteControls
+import Books.TypeSoundness.Checker.Controls.ScalarWriteControls
 
 /-! Runtime controls and the Boolean counterexample to unrestricted same-type writes. -/
 set_option autoImplicit false

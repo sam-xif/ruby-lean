@@ -2,7 +2,7 @@ import Books.TypeSoundness.Rules.Inherited.InheritedConstructorExpr
 import Books.TypeSoundness.Rules.Inherited.InheritedRun
 import Books.TypeSoundness.Conformance.Names.NativePrefix
 import Books.TypeSoundness.Conformance.Class.ClassGuards
-import Checker.Guards.MemberRoute
+import Books.TypeSoundness.Checker.Guards.MemberRoute
 
 /-! Inherited call forms with only checked routes, static guards and full body premises.
 Every receiver, owner, body, annotation and context is a parameter. -/

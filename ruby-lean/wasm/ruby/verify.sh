@@ -59,13 +59,13 @@ if [ "$ONLY" = all ] || [ "$ONLY" = strip ]; then
 fi
 
 if [ "$ONLY" = all ] || [ "$ONLY" = deriv ]; then
-  a=$(ruby "$ROOT/ruby-lean/scripts/read_sigs.rb" < "$f" 2>&1)
+  a=$(ruby "$ROOT/books/scripts/read_sigs.rb" < "$f" 2>&1)
   b=$(w /opt/deriv/read_sigs.rb < "$f" 2>&1)
   if [ "$a" = "$b" ]; then
     ast="$ROOT/books/build/$name.ast.json"
     if [ -f "$ast" ]; then
       payload=$(python3 -c 'import json,sys; print(json.dumps({"ast": json.load(open(sys.argv[1])), "sigs": json.loads(sys.argv[2])}))' "$ast" "$a")
-      da=$(printf '%s' "$payload" | ruby "$ROOT/ruby-lean/scripts/emit_deriv.rb" 2>&1)
+      da=$(printf '%s' "$payload" | ruby "$ROOT/books/scripts/emit_deriv.rb" 2>&1)
       db=$(printf '%s' "$payload" | w /opt/deriv/emit_deriv.rb 2>&1)
       [ "$da" = "$db" ] && echo "deriv OK" || echo "deriv DIFF $name"
     else

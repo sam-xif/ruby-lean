@@ -1,4 +1,4 @@
-import Checker.Guards.RootInit
+import Books.TypeSoundness.Checker.Guards.RootInit
 import Books.TypeSoundness.Denotation.Ext
 import RubyCore.Interp.Dispatch
 

@@ -1,4 +1,4 @@
-import Checker.Guards.CallWorld
+import Books.TypeSoundness.Checker.Guards.CallWorld
 import Books.TypeSoundness.Rules.Instance.MainReturn
 import Books.TypeSoundness.Rules.Instance.InstanceCallerReturn
 import Books.TypeSoundness.Rules.Singleton.SingletonReturn

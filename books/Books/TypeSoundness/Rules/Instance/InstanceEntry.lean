@@ -1,6 +1,6 @@
 import Books.TypeSoundness.Rules.Method.MethodState
 import Books.TypeSoundness.Rules.Instance.InstanceRead
-import Checker.Guards.ClassCtx
+import Books.TypeSoundness.Checker.Guards.ClassCtx
 
 /-! Moving open receiver fields into an ordinary method activation. This supplies the
 self-spine premise from the receiver's type; it does not assume complete outgoing StateOk. -/

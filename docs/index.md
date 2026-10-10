@@ -72,7 +72,7 @@ proved once, for every program; checking your program is then a function call.
                                   │              ▲
                                   │              │ proofs are about this
                                   ▼              │
-                       ruby-lean/Checker/     books/
+                       the type checker       books/
                        accepts or declines    theorems
 ```
 
@@ -80,10 +80,11 @@ proved once, for every program; checking your program is then a function call.
   function, `stepFn`, takes a machine state to the next one.
 * **The desugarer** (`desugar/`) turns Ruby source into the small core language
   the model runs. The model never parses Ruby.
-* **The checker** (`ruby-lean/Checker/`) is a type checker for a fragment of
-  Sorbet-annotated Ruby. It imports nothing from the model.
-* **The books** (`books/`) hold every proof: facts about the model, the
-  checker's soundness theorem, and proofs about individual Ruby programs.
+* **The books** (`books/`) hold every proof: facts about the model, proofs
+  about individual Ruby programs, and the type-soundness book.
+* **The checker** (`books/Books/TypeSoundness/Checker/`) is a type checker for
+  a fragment of Sorbet-annotated Ruby, and is part of the type-soundness book.
+  It imports nothing from the model; the proof around it is where they meet.
 * **The tests** (`difftest/`) run the model and CRuby side by side on thousands
   of programs and fail on any difference.
 

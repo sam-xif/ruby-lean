@@ -1,6 +1,6 @@
 import Books.TypeSoundness.Denotation.Root
 import Books.TypeSoundness.Conformance.Core.Frame
-import Checker.Static.All
+import Books.TypeSoundness.Checker.Static.All
 import Books.Metatheory.Heap.HeapCert
 
 /-!

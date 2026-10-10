@@ -1,6 +1,6 @@
-import Checker.Guards.ClassGuards
+import Books.TypeSoundness.Checker.Guards.ClassGuards
 import Books.TypeSoundness.Conformance.Class.ClassTablesFrame
-import Checker.Guards.ClassHeader
+import Books.TypeSoundness.Checker.Guards.ClassHeader
 import Books.TypeSoundness.Conformance.Core.Reframe
 
 /-! Interpret static frame guards without baking in a class or demanding empty class

@@ -28,7 +28,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)                 # books/
 RUBY = os.path.dirname(ROOT)                 # the repository
-TOOLS = os.path.join(RUBY, "ruby-lean", "scripts")   # the checker's front end: srb_sigs.py, emit_deriv.rb
+TOOLS = HERE                                  # the checker's front end: srb_sigs.py, emit_deriv.rb
 STRIPS = [os.path.join(RUBY, "difftest", "ruby", s) for s in
           ("sig_strip.rb", "visibility_strip.rb", "freeze_strip.rb",
            "require_strip.rb", "const_inline.rb", "class_sugar_strip.rb")]

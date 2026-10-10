@@ -1,4 +1,4 @@
-import Checker.Check.CheckInit
+import Books.TypeSoundness.Checker.Check.CheckInit
 import Books.TypeSoundness.Rules.Init.InitBridge
 
 /-! Initializer derivations mean the anchored fresh-receiver contract, not ordinary

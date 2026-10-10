@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Conformance.Closure.Reify
-import Checker.Guards.ClosureFlow
+import Books.TypeSoundness.Checker.Guards.ClosureFlow
 
 /-! Native Proc#call resolution is a heap fact, separate from the closure payload.
 Overrides, visibility and tombstones must be checked before using the native call proof. -/

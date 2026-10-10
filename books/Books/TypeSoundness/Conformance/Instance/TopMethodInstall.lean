@@ -1,4 +1,4 @@
-import Checker.Guards.MethodCtx
+import Books.TypeSoundness.Checker.Guards.MethodCtx
 import Books.TypeSoundness.Conformance.Instance.InstanceTable
 import Books.TypeSoundness.Conformance.Names.MemberDeclared
 

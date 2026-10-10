@@ -1,4 +1,4 @@
-import Checker.Judgment.DMethod
+import Books.TypeSoundness.Checker.Judgment.DMethod
 import Books.TypeSoundness.Rules.Method.BodyAssign
 import Books.TypeSoundness.Rules.Method.BodyPrimitive
 

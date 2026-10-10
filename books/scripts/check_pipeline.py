@@ -248,7 +248,7 @@ item + 1
             accepted = False
             if status == "ok":
                 emitted[name] = proposal["deriv"]
-                verdict = run_json([str(Path(RUBY) / "ruby-lean/.lake/build/bin/validate-one")],
+                verdict = run_json([str(Path(ROOT) / ".lake/build/bin/validate-one")],
                                    json.dumps({"program": ast, "deriv": proposal["deriv"]}))
                 accepted = verdict["validateD"]
             assert accepted == expected, (name, accepted, expected)

@@ -1,14 +1,13 @@
 # books/ — the proofs
 
-[`../ruby-lean`](../ruby-lean/README.md) holds the two things that proofs are
-about: an executable model of Ruby (`RubyCore/`) and a type checker for
-Sorbet-annotated programs (`Checker/`). This package uses it as a library and
-holds every proof, as a collection of *books*. A book is a directory under
+[`../ruby-lean`](../ruby-lean/README.md) holds an executable model of Ruby
+(`RubyCore/`). This package uses it as a library and holds every proof about
+it, as a collection of *books*. A book is a directory under
 [`Books/`](Books/) with one result at its head.
 
 | Book | What it proves | Start at |
 |---|---|---|
-| [`Books/TypeSoundness/`](Books/TypeSoundness/README.md) | A program the checker accepts never ends in an uncaught `NoMethodError`, `ArgumentError` or `TypeError` when the model runs it | [`Soundness.lean`](Books/TypeSoundness/Soundness.lean) |
+| [`Books/TypeSoundness/`](Books/TypeSoundness/README.md) | A type checker for Sorbet-annotated Ruby ([`Checker/`](Books/TypeSoundness/Checker/README.md)), and the theorem that a program it accepts never ends in an uncaught `NoMethodError`, `ArgumentError` or `TypeError` when the model runs it | [`Soundness.lean`](Books/TypeSoundness/Soundness.lean) |
 | [`Books/Metatheory/`](Books/Metatheory/README.md) | Facts about the model itself: the step relation and the executable `stepFn` agree, and a type-safety principle that needs no type system | [`Machine/Step.lean`](Books/Metatheory/Machine/Step.lean) |
 | [`Books/FastPower/`](Books/FastPower/README.md) | One Ruby program, exponentiation by squaring, computes `b ** n` for every `b` and `n` | [`Proof.lean`](Books/FastPower/Proof.lean) |
 
@@ -52,7 +51,7 @@ every file under `Books/`.
 |---|---|
 | `Books/` | The books |
 | `corpus/` | 266 Sorbet-annotated Ruby programs the checker is measured on. Each `NNN-name.rb` has a `NNN-name.meta.json` saying what Sorbet and the checker are expected to answer. `accepted.txt` records which ones the checker accepts |
-| `scripts/` | The checks above; `build_corpus.py`, which runs each corpus program through Sorbet, the desugarer and the derivation emitter; `probes/`, which decide facts about the booted heap |
+| `scripts/` | The checks above; the scripts in front of the checker (`srb_sigs.py`, `read_sigs.rb`, `emit_deriv.rb`) and `build_corpus.py`, which runs each corpus program through them; `generate_audited_checker.py`; `probes/`, which decide facts about the booted heap |
 | `CorpusReport.lean` | The executable that prints the corpus report |
 | `build/` | Output of `build_corpus.py`. Not committed |
 

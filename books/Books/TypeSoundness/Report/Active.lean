@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Registry.SoundnessAudit
-import Checker.Check.Rung
+import Books.TypeSoundness.Checker.Check.Rung
 
 /-!
 # The corpus report

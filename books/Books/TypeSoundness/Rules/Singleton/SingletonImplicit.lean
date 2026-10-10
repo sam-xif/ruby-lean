@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Rules.Singleton.SingletonLookupRun
-import Checker.Guards.ImplicitCall
+import Books.TypeSoundness.Checker.Guards.ImplicitCall
 
 /-! Bare and parenthesized implicit singleton calls retain the real receiver across
 arguments, dispatch at their own call site, and restore the full caller state. -/

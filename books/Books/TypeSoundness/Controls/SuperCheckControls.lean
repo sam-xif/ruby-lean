@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Examples.SuperDerivations
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 
 /-! Whole-program super admission, argument effects and receiver-aware parent replay.
 Bad uncalled overrides fail at definition time, before any constructor is requested. -/

@@ -1,4 +1,4 @@
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 import Books.TypeSoundness.Conformance.Core.Boot
 
 /-! The *statements* of the validator's end-to-end safety theorems, with no proofs.

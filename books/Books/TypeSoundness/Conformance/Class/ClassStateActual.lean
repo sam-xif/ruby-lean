@@ -1,4 +1,4 @@
-import Checker.Guards.ClassCtx
+import Books.TypeSoundness.Checker.Guards.ClassCtx
 import Books.TypeSoundness.Conformance.Class.ClassNative
 import Books.TypeSoundness.Conformance.Class.ClassTablesActual
 import Books.TypeSoundness.Conformance.Class.ClassMainActual

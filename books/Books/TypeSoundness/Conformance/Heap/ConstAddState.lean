@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Conformance.Heap.ConstAdd
-import Checker.Guards.ConstGuards
+import Books.TypeSoundness.Checker.Guards.ConstGuards
 import Books.TypeSoundness.Conformance.Class.ClassConstScopeActual
 
 /-! Full conformance after binding a fresh top-level constant in a class-free context.

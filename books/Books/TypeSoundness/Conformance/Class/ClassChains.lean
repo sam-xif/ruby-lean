@@ -1,4 +1,4 @@
-import Checker.Guards.ClassHeader
+import Books.TypeSoundness.Checker.Guards.ClassHeader
 import Books.TypeSoundness.Conformance.Names.NamedChain
 import Books.TypeSoundness.Denotation.Ext
 

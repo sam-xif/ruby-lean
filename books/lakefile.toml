@@ -1,16 +1,15 @@
 name = "books"
 version = "0.1.0"
-defaultTargets = ["FastPower", "Metatheory", "TypeSoundness", "corpus-report"]
+defaultTargets = ["FastPower", "Metatheory", "TypeSoundness", "corpus-report", "validate-one"]
 
-# Every proof in this repository. `../ruby-lean` holds the two things proofs are
-# about, the executable model (`RubyCore/`) and the type checker (`Checker/`),
-# and is used here as a library. A path dependency builds in `../ruby-lean/.lake`,
+# Every proof in this repository. `../ruby-lean` holds the executable model
+# (`RubyCore/`) and is used here as a library. A path dependency builds in `../ruby-lean/.lake`,
 # so its build is shared.
 #
 #   Books/Lib/            machinery for proving things about one Ruby program
 #   Books/FastPower/      a Ruby program proved correct
 #   Books/Metatheory/     facts about the model itself
-#   Books/TypeSoundness/  the checker's soundness theorem
+#   Books/TypeSoundness/  the type checker (Checker/) and its soundness theorem
 #
 # See README.md for what each book proves and where to start reading.
 [[require]]
@@ -50,3 +49,10 @@ globs = ["Books.TypeSoundness.+"]
 [[lean_exe]]
 name = "corpus-report"
 root = "CorpusReport"
+
+# The type checker as an executable: reads one program and one derivation as
+# JSON and prints `validateD`'s verdict. `bin/ruby-lean-check` and the
+# playground use it. It links the checker and nothing of the model.
+[[lean_exe]]
+name = "validate-one"
+root = "Books.TypeSoundness.Checker.Main"

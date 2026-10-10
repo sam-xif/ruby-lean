@@ -1,4 +1,4 @@
-import Checker.Guards.MethodCtx
+import Books.TypeSoundness.Checker.Guards.MethodCtx
 import Books.TypeSoundness.Conformance.Instance.TopMethodInstall
 import Books.TypeSoundness.Rules.Method.MethodDispatch
 

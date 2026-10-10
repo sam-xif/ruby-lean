@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Rules.Super.SuperArgs
-import Checker.Guards.SuperInit
+import Books.TypeSoundness.Checker.Guards.SuperInit
 import Books.TypeSoundness.Conformance.Class.ClassGuards
 
 /-! Explicit super expressions compose argument effects with the full annotated parent

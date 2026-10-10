@@ -1,4 +1,4 @@
-import Checker.Guards.SubclassGuards
+import Books.TypeSoundness.Checker.Guards.SubclassGuards
 import Books.TypeSoundness.Conformance.Subclass.SubclassNames
 
 /-! Preserve builtin ancestry through both fresh heads. Only bases with an active

@@ -1,4 +1,4 @@
-import Checker.Guards.ClosureFlow
+import Books.TypeSoundness.Checker.Guards.ClosureFlow
 import Books.TypeSoundness.Rules.Closure.TrackedCall
 import Books.TypeSoundness.Conformance.Closure.Transport
 import Books.TypeSoundness.Judgment.LocalFlow

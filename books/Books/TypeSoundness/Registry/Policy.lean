@@ -1,4 +1,4 @@
-import Checker.ClinkPolicy
+import Books.TypeSoundness.Checker.ClinkPolicy
 
 /-! Compatibility names for the shared, checker-owned clink policy. -/
 namespace Checker.Soundness.Typed
