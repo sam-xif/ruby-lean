@@ -27,7 +27,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TOOLS = os.path.join(ROOT, "books", "scripts")
+TOOLS = os.path.join(ROOT, "books", "Books", "TypeSoundness", "scripts")
 EXPORT = os.path.join(ROOT, "desugar", "bin", "export-json")
 VALIDATE = os.environ.get(
     "VALIDATE_ONE", os.path.join(ROOT, "books", ".lake", "build", "bin", "validate-one"))

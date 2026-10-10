@@ -6,7 +6,7 @@ import Json
 harness↔Lean wire format, `Export::VERSION` 4/5, `desugar/lib/export.rb`).
 Constructors, field shapes, and decode logic are unchanged; only the deep
 implementation-history commentary (L-numbers, J-numbers, references to proof files that
-don't exist in this package) has been trimmed. This means corpus programs in `books/corpus/`
+don't exist in this package) has been trimmed. This means corpus programs in `books/Books/TypeSoundness/corpus/`
 are **real desugared Ruby**, produced by the real `desugar/bin/export-json`
 pipeline, not hand-authored ASTs — see `scripts/generate_corpus.py`.
 

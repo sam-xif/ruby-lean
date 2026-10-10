@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run every corpus program through the stages in front of the checker.
 
-    scripts/build_corpus.py [--jobs N] [--only 001,014] [--out DIR] [corpus-dir]
+    build_corpus.py [--jobs N] [--only 001,014] [--out DIR] [corpus-dir]
 
 For each `corpus/NNN-name.rb` (Sorbet-annotated) and its `NNN-name.meta.json`:
 
@@ -26,8 +26,9 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)                 # books/
-RUBY = os.path.dirname(ROOT)                 # the repository
+ROOT = os.path.dirname(HERE)                 # this book: books/Books/TypeSoundness/
+BOOKS = os.path.dirname(os.path.dirname(ROOT))   # books/, the Lake package
+RUBY = os.path.dirname(BOOKS)                # the repository
 TOOLS = HERE                                  # the checker's front end: srb_sigs.py, emit_deriv.rb
 STRIPS = [os.path.join(RUBY, "difftest", "ruby", s) for s in
           ("sig_strip.rb", "visibility_strip.rb", "freeze_strip.rb",

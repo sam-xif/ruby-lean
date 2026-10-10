@@ -75,7 +75,7 @@ directory (a sparse clone of `ruby/ruby` at the pinned tag) into
 |---|---|
 | `ruby-lean/RubyCore/` | The model: the semantics of Ruby, in Lean |
 | `ruby-lean/prelude/` | The part of Ruby's core library that the model implements in Ruby |
-| `books/` | Every proof; the type checker, in `books/Books/TypeSoundness/Checker/`; and the corpus of typed programs it is measured on |
+| `books/` | Every proof, one book per directory. The type-soundness book also holds the type checker and the corpus of typed programs it is measured on |
 | `desugar/` | Ruby source to the model's core language |
 | `difftest/` | Differential testing against CRuby |
 | `playground/` | A browser interface to all of the above |

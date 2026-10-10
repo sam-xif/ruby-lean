@@ -8,8 +8,8 @@ from pathlib import Path
 import argparse
 import re
 
-ROOT = Path(__file__).resolve().parents[1]   # books/
-CHECKER = ROOT / 'Books/TypeSoundness/Checker'
+ROOT = Path(__file__).resolve().parents[1]   # this book
+CHECKER = ROOT / 'Checker'
 MOD = 'Books.TypeSoundness.Checker'
 MODULES = ['CheckInit', 'MethodCertificate', 'MethodFlowCertificate', 'BodyCache',
            'ReceiverCache', 'SingletonCache', 'Certified', 'CheckCallbackBody',
@@ -77,7 +77,7 @@ def generate(module):
         text = text.replace('theorem CallableMemberAt.own_judged ', 'theorem CallableMemberAt.own_judged {used : List String} ')
         text = text.replace('(hb : DJudge ', '(hb : DJudge (used := used) ')
         text = text.replace('    DJudge b.body.params', '    DJudge (used := used) b.body.params')
-    return (f'-- Generated from Checker/Check/{module}.lean by books/scripts/generate_audited_checker.py.\n'
+    return (f'-- Generated from Checker/Check/{module}.lean by scripts/generate_audited_checker.py.\n'
             '-- Edit the raw source and regenerate; Lean checks the indexed proof and trace.\n'
             f'import {MOD}.Audit.Erase\n' + text)
 

@@ -28,7 +28,7 @@ in both heaps — so agreement is **global** rather than relativized, and none o
 congruences below need to know that the walk stays inside the old heap. Allocating a
 **class** breaks exactly that clause and nothing else, which is the honest statement
 of what `classDef` will owe (`AncestorsGrow.lean`'s header, and the
-`0 out-of-bounds edges` line of `scripts/probes/ancestors_probe.lean`).
+`0 out-of-bounds edges` line of `Books/Metatheory/Probes/Ancestors.lean`).
 
 ## What this file does *not* claim
 
@@ -188,7 +188,7 @@ theorem PlainGrow.namesOk {h h' : Heap} (hg : PlainGrow h h') (hn : NamesOk h) :
 
 /-- `classOf` needs the id to be one the old heap had — it is the one function here
     that reads the object rather than its payload, and the fresh id is exactly where
-    it disagrees (`scripts/probes/alloc_probe.lean`). -/
+    it disagrees (`Books/Metatheory/Probes/Alloc.lean`). -/
 theorem PlainGrow.classOf_eq {h h' : Heap} (hg : PlainGrow h h') {o : ObjId}
     (ho : o < h.objs.size) : classOf h' (.ref o) = classOf h (.ref o) := by
   simp only [classOf, hg.get o ho]

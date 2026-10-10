@@ -77,6 +77,6 @@ Declarations in this book are in the namespace `RubyCore.Proof`.
 Some lemmas assume a fact about the heap that the core library boots: for
 example, that no two class objects share a name. Those facts are decided by
 running them on the real booted heap. `make metatheory` runs the probes in
-`books/scripts/probes/` and fails if one stops holding, so a change to the
+`books/Books/Metatheory/Probes/` and fails if one stops holding, so a change to the
 prelude that would falsify an assumption is caught there and not by a proof
 breaking somewhere far away.

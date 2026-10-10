@@ -37,7 +37,7 @@ ROOT = HERE.parent
 EXPORT_JSON = ROOT / "desugar" / "bin" / "export-json"
 RUBYCORE = ROOT / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
 RATCHET_VALIDATE = ROOT / "books" / ".lake" / "build" / "bin" / "validate-one"
-CORPUS = ROOT / "books" / "corpus"
+CORPUS = ROOT / "books" / "Books" / "TypeSoundness" / "corpus"
 TIMEOUT = 120
 LONG = 300
 STRIP_CHAIN = ["sig_strip", "visibility_strip", "freeze_strip", "require_strip",
@@ -169,7 +169,7 @@ def ratchet_sorbet(source: str) -> dict:
         rb = Path(td) / "playground.rb"
         rb.write_text(source)
         p = subprocess.run(
-            [sys.executable, str(ROOT / "books/scripts/srb_sigs.py"), "--quiet", str(rb)],
+            [sys.executable, str(ROOT / "books/Books/TypeSoundness/scripts/srb_sigs.py"), "--quiet", str(rb)],
             capture_output=True, text=True, timeout=LONG)
         if p.returncode != 0:
             return {"error": "sorbet", "message": p.stderr.strip()[:2000] or f"exit {p.returncode}"}
@@ -187,7 +187,7 @@ def ratchet_derive(source: str) -> dict:
         rb = Path(td) / "playground.rb"
         rb.write_text(source)
         sigs = subprocess.run(
-            [sys.executable, str(ROOT / "books/scripts/srb_sigs.py"), "--quiet", str(rb)],
+            [sys.executable, str(ROOT / "books/Books/TypeSoundness/scripts/srb_sigs.py"), "--quiet", str(rb)],
             capture_output=True, text=True, timeout=LONG)
         if sigs.returncode != 0:
             return {"error": "sorbet", "message": sigs.stderr.strip()[:2000]}
@@ -201,7 +201,7 @@ def ratchet_derive(source: str) -> dict:
         sp.write_text(sigs.stdout)
         ap.write_text(core)
         emit = subprocess.run(
-            [RUBY, str(ROOT / "books/scripts/emit_deriv.rb"),
+            [RUBY, str(ROOT / "books/Books/TypeSoundness/scripts/emit_deriv.rb"),
              "--ast", str(ap), "--sigs", str(sp)],
             capture_output=True, text=True, timeout=LONG)
         if emit.returncode != 0:

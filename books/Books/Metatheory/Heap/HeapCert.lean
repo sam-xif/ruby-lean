@@ -16,7 +16,7 @@ even on the input `"1"` (measured), while L94 bans the `native_decide` escape.
 (`Prelude.program` is a term now, and the kernel can run the boot — see
 `books/Books/Lib/Boot.lean` — so that reason no longer holds.) They
 are decided by *running* them — `books/Books/TypeSoundness/Conformance/Core/Boot.lean`'s `#guard` for `saturatedB`,
-and `books/scripts/probes/` for the measurements `books/scripts/check-proofs.sh` reports.
+and `books/Books/Metatheory/Probes/` for the measurements `books/Books/Metatheory/scripts/check-metatheory.sh` reports.
 
 **This lives outside `books/Books/Metatheory/` on purpose.** The alternative — defining these next
 to the lemmas — means a probe (or the checker) cannot see them, so they would end
@@ -83,7 +83,7 @@ def noHookB (h : Heap) : Bool :=
     | none => true
 
 /-- L178's constant-table clause, decided. The `takeWhile` is the population
-    `scripts/probes/consts_probe.lean` measured: `{String, Comparable}` on the slice's
+    `Books/Metatheory/Probes/Consts.lean` measured: `{String, Comparable}` on the slice's
     admitted chains, not the heap's 87 class objects. -/
 def noShadowBeforeB (h : Heap) (k : ObjId) : Bool :=
   (ancestors h k).contains Boot.objectId &&
@@ -154,7 +154,7 @@ def classOkB (h : Heap) : Bool :=
         className h k == n &&
           -- The uniqueness clause (F1b.9). Quadratic in the class objects only if
           -- every name is in the table; `reopenableClasses` has one row, so this is
-          -- one linear scan per row. `scripts/probes/names_probe.lean` reports the general
+          -- one linear scan per row. `Books/Metatheory/Probes/Names.lean` reports the general
           -- fact this restricts.
           ((List.range h.objs.size).all fun j =>
             !((h.classPayload? j).isSome && className h j == n) || j == k) &&
