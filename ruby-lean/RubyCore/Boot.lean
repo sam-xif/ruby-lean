@@ -49,11 +49,13 @@ def boot : Except String Machine :=
     -- Filesystem singleton methods (issue #7 step 1): the `File.`/`Dir.`/`IO.`
     -- class methods that actually exist in CRuby and are modeled, installed on
     -- the constants' eigenclasses here exactly like `Exception.exception`, and
-    -- reached by ordinary dispatch — no interpreter special case, and the
-    -- prelude's own `File.basename`/`method_missing` continue to resolve as
-    -- before. Only real CRuby class methods are installed, so an unknown call
-    -- still reaches the prelude's `method_missing` and gates rather than
-    -- answering.
+    -- reached by ordinary dispatch — no interpreter special case. The prelude's
+    -- own `File.basename` resolves alongside these as before. A real but
+    -- unmodeled class method (e.g. `File.mtime`) is in the generated
+    -- `crubySingletonNames` table and gates through the dispatch shadow
+    -- (issue #29); a name CRuby does not define reaches the native
+    -- `NoMethodError`, since the prelude no longer installs a blanket
+    -- `method_missing` that would answer a gate for a non-method.
     let fsSingleton : List (ObjId × List String) :=
       [ (Boot.fileId, ["read", "write", "exist?", "file?", "directory?", "size"]),
         (Boot.dirId, ["exist?"]),
