@@ -135,6 +135,21 @@ theorem intOdd_step {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Machin
 
 #print axioms intOdd_step
 
+theorem intSucc_step {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Machine} (x : Int)
+    (hm : StateOk κ Γ I m) (hk : m.kont = []) (hfree : nameFreeN κ "succ" = true) :
+    StepSpec m Γ .int (Interp.invoke m (.int x) site "succ" [] none []) κ I := by
+  have hrun : Builtins.run "Integer#succ" (.int x) [] m = .ok (.int (x + 1)) m := by
+    simp only [Builtins.run, List.any_cons, List.any_nil, Builtins.unrepresentableByteStr,
+      Builtins.strPayload?, Builtins.complexEqualityImpure, Bool.false_or, Bool.or_false,
+      Bool.and_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
+    rfl
+  rw [primitive_invoke (bid := "Integer#succ") (k := Boot.integerId) hm
+    (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+    hrun]
+  exact stepSpec_value hm hk (by simp [denM, isIntV])
+
+#print axioms intSucc_step
+
 theorem strDowncase_step {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Machine} {recv : Value}
     (hm : StateOk κ Γ I m) (hk : m.kont = []) (hr : denM (.cls "String") m recv)
     (hfree : nameFreeN κ "downcase" = true)

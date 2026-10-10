@@ -130,7 +130,7 @@ Not yet covered: lambdas passed as arguments or returned, blocks with more than
 one parameter, `select`/`inject`/`sort_by` blocks, `include`/`extend`/`prepend`,
 `method_missing`, explicit `return`, and `T.untyped`.
 
-`books/corpus/` holds 267 small typed programs, and `make soundness` reports
+`books/corpus/` holds 268 small typed programs, and `make soundness` reports
 which of them the checker accepts and why it declines the others. Reading a few
 that are close to your program is the quickest way to see what is accepted.
 
