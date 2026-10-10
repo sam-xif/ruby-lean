@@ -1,0 +1,10 @@
+{
+  "id": "param-nilable-positional",
+  "tier": 14,
+  "description": "A required positional `T.nilable` parameter, called with `nil` and with a value, on each call path: a constructor, an instance method, a singleton method and a top-level method. Each argument is passed at its own type, so the derivation widens it to the declared nilable type (DJudge.widen).",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 4,
+  "annotated": true
+}
