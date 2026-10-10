@@ -21,7 +21,7 @@ While working, run the part you are changing:
 |---|---|
 | The model (`ruby-lean/RubyCore/`, `ruby-lean/prelude/`) | `make conformance`, then `make books` |
 | The checker (`books/Books/TypeSoundness/Checker/`) | `make soundness` |
-| A proof (`books/`) | `make books`; `cd books && ./scripts/check-soundness.sh --proofs-only` |
+| A proof (`books/`) | `make books`; `books/Books/TypeSoundness/scripts/check-soundness.sh --proofs-only` |
 | The desugarer (`desugar/`) | `make desugar-test desugar-coverage` |
 | The differential tester (`difftest/`) | `make difftest-test` |
 | The docs | `make docs` |
@@ -35,7 +35,7 @@ the proofs are a separate Lake package. Always finish with
 **The checker imports nothing from the model.**
 `books/Books/TypeSoundness/Checker/` has its own copy of the syntax, and imports
 nothing from the rest of its book either. The only place the checker and the
-model meet is the soundness proof around it. `books/scripts/check-isolation.sh` enforces
+model meet is the soundness proof around it. `books/Books/TypeSoundness/scripts/check-isolation.sh` enforces
 this and `make soundness` runs it first.
 
 **Only `validateD` is trusted.** Sorbet, the annotation stripper, the desugarer
@@ -54,8 +54,8 @@ check prints what moved and how to record an improvement.
 |---|---|---|
 | `difftest/coverage-baseline.json` | How many `bootstraptest` programs agree with CRuby, and how many the model declines | `scripts/check-conformance.sh --save .make/conformance` |
 | `desugar/coverage-baseline.json` | How many `bootstraptest` programs the desugarer supports | `ruby desugar/bin/coverage --save` |
-| `books/corpus/accepted.txt` | Exactly which corpus programs the checker accepts | `books/scripts/check-soundness.sh --record` |
-| `books/corpus/*.meta.json` | For each corpus program, what Sorbet and the checker are expected to answer | By hand, with the program |
+| `books/Books/TypeSoundness/corpus/accepted.txt` | Exactly which corpus programs the checker accepts | `books/Books/TypeSoundness/scripts/check-soundness.sh --record` |
+| `books/Books/TypeSoundness/corpus/*.meta.json` | For each corpus program, what Sorbet and the checker are expected to answer | By hand, with the program |
 
 Commit the updated file with the change that caused it, so the diff shows what
 moved.
@@ -105,12 +105,12 @@ A rule enters the checker together with the proof that it is sound.
 3. Enable the rule by adding its name to `clinkProfile` in
    `books/Books/TypeSoundness/Checker/ClinkPolicy.lean`. An enabled rule with no proof fails the
    build; a rule that is not enabled is refused by `validateD`.
-4. Teach `books/scripts/emit_deriv.rb` to propose the rule. This script is
+4. Teach `books/Books/TypeSoundness/scripts/emit_deriv.rb` to propose the rule. This script is
    untrusted, so it needs no proof.
-5. Add a program that needs the rule to `books/corpus/`, and beside it a
+5. Add a program that needs the rule to `books/Books/TypeSoundness/corpus/`, and beside it a
    near-identical program that must still be rejected. Each is a `NNN-name.rb`
    with a `NNN-name.meta.json`.
-6. Run `make soundness`, then `books/scripts/check-soundness.sh --record` to
+6. Run `make soundness`, then `books/Books/TypeSoundness/scripts/check-soundness.sh --record` to
    record the newly accepted programs.
 
 ## Adding a proof about a program

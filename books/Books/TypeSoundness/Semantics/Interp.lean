@@ -16,7 +16,7 @@ model's entire runtime; importing it means the proof is always about whatever
 `RubyCore/` — the real, differentially tested model — actually does.
 
 The checker is the other way round: `Checker/` imports nothing from `RubyCore/`
-(`books/scripts/check-isolation.sh` fails if it ever does), so that it can be read
+(`books/Books/TypeSoundness/scripts/check-isolation.sh` fails if it ever does), so that it can be read
 and re-implemented without the model in scope. The namespace here is
 `Checker.Semantics` only so that the proofs, which live under `Checker.Soundness`,
 can write `Semantics.run`.

@@ -30,7 +30,7 @@ build.
 | `make conformance` | The 1287 programs of CRuby's `bootstraptest` suite | The model and CRuby disagree on any program; or fewer programs agree, or more are unsupported, than the recorded baseline |
 | `make conformance` | 219 minimized reproducers of every disagreement found in the past (`difftest/corpus/regressions/`) | Any disagrees |
 | `make conformance` | Hand-written adversarial programs for blocks and jumps, dispatch, evaluation order, exceptions, keyword arguments, metaprogramming and namespaces (`difftest/corpus/tier3/`) | Any disagrees |
-| `make soundness` | The 267 typed programs of `books/corpus/` | Any disagrees |
+| `make soundness` | The 267 typed programs of `books/Books/TypeSoundness/corpus/` | Any disagrees |
 | `make feature-loading` | `require`: scope, caching, re-entry and retry after a failed load | The model and CRuby differ |
 | `make book-checks` | Each program book's program, on a grid of inputs | CRuby, the model and the theorem do not all agree |
 | `make difftest-test` | The differential tester's own unit tests, including the Sorbet probes | Any test fails, or is skipped because a tool is missing |

@@ -43,6 +43,7 @@ A machine is *type-stuck* when it has raised `NoMethodError`, `ArgumentError` or
 | `Typing/Lang/` | Definitions: a declaration table, an inference function and a declarative typing judgment over the model's own syntax |
 | `Typing/Infer/`, `Typing/Judge/` | Typing invariants of the machine stated over those definitions, and the two composites the soundness proof uses: what creating a fresh class (`FreshClass`) or module (`FreshModule`) does to the heap |
 | `Examples/` | Concrete programs proved safe |
+| `Probes/` | Programs that decide facts about the booted heap; see below |
 | `Controls/` | Counterexamples to earlier, false versions of lemmas in `Heap/` and `Framing/`, kept so the corrected hypotheses stay justified |
 
 ## What depends on what
@@ -57,5 +58,5 @@ semantics only.
 Some lemmas assume a fact about the heap the prelude boots, for instance that
 no two class objects share a name. Those facts are decided by running them on
 the real booted heap. `scripts/check-metatheory.sh` runs the probes in
-`scripts/probes/` and fails if one stops holding, so a change to the prelude
+[`Probes/`](Probes/) and fails if one stops holding, so a change to the prelude
 that would falsify an assumption is caught there.

@@ -9,9 +9,9 @@
 #
 # The second form is the one the page uses: there is no filesystem in a wasm
 # module, so both inputs arrive as one JSON object on stdin. The first is what
-# `books/scripts/build_corpus.py` calls.
+# `books/Books/TypeSoundness/scripts/build_corpus.py` calls.
 #
-# Stage 4 of `books/scripts/build_corpus.py`'s five, and the only one that has to think.
+# Stage 4 of `books/Books/TypeSoundness/scripts/build_corpus.py`'s five, and the only one that has to think.
 #
 # It began as a line-for-line port of a Python original, written so the browser
 # could derive without a Python runtime, and replaced it once the two were shown

@@ -110,7 +110,7 @@ gen: ## Regenerate every generated Lean source
 	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp && mv RubyCore/Generated/Prelude.lean.tmp RubyCore/Generated/Prelude.lean
 	cd $(PKG) && $(RUBY) scripts/gen_cruby_names.rb  > RubyCore/Generated/CRubyNames.lean
 	cd $(PKG) && $(RUBY) scripts/gen_unicode.rb --verify > RubyCore/Generated/Unicode.lean
-	python3 books/scripts/generate_audited_checker.py
+	python3 books/Books/TypeSoundness/scripts/generate_audited_checker.py
 
 gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	@set -e; fail=0; \
@@ -125,7 +125,7 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	if cmp -s $(STAMP)/Prelude.lean $(PRELUDE_LEAN); then echo "  fresh  RubyCore/Generated/Prelude.lean"; \
 	else echo "  STALE  RubyCore/Generated/Prelude.lean  (run: make gen)"; \
 	  diff $(PRELUDE_LEAN) $(STAMP)/Prelude.lean | head -40 | cut -c1-600; fail=1; fi; \
-	python3 books/scripts/generate_audited_checker.py --check || fail=1; \
+	python3 books/Books/TypeSoundness/scripts/generate_audited_checker.py --check || fail=1; \
 	exit $$fail
 
 # ── Lean ─────────────────────────────────────────────────────────────────────
@@ -155,13 +155,13 @@ books: lean-exes ## Build every proof book: every file under books/Books/
 	cd books && $(LAKE) build
 
 metatheory: lean-exes ## The model's metatheory: build it, audit its axioms, check the booted heap's assumptions
-	cd books && ./scripts/check-metatheory.sh
+	books/Books/Metatheory/scripts/check-metatheory.sh
 
 soundness: $(PRELUDE_LEAN) $(STAMP)/uv deps ## The checker's soundness theorem, its controls, and the checker on the corpus
-	cd books && ./scripts/check-soundness.sh
+	books/Books/TypeSoundness/scripts/check-soundness.sh
 
 comparator: lean-exes ## Re-check the soundness theorem with leanprover/comparator (fetches and builds it)
-	cd books && ./scripts/run-comparator.sh
+	books/Books/TypeSoundness/scripts/run-comparator.sh
 
 # ── Desugarer and bin/ruby-lean ──────────────────────────────────────────────
 
@@ -242,7 +242,7 @@ WASM_LEAN_SRC := $(PKG)/wasm/build.sh $(PKG)/wasm/patch-runtime.py \
 WASM_RUBY_SRC := $(PKG)/wasm/ruby/build.sh $(PKG)/wasm/ruby/prune.py \
                  $(wildcard desugar/lib/*.rb) $(wildcard desugar/bin/*) \
                  $(wildcard difftest/ruby/*.rb) \
-                 books/scripts/emit_deriv.rb books/scripts/read_sigs.rb
+                 books/Books/TypeSoundness/scripts/emit_deriv.rb books/Books/TypeSoundness/scripts/read_sigs.rb
 
 $(STAMP)/wasm-lean: $(LEAN_BIN)/rubycore $(CHECKER_BIN)/validate-one $(WASM_LEAN_SRC) | $(STAMP)
 	cd $(PKG) && RUBYLEAN_WASM_CACHE=$(WASM_CACHE) wasm/build.sh rubycore validate-one
@@ -256,7 +256,7 @@ $(WASM_OUT)/ruby.wasm: $(WASM_RUBY_SRC) $(STAMP)/bundle
 wasm: $(WASM_OUT)/rubycore.wasm $(WASM_OUT)/validate-one.wasm $(WASM_OUT)/ruby.wasm ## The three .wasm modules (Lean model, validator, CRuby + desugarer)
 
 PLAYGROUND_SRC := playground/index.html playground/build.sh playground/mkcorpus.py \
-                  $(wildcard playground/js/*.js) $(wildcard books/corpus/*)
+                  $(wildcard playground/js/*.js) $(wildcard books/Books/TypeSoundness/corpus/*)
 
 playground/dist/index.html: $(WASM_OUT)/rubycore.wasm $(WASM_OUT)/validate-one.wasm \
                             $(WASM_OUT)/ruby.wasm $(PLAYGROUND_SRC)
@@ -280,7 +280,7 @@ docs-serve: ## Serve the docs with live reload on :8000
 # ── Cleanup ─────────────────────────────────────────────────────────────────
 
 clean: ## Remove build outputs in the tree (keeps .lake, venvs and caches)
-	rm -rf $(STAMP) site playground/dist playground/dist.tar.gz $(WASM_OUT)/*.wasm books/build
+	rm -rf $(STAMP) site playground/dist playground/dist.tar.gz $(WASM_OUT)/*.wasm books/Books/TypeSoundness/build
 
 distclean: clean ## Also remove .lake, the difftest venv, harvested corpora and download caches
 	rm -rf $(PKG)/.lake books/.lake difftest/.venv $(BOOTSTRAP) $(CACHE) $(WASM_CACHE)

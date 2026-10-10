@@ -22,7 +22,7 @@ this book: every import is of another checker module or of the vendored `Json`
 library. The checker has its own copy of the syntax and the types, so it can be
 read, audited and re-implemented without the model or the proof in scope. It
 is in the same Lake library as the proof, so the compiler does not enforce
-this; [`books/scripts/check-isolation.sh`](../../../scripts/check-isolation.sh)
+this; [`scripts/check-isolation.sh`](../scripts/check-isolation.sh)
 does, and `make soundness` runs it first.
 
 ## Layout
@@ -34,7 +34,7 @@ does, and `make soundness` runs it first.
 | `Judgment/` | The typing rules, as inductive judgments: `DJudge` and its companions |
 | `Guards/` | The decidable side conditions the rules use |
 | `Check/` | The executable checker: `Deriv` and `validateD` |
-| `Audit/` | Generated from `Check/` by `books/scripts/generate_audited_checker.py`: the same checker, also returning which rules a derivation used. Do not edit |
+| `Audit/` | Generated from `Check/` by `scripts/generate_audited_checker.py`: the same checker, also returning which rules a derivation used. Do not edit |
 | `Controls/` | Derivations the checker must refuse. Built with everything else, so a control that stops holding fails the build |
 | `ClinkPolicy.lean` | The list of enabled typing rules. `validateD` refuses a derivation that uses any other |
 
@@ -49,7 +49,7 @@ describes the steps.
 ## The scripts in front of it
 
 `validateD` is handed a program and a derivation. Producing them from a Ruby
-file is the job of scripts in `books/scripts/`, none of which is trusted:
+file is the job of scripts in [`../scripts/`](../scripts/), none of which is trusted:
 `srb_sigs.py` reads the signatures with Sorbet (`read_sigs.rb` does the same
 with Prism, for the browser), and `emit_deriv.rb` proposes the derivation. A
 mistake in any of them can make the checker decline a program; it cannot make

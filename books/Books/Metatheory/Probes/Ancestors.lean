@@ -32,7 +32,7 @@ kernel-reduce, and L94 bans `native_decide`).
 It also measures the clause the **class**-allocating case will need and this rung
 does not: no in-bounds object has an edge pointing out of bounds.
 
-    lake env lean --run scripts/probes/ancestors_probe.lean   # exit 0 iff saturatedB, 0 OOB edges
+    lake env lean --run Books/Metatheory/Probes/Ancestors.lean   # exit 0 iff saturatedB, 0 OOB edges
 -/
 
 open RubyCore
