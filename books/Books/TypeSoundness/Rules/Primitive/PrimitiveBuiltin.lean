@@ -331,6 +331,10 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     cases ha
     obtain ⟨x, rfl⟩ := int_value hr
     exact intOdd_step x hm hk hfree
+  | intSucc =>
+    cases ha
+    obtain ⟨x, rfl⟩ := int_value hr
+    exact intSucc_step x hm hk hfree
   | arrayIndex _ =>
     cases ha
     rename_i v vs hv hs
