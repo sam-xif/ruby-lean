@@ -596,6 +596,20 @@ open RubyCore.Interp RubyCore.Builtins
   unfold RubyCore.Interp.callRaise
   nd_walk
 
+@[simp, ndLem] theorem runLibraryBody_notDone :
+    ∀ (m : Machine) (canonical : String) (body : Expr),
+  isDone (Interp.runLibraryBody m canonical body) = false := by
+  intros
+  unfold RubyCore.Interp.runLibraryBody
+  nd_walk
+
+@[simp, ndLem] theorem callRequireRelative_notDone :
+    ∀ (m : Machine) (source raw : String),
+  isDone (Interp.callRequireRelative m source raw) = false := by
+  intros
+  unfold RubyCore.Interp.callRequireRelative
+  nd_walk
+
 @[simp, ndLem] theorem callRequire_notDone :
     ∀ (m : Machine) (bid : String) (args : List Value) (kw : List (Value × Value)),
   isDone (Interp.callRequire m bid args kw) = false := by

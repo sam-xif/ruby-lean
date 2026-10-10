@@ -12,10 +12,58 @@ not an outcome of the user's program: it is reported as an error and `rubycore`
 exits with status 1.
 -/
 import RubyCore.Generated.Prelude
+import RubyCore.Generated.VfsFixture
 import RubyCore.Interp
 
 namespace RubyCore
 namespace Prelude
+
+/-! ## Mounting the require/require_relative library fixture (issue #7 / M1)
+
+The library files (`VfsFixture.rawFiles`) are mounted into the symbolic
+filesystem at the end of `boot`, as ordinary heap writes — new `.file`/`.dir`
+objects and entries appended to existing directories. They are part of what the
+boot leaves, so the booted-heap literal (`Generated/BootedHeap.lean`) contains
+them and `initWithPrelude` and `initOnBooted` start from the same heap. They are
+not part of `Boot.initHeap`, so no id the bootstrap pins moves. -/
+
+/-- The id of `name` directly under directory `parent`, if present. -/
+private def childId (h : Heap) (parent : ObjId) (name : String) : Option ObjId :=
+  match (h.get parent).payload with
+  | .dir entries _ => (entries.find? (·.1 == name)).map (·.2)
+  | _ => none
+
+/-- Append `(name, child)` to `parent`'s directory listing (no-op off a dir). -/
+private def addEntry (h : Heap) (parent : ObjId) (name : String) (child : ObjId) : Heap :=
+  match (h.get parent).payload with
+  | .dir entries par => h.set parent { h.get parent with payload := .dir (entries ++ [(name, child)]) par }
+  | _ => h
+
+/-- Find or create a subdirectory `name` under `parent`, returning its id. -/
+private def ensureDir (h : Heap) (parent : ObjId) (name : String) : Heap × ObjId :=
+  match childId h parent name with
+  | some id => (h, id)
+  | none =>
+    let (id, h) := h.alloc { klass := Boot.dirId, payload := .dir [] (some parent) }
+    (addEntry h parent name id, id)
+
+/-- Mount one file given its path components (dirs then filename): create any
+    missing ancestor directories under the fixture root, then allocate the
+    regular file and link it in. Components are supplied pre-split (the
+    generator does it) because `String.splitOn` does not reduce in the kernel,
+    and the boot must. -/
+private def mountOne (h : Heap) (comps : List String) (bytes : String) : Heap :=
+  match comps.reverse with
+  | [] => h
+  | fileName :: revDirs =>
+    let (h, parent) := revDirs.reverse.foldl
+      (fun (acc : Heap × ObjId) name => ensureDir acc.1 acc.2 name) (h, Boot.vfsRootId)
+    let (fid, h) := h.alloc { klass := Boot.fileId, payload := .file bytes }
+    addEntry h parent fileName fid
+
+/-- Mount every fixture file, in order. -/
+def mountFiles (h : Heap) (files : List (String × List String × String)) : Heap :=
+  files.foldl (fun h f => mountOne h f.2.1 f.2.2) h
 
 /-- Fuel for phase 1. The prelude only installs methods (no loops at load time),
     so this is generous by orders of magnitude; it exists so a mistake in the
@@ -66,7 +114,7 @@ def boot : Except String Machine :=
         let md : MethodDef := { params := [], body := .nil, owner := eigen, builtin := some bid }
         { m with heap := defineMethod m.heap eigen name md }) m) initial
     match Interp.run bootFuel initial with
-    | .value _ m => .ok m
+    | .value _ m => .ok { m with heap := mountFiles m.heap VfsFixture.rawFiles }
     | .uncaught exc m =>
       let cls := className m.heap (realClassOf m.heap exc)
       .error s!"prelude raised {cls}"
@@ -81,7 +129,8 @@ def initWithPrelude (prog : Expr) : Except String Machine := do
   let mp ← boot
   let featurePrograms ← features
   return { Machine.initOn mp.heap prog with
-    globals := mp.globals, numericLiterals := mp.numericLiterals, featurePrograms }
+    globals := mp.globals, numericLiterals := mp.numericLiterals, featurePrograms,
+    requireBodies := VfsFixture.requireBodies }
 
 end Prelude
 end RubyCore

@@ -127,6 +127,7 @@ $(PRELUDE_JSON): $(PRELUDE_SRC)
 # Build the generator first and run the binary, so that nothing Lake prints
 # while building can end up in the generated file.
 GENPRELUDE := $(LAKE) build --log-level=error genprelude >&2 && .lake/build/bin/genprelude
+GENVFS     := $(LAKE) build --log-level=error genvfs >&2 && .lake/build/bin/genvfs
 
 $(PRELUDE_LEAN): $(PRELUDE_JSON) $(PKG)/GenPrelude.lean $(PKG)/RubyCore/Syntax.lean
 	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp
@@ -147,9 +148,25 @@ $(UNICODE_LEAN): $(PKG)/scripts/gen_unicode.rb
 	cd $(PKG) && $(RUBY) scripts/gen_unicode.rb --verify > RubyCore/Generated/Unicode.lean.tmp
 	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
 
+# The require/require_relative library fixture, in two steps like the prelude:
+# Ruby desugars each file under prelude/vfs/ to JSON (VfsFixtureJson.lean), then
+# `genvfs` decodes that to terms (VfsFixture.lean), which the boot mounts.
+VFS_JSON := $(GENERATED)/VfsFixtureJson.lean
+VFS_LEAN := $(GENERATED)/VfsFixture.lean
+VFS_SRC  := $(PKG)/scripts/gen_vfs.rb $(shell find $(PKG)/prelude/vfs -name '*.rb') \
+            $(wildcard desugar/lib/*.rb)
+
+$(VFS_JSON): $(VFS_SRC)
+	cd $(PKG) && $(RUBY) scripts/gen_vfs.rb > RubyCore/Generated/VfsFixtureJson.lean.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
+
+$(VFS_LEAN): $(VFS_JSON) $(PKG)/GenVfs.lean $(PKG)/RubyCore/Syntax.lean
+	cd $(PKG) && $(GENVFS) > RubyCore/Generated/VfsFixture.lean.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
+
 # Every generated Lean source produced by Ruby/Python that the model build needs
 # present (BootedHeap, below, is produced by the model itself).
-GEN_LEAN := $(PRELUDE_LEAN) $(CRUBY_NAMES) $(UNICODE_LEAN)
+GEN_LEAN := $(PRELUDE_LEAN) $(CRUBY_NAMES) $(UNICODE_LEAN) $(VFS_LEAN)
 
 # The audited checker: generate_audited_checker.py rewrites some of
 # Checker/Check/*.lean into Checker/Audit/ (the modules it lists; Audit/ also
@@ -182,6 +199,8 @@ gen: ## Regenerate every generated Lean source
 	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp && mv RubyCore/Generated/Prelude.lean.tmp RubyCore/Generated/Prelude.lean
 	cd $(PKG) && $(RUBY) scripts/gen_cruby_names.rb  > RubyCore/Generated/CRubyNames.lean
 	cd $(PKG) && $(RUBY) scripts/gen_unicode.rb --verify > RubyCore/Generated/Unicode.lean
+	cd $(PKG) && $(RUBY) scripts/gen_vfs.rb          > RubyCore/Generated/VfsFixtureJson.lean
+	cd $(PKG) && $(GENVFS) > RubyCore/Generated/VfsFixture.lean.tmp && mv RubyCore/Generated/VfsFixture.lean.tmp RubyCore/Generated/VfsFixture.lean
 	python3 books/scripts/generate_audited_checker.py
 	cd $(PKG) && $(GENBOOTED) > RubyCore/Generated/BootedHeap.lean.tmp && mv RubyCore/Generated/BootedHeap.lean.tmp RubyCore/Generated/BootedHeap.lean
 
