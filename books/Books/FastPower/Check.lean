@@ -1,30 +1,45 @@
-import Books.FastPower.Proof
+import Books.FastPower.Faster
 
 /-!
-# The one link the theorem does not cover, and the axiom audit
+# The one link the theorems do not cover, and the axiom audit
 
-`fast_power_correct` is about the term `program b n`. That the term is the Ruby
-program is checked here at build time: `#guard` fails the build if it is false.
+The theorems are about the terms `Slow.program b n` and `Fast.program b n`. That
+those terms are the Ruby programs is checked here at build time: `#guard` fails
+the build if it is false.
 -/
 namespace Books.FastPower
 open RubyCore RubyCore.Interp
 
-/-! **The term is the program.** `fast_power.json` is what the desugarer exports
-for `fast_power.rb`; decoding it must give `program 3 13`. -/
-
-def exported : String := include_str "fast_power.json"
-
-#guard
-  match Json.parse exported with
-  | .ok j => (match Decode.program j with | .ok e => e == program 3 13 | .error _ => false)
+/-- Does `json`, as the desugarer exports it, decode to `program`? -/
+def exports (json : String) (program : Expr) : Bool :=
+  match Json.parse json with
+  | .ok j => (match Decode.program j with | .ok e => e == program | .error _ => false)
   | .error _ => false
 
-/-- info: 'Books.FastPower.fast_power_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms fast_power_correct
+/-! **The terms are the programs.** Each `.json` is what the desugarer exports
+for the `.rb` beside it, whose literals are base 3 and exponent 13. -/
 
-/-- info: 'Books.FastPower.fast_power_run' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard exports (include_str "slow_power.json") (Slow.program 3 13)
+#guard exports (include_str "fast_power.json") (Fast.program 3 13)
+
+/-- info: 'Books.FastPower.slow_computes_power' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms fast_power_run
+#print axioms slow_computes_power
+
+/-- info: 'Books.FastPower.fast_computes_power' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms fast_computes_power
+
+/-- info: 'Books.FastPower.Slow.computes_power' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Slow.computes_power
+
+/-- info: 'Books.FastPower.Fast.computes_power' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Fast.computes_power
+
+/-- info: 'Books.FastPower.fast_is_faster' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms fast_is_faster
 
 end Books.FastPower
