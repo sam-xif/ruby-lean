@@ -235,6 +235,49 @@ def crubyMethodNames : List (String × List String) := [
   ("Random", [
     "==", "initialize_copy", "left", "marshal_dump", "marshal_load", "state"
   ]),
+  ("IO", [
+    "<<", "advise", "all?", "any?", "autoclose=", "autoclose?", "binmode", "binmode?",
+    "chain", "chunk", "chunk_while", "close", "close_on_exec=", "close_on_exec?", "close_read", "close_write",
+    "closed?", "collect", "collect_concat", "compact", "count", "cycle", "detect", "drop",
+    "drop_while", "each", "each_byte", "each_char", "each_codepoint", "each_cons", "each_entry", "each_line",
+    "each_slice", "each_with_index", "each_with_object", "entries", "eof", "eof?", "external_encoding", "fcntl",
+    "fdatasync", "fileno", "filter", "filter_map", "find", "find_all", "find_index", "first",
+    "flat_map", "flush", "fsync", "getbyte", "getc", "gets", "grep", "grep_v",
+    "group_by", "include?", "initialize", "initialize_copy", "inject", "inspect", "internal_encoding", "ioctl",
+    "isatty", "lazy", "lineno", "lineno=", "map", "max", "max_by", "member?",
+    "min", "min_by", "minmax", "minmax_by", "none?", "one?", "partition", "path",
+    "pid", "pos", "pos=", "pread", "print", "printf", "putc", "puts",
+    "pwrite", "read", "read_nonblock", "readbyte", "readchar", "readline", "readlines", "readpartial",
+    "reduce", "reject", "reopen", "reverse_each", "rewind", "seek", "select", "set_encoding",
+    "set_encoding_by_bom", "slice_after", "slice_before", "slice_when", "sort", "sort_by", "stat", "sum",
+    "sync", "sync=", "sysread", "sysseek", "syswrite", "take", "take_while", "tally",
+    "tell", "timeout", "timeout=", "to_a", "to_h", "to_i", "to_io", "to_path",
+    "to_set", "tty?", "ungetbyte", "ungetc", "uniq", "wait", "wait_priority", "wait_readable",
+    "wait_writable", "write", "write_nonblock", "zip"
+  ]),
+  ("File", [
+    "all?", "any?", "atime", "birthtime", "chain", "chmod", "chown", "chunk",
+    "chunk_while", "collect", "collect_concat", "compact", "count", "ctime", "cycle", "detect",
+    "drop", "drop_while", "each_cons", "each_entry", "each_slice", "each_with_index", "each_with_object", "entries",
+    "filter", "filter_map", "find", "find_all", "find_index", "first", "flat_map", "flock",
+    "grep", "grep_v", "group_by", "include?", "initialize", "inject", "lazy", "lstat",
+    "map", "max", "max_by", "member?", "min", "min_by", "minmax", "minmax_by",
+    "mtime", "none?", "one?", "partition", "reduce", "reject", "reverse_each", "select",
+    "size", "slice_after", "slice_before", "slice_when", "sort", "sort_by", "sum", "take",
+    "take_while", "tally", "to_a", "to_h", "to_set", "truncate", "uniq", "zip"
+  ]),
+  ("Dir", [
+    "all?", "any?", "chain", "chdir", "children", "chunk", "chunk_while", "close",
+    "collect", "collect_concat", "compact", "count", "cycle", "detect", "drop", "drop_while",
+    "each", "each_child", "each_cons", "each_entry", "each_slice", "each_with_index", "each_with_object", "entries",
+    "fileno", "filter", "filter_map", "find", "find_all", "find_index", "first", "flat_map",
+    "grep", "grep_v", "group_by", "include?", "initialize", "inject", "inspect", "lazy",
+    "map", "max", "max_by", "member?", "min", "min_by", "minmax", "minmax_by",
+    "none?", "one?", "partition", "path", "pos", "pos=", "read", "reduce",
+    "reject", "reverse_each", "rewind", "seek", "select", "slice_after", "slice_before", "slice_when",
+    "sort", "sort_by", "sum", "take", "take_while", "tally", "tell", "to_a",
+    "to_h", "to_path", "to_set", "uniq", "zip"
+  ]),
   ("Exception", [
     "==", "backtrace", "backtrace_locations", "cause", "detailed_message", "exception", "full_message", "initialize",
     "inspect", "message", "method_missing", "respond_to?", "respond_to_missing?", "set_backtrace", "to_s"
@@ -363,6 +406,25 @@ def crubySingletonNames : List (String × List String) := [
   ("Random", [
     "bytes", "left", "new_seed", "rand", "seed", "srand", "state", "urandom"
   ]),
+  ("IO", [
+    "binread", "binwrite", "copy_stream", "for_fd", "foreach", "new", "open", "pipe",
+    "popen", "read", "readlines", "select", "sysopen", "try_convert", "write"
+  ]),
+  ("File", [
+    "absolute_path", "absolute_path?", "atime", "basename", "birthtime", "blockdev?", "chardev?", "chmod",
+    "chown", "ctime", "delete", "directory?", "dirname", "empty?", "executable?", "executable_real?",
+    "exist?", "expand_path", "extname", "file?", "fnmatch", "fnmatch?", "ftype", "grpowned?",
+    "identical?", "join", "lchmod", "lchown", "link", "lstat", "lutime", "mkfifo",
+    "mtime", "owned?", "path", "pipe?", "readable?", "readable_real?", "readlink", "realdirpath",
+    "realpath", "rename", "setgid?", "setuid?", "size", "size?", "socket?", "split",
+    "stat", "sticky?", "symlink", "symlink?", "truncate", "umask", "unlink", "utime",
+    "world_readable?", "world_writable?", "writable?", "writable_real?", "zero?"
+  ]),
+  ("Dir", [
+    "[]", "chdir", "children", "chroot", "delete", "each_child", "empty?", "entries",
+    "exist?", "fchdir", "for_fd", "foreach", "getwd", "glob", "home", "mkdir",
+    "open", "pwd", "rmdir", "unlink"
+  ]),
   ("Exception", [
     "exception", "to_tty?"
   ]),
@@ -440,6 +502,9 @@ def crubyNamespaceConstants : List (String × List String) := [
   ("Proc", []),
   ("Range", []),
   ("Random", ["Base", "Formatter"]),
+  ("IO", ["Buffer", "EAGAINWaitReadable", "EAGAINWaitWritable", "EINPROGRESSWaitReadable", "EINPROGRESSWaitWritable", "EWOULDBLOCKWaitReadable", "EWOULDBLOCKWaitWritable", "PRIORITY", "READABLE", "SEEK_CUR", "SEEK_DATA", "SEEK_END", "SEEK_HOLE", "SEEK_SET", "TimeoutError", "WRITABLE", "WaitReadable", "WaitWritable"]),
+  ("File", ["ALT_SEPARATOR", "Constants", "PATH_SEPARATOR", "SEPARATOR", "Separator", "Stat"]),
+  ("Dir", []),
   ("Exception", []),
   ("StandardError", []),
   ("RuntimeError", []),
