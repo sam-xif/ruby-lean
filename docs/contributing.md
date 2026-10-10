@@ -68,6 +68,14 @@ one is stale. After editing `ruby-lean/prelude/prelude.rb`, a file under
 `ruby-lean/prelude/features/`, or a checker source under
 `books/Books/TypeSoundness/Checker/Check/`, run `make gen`.
 
+One file in `Generated/` is different. `BootedHeap.lean`, the heap the prelude
+boot produces written out as terms, is a build artifact: it is not in the
+repository, and `make` writes it before building anything that needs it,
+whenever the model has changed. The proof books import it, so build them with
+`make books` (or any other `make` target) rather than a bare `lake build` in a
+fresh checkout. `Books/Metatheory/Heap/BootedHeap.lean` proves the file equal to
+the boot.
+
 ## Adding Ruby to the model
 
 1. **Find what is missing.** `bin/ruby-lean --compare prog.rb` prints why a

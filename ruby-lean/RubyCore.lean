@@ -24,6 +24,9 @@ Read in this order:
 * `Boot`      running the Ruby-written prelude to produce the initial heap
 * `Obs`       what a finished run is observed as: output, result, exception
 
+`Booted` (not imported here) starts a program on the booted heap taken as a
+literal, for proofs; the literal is a build artifact, see `Booted.lean`.
+
 `Numeric/` and `Regex/` are libraries the builtins use, `Generated/` holds
 tables produced by scripts, `Trace` prints a run step by step, and `Sorbet/`
 reads `sig` declarations out of a program without running it.
