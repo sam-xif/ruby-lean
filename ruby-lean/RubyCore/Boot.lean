@@ -56,7 +56,7 @@ def boot : Except String Machine :=
     -- answering.
     let fsSingleton : List (ObjId × List String) :=
       [ (Boot.fileId, ["read", "write", "exist?", "file?", "directory?", "size"]),
-        (Boot.dirId, ["exist?"]),
+        (Boot.dirId, ["exist?", "entries", "children"]),
         (Boot.ioId, ["read", "write"]) ]
     let initial := fsSingleton.foldl (fun m (cls, names) =>
       let (eigen, m) := Interp.eigenclassOf m cls
