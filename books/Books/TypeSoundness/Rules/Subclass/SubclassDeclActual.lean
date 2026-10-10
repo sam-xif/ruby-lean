@@ -2,7 +2,7 @@ import Books.TypeSoundness.Rules.Subclass.SubclassActualRun
 import Books.TypeSoundness.Rules.Primitive.Primitive
 import Books.TypeSoundness.Conformance.Class.ClassReach
 import Books.TypeSoundness.Conformance.Class.ClassGuards
-import Checker.Guards.SubclassRule
+import Books.TypeSoundness.Checker.Guards.SubclassRule
 
 /-! The subclassDecl provider: the superclass expression evaluates to a declared,
 plainly allocatable class; the actual subclass entry runs from its delivery. -/

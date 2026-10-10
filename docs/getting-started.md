@@ -48,8 +48,8 @@ make check
 This is the one command that says whether the repository is sound. It stops at
 the first failure, and continuous integration runs the same targets. It:
 
-1. builds the model and the checker (`make lean`);
-2. builds every proof book (`make books`). The first build takes from several
+1. builds the model (`make lean`);
+2. builds every proof book, the type checker among them (`make books`). The first build takes from several
    minutes on a many-core machine to about half an hour on a small one, and
    later builds take seconds;
 3. audits the axioms behind every headline theorem (`make metatheory`,
@@ -74,9 +74,8 @@ directory (a sparse clone of `ruby/ruby` at the pinned tag) into
 | Directory | Contents |
 |---|---|
 | `ruby-lean/RubyCore/` | The model: the semantics of Ruby, in Lean |
-| `ruby-lean/Checker/` | The type checker |
 | `ruby-lean/prelude/` | The part of Ruby's core library that the model implements in Ruby |
-| `books/` | Every proof, and the corpus of typed programs the checker is measured on |
+| `books/` | Every proof; the type checker, in `books/Books/TypeSoundness/Checker/`; and the corpus of typed programs it is measured on |
 | `desugar/` | Ruby source to the model's core language |
 | `difftest/` | Differential testing against CRuby |
 | `playground/` | A browser interface to all of the above |

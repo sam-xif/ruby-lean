@@ -1,4 +1,4 @@
-import Checker.Check.CheckMethodFlow
+import Books.TypeSoundness.Checker.Check.CheckMethodFlow
 import Books.TypeSoundness.Rules.Method.FlowBridge
 import Books.TypeSoundness.Rules.Method.FlowEntry
 

@@ -1,4 +1,4 @@
-import Checker.Check.CheckCallbackBody
+import Books.TypeSoundness.Checker.Check.CheckCallbackBody
 import Books.TypeSoundness.Rules.Method.BodyBridge
 import Books.TypeSoundness.Rules.Method.BodyEntry
 

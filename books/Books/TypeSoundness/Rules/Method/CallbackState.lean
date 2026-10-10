@@ -1,4 +1,4 @@
-import Checker.Guards.Callback
+import Books.TypeSoundness.Checker.Guards.Callback
 import Books.TypeSoundness.Rules.Method.Callback
 
 /-! Restore the active method's full state after a callback, including its actual block.

@@ -1,6 +1,6 @@
 import Books.TypeSoundness.Rules.Method.MethodDispatch
 import Books.TypeSoundness.Conformance.Class.ClassScope
-import Checker.Guards.ClassGuards
+import Books.TypeSoundness.Checker.Guards.ClassGuards
 
 /-! Ordinary instance-method metadata at a requested class scope. This is installation,
 not body admission: annotated body checking is a separate obligation. -/

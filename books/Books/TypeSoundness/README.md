@@ -1,8 +1,9 @@
 # `Books/TypeSoundness/` — accepted programs do not get type-stuck
 
-The checker ([`ruby-lean/Checker/`](../../../ruby-lean/Checker/README.md))
-decides whether a Sorbet-annotated Ruby program is well typed. This book proves
-that its answer means something on the model. The theorem is in
+This book is a type checker and the proof that its answer means something. The
+checker ([`Checker/`](Checker/README.md)) decides whether a Sorbet-annotated
+Ruby program is well typed. The rest of the book proves what that guarantees
+when the model runs the program. The theorem is in
 [`Soundness.lean`](Soundness.lean):
 
 ```lean
@@ -36,6 +37,7 @@ The import graph runs one way, and this is the order to read in.
 
 | Step | Directory | What a file here says |
 |---|---|---|
+| 0 | [`Checker/`](Checker/README.md) | **The checker**: the typing rules and the executable `validateD`. It imports nothing from the model or from the steps below |
 | 1 | [`Denotation/`](Denotation/) | **What a type means**: for each checker type, the set of runtime values it describes on a real heap |
 | 2 | [`Conformance/`](Conformance/) | **What it means for a machine to agree with the checker**: `StateOk`, and the lemmas that carry it across a `stepFn` transition. This is most of the book |
 | 3 | [`Judgment/`](Judgment/) | **The semantic contract of a typing judgment** |

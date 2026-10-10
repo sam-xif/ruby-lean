@@ -1,4 +1,4 @@
-import Checker.Guards.ModuleHeader
+import Books.TypeSoundness.Checker.Guards.ModuleHeader
 import Books.TypeSoundness.Conformance.Module.ModuleReady
 import Books.TypeSoundness.Conformance.Module.ModuleDeclared
 import Books.TypeSoundness.Conformance.Class.ClassPublish

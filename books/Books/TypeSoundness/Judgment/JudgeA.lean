@@ -1,4 +1,4 @@
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 import Books.TypeSoundness.Conformance.Core.SafeKont
 import Books.TypeSoundness.Conformance.Core.Transport
 import Books.TypeSoundness.Conformance.Core.Alloc

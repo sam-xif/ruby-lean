@@ -1,28 +1,20 @@
 name = "rubylean"
 version = "0.1.0"
-defaultTargets = ["Json", "RubyCore", "rubycore", "Checker", "validate-one", "genprelude"]
+defaultTargets = ["Json", "RubyCore", "rubycore", "genprelude"]
 
-# One package, two source layers, and the layering is the point:
+# The model: an executable semantics of Ruby (`RubyCore/`), and the `rubycore`
+# executable that runs it.
 #
-#   RubyCore/   the executable model (the SUT)
-#   Checker/    the certificate checker — `Expr`/`Ty` as *copied text*, `Cert`, `validateD`
-#
-# `Checker/` must not import anything under `RubyCore/` (see AGENTS.md for why: the
-# checker is meant to be readable and re-implementable without the model in scope).
-# `scripts/check-isolation.sh` enforces that, and the gate runs it as its first stage.
-#
-# Nothing here proves anything. Every proof about the model or the checker — the
-# model's metatheory, the checker's soundness theorem, the comparator run that
-# audits it, and the gate that keeps them honest — lives in `../books/`, a separate
-# Lake package that uses this one as a library.
+# Nothing here proves anything, and nothing here is a type checker. The proofs
+# about the model, and the type checker with its soundness proof, are in
+# `../books/`, a separate Lake package that uses this one as a library.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # The vendored JSON library
 # ─────────────────────────────────────────────────────────────────────────────
 
 # `Json/` is Lean's own `Lean.Data.Json`, copied in at the root namespace. It is
-# infrastructure, not model and not checker, so both sides may import it without
-# `scripts/check-isolation.sh` having anything to say. See `Json.lean` for the
+# infrastructure, not model and not checker, so both may import it. See `Json.lean` for the
 # measurement that forced it: `import Lean.Data.Json` links all of `libLean`,
 # which is 97 of the 102 MB `rubycore` used to weigh.
 [[lean_lib]]
@@ -31,7 +23,7 @@ srcDir = "."
 globs = ["Json", "Json.+"]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# The model (formerly the `lean/` package)
+# The model
 # ─────────────────────────────────────────────────────────────────────────────
 
 [[lean_lib]]
@@ -40,24 +32,6 @@ name = "RubyCore"
 [[lean_exe]]
 name = "rubycore"
 root = "Main"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# The checker
-# ─────────────────────────────────────────────────────────────────────────────
-
-# `Checker/` (the certificate checker: `Expr`/`Ty` ported as copied text, `Cert`,
-# `Validate`) is deliberately isolated from `RubyCore/`: no import of anything
-# under it. See `AGENTS.md`, and `scripts/check-isolation.sh` for the check.
-[[lean_lib]]
-name = "Checker"
-srcDir = "."
-globs = ["Checker.+"]
-
-# Reads one program and one derivation as JSON and prints `validateD`'s verdict.
-# `bin/ruby-lean-check` and the playground both use it.
-[[lean_exe]]
-name = "validate-one"
-root = "MainValidateOne"
 
 # Writes `RubyCore/Generated/Prelude.lean` (the prelude as Lean terms) from
 # `RubyCore/Generated/PreludeJson.lean` (the prelude as exported JSON). Depends only on the

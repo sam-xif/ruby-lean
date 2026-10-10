@@ -1,4 +1,4 @@
-import Checker.Lang.ClosureCode
+import Books.TypeSoundness.Checker.Lang.ClosureCode
 import Books.TypeSoundness.Conformance.Core.Trans
 
 /-! Conservative comparison across the syntax bridge. True carries exact translated

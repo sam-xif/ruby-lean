@@ -1,4 +1,4 @@
-import Checker.Static.NativeInstanceNames
+import Books.TypeSoundness.Checker.Static.NativeInstanceNames
 import Books.TypeSoundness.Conformance.Names.NativeGuards
 
 /-! The copied selector set is checked against the model, and absence excludes native

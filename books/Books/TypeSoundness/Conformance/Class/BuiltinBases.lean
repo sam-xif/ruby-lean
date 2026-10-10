@@ -1,4 +1,4 @@
-import Checker.Static.All
+import Books.TypeSoundness.Checker.Static.All
 import RubyCore.Heap
 
 namespace Checker.Soundness

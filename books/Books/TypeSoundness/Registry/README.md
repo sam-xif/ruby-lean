@@ -23,7 +23,7 @@ cannot be registered without it.
 ## Enabling a rule
 
 1. Add the rule's constructor name to `clinkProfile` in
-   `ruby-lean/Checker/ClinkPolicy.lean`, for example `var`, `DJudgeAll.cons` or
+   `books/Books/TypeSoundness/Checker/ClinkPolicy.lean`, for example `var`, `DJudgeAll.cons` or
    `DFlow.call`. Enable the companion and body rules its derivations use as
    well.
 2. Import the file that proves it in `ActiveProofs.lean`.

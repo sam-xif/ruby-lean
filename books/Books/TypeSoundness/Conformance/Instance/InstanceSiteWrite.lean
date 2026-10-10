@@ -1,7 +1,7 @@
 import Books.TypeSoundness.Conformance.Instance.InstanceSite
 import Books.TypeSoundness.Conformance.Instance.MethodHeap
-import Checker.Guards.MethodCtx
-import Checker.Guards.ClassCtx
+import Books.TypeSoundness.Checker.Guards.MethodCtx
+import Books.TypeSoundness.Checker.Guards.ClassCtx
 
 /-! Preserve a class's instance-call site while installing methods or writing fields.
 Reserving a name weakens absence facts; it does not install or certify a callable body. -/

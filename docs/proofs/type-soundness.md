@@ -1,8 +1,9 @@
 # Type soundness
 
-The checker (`ruby-lean/Checker/`) decides whether a Sorbet-annotated Ruby
-program is well typed. The book `books/Books/TypeSoundness/` proves that its
-answer means something when the model runs the program.
+The book `books/Books/TypeSoundness/` is a type checker and the proof that its
+answer means something. The checker, in the book's `Checker/` directory,
+decides whether a Sorbet-annotated Ruby program is well typed. The rest of the
+book proves what that guarantees when the model runs the program.
 
 ## The theorem
 
@@ -36,10 +37,11 @@ rule out other exceptions.
 
 ## Why the checker and the model are separate
 
-`ruby-lean/Checker/` imports nothing from `ruby-lean/RubyCore/`. It has its own
-copy of the syntax (`Checker/Lang/`). So the checker can be read, audited and
-re-implemented without the model in scope, and the only place that sees both is
-this book. `ruby-lean/scripts/check-isolation.sh` enforces the separation, and
+The checker lives inside the book, in `Checker/`, but it imports nothing from
+the model and nothing from the rest of the book. It has its own copy of the
+syntax (`Checker/Lang/`). So the checker can be read, audited and re-implemented
+without the model or the proof in scope, and the proof around it is the only
+place that sees both. `books/scripts/check-isolation.sh` enforces the separation, and
 `make soundness` runs it first.
 
 | Directory in `Checker/` | Contents |
@@ -79,7 +81,7 @@ one way gives the syntactic rule the checker uses; instantiating it the other
 way gives a proof obligation over the real machine. The pairing is a structure
 with the proof as a field, so a rule cannot be registered without it.
 
-`ruby-lean/Checker/ClinkPolicy.lean` lists the rules that are enabled. A rule
+`books/Books/TypeSoundness/Checker/ClinkPolicy.lean` lists the rules that are enabled. A rule
 that is not listed is refused by `validateD`, so the theorem never speaks about
 it. All 131 rules are currently enabled and proved; `make soundness` prints the
 count.

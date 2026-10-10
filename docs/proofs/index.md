@@ -1,7 +1,6 @@
 # What is proved
 
-Every proof is in `books/`, a Lake package that uses the model and the checker
-as a library. The proofs are organized as *books*: each is a directory under
+Every proof is in `books/`, a Lake package that uses the model as a library. The proofs are organized as *books*: each is a directory under
 `books/Books/` with one result at its head.
 
 | Book | Headline result |
@@ -74,7 +73,8 @@ A proof development can be vacuously true. The books contain *controls* against
 that: programs and derivations the checker must reject, and countermodels
 showing why a hypothesis is needed.
 
-* `ruby-lean/Checker/Controls/` and `books/Books/TypeSoundness/Controls/` are
+* `books/Books/TypeSoundness/Checker/Controls/` and
+  `books/Books/TypeSoundness/Controls/` are
   built with everything else, and a control that stops holding fails the build.
 * 46 programs in `books/corpus/` are marked as ones the checker must reject, for
   example `1 + true`. `make soundness` fails if one is accepted.

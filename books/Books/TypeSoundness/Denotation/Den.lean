@@ -1,4 +1,4 @@
-import Checker.Lang.Ty
+import Books.TypeSoundness.Checker.Lang.Ty
 import Books.TypeSoundness.Denotation.Ext
 import Books.TypeSoundness.Denotation.ClosureCode
 

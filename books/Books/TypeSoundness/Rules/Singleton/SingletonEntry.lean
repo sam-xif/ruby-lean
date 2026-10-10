@@ -1,6 +1,6 @@
 import Books.TypeSoundness.Conformance.Singleton.SingletonScope
 import Books.TypeSoundness.Rules.Method.MethodState
-import Checker.Guards.SingletonCtx
+import Books.TypeSoundness.Checker.Guards.SingletonCtx
 
 /-! Full singleton body entry, with class-valued self and distinct lexical/dispatch owners. -/
 set_option autoImplicit false

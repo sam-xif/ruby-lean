@@ -1,4 +1,4 @@
-import Checker.Guards.ClassHeader
+import Books.TypeSoundness.Checker.Guards.ClassHeader
 import Books.TypeSoundness.Conformance.Core.State
 
 /-! Ghost publication of an executed empty class record at its existing lexical site.

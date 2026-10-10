@@ -1,7 +1,7 @@
 import Books.TypeSoundness.Rules.Expr.Send
 import Books.TypeSoundness.Conformance.Names.RootLookup
 import Books.TypeSoundness.Conformance.Class.ClassGuards
-import Checker.Guards.NilFields
+import Books.TypeSoundness.Checker.Guards.NilFields
 
 /-! Default construction on the actual dispatch: Class#new allocates, sends a real
 reflective initialize (the native no-op), and newK yields the instance. Native shadow

@@ -1,4 +1,4 @@
-import Checker.Static.All
+import Books.TypeSoundness.Checker.Static.All
 import Books.TypeSoundness.Denotation.Local
 import Books.TypeSoundness.Conformance.Instance.MainPrefix
 import Books.TypeSoundness.Conformance.Instance.ClassHooks

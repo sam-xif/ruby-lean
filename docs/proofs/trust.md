@@ -38,7 +38,7 @@ is handed and the theorem is about `validateD`'s answer.
 * **Sorbet.** It is used to read the signatures. The checker does not rely on
   Sorbet's verdict about the program.
 * **The annotation stripper** (`difftest/ruby/*_strip.rb`).
-* **The derivation emitter** (`ruby-lean/scripts/emit_deriv.rb`), the script
+* **The derivation emitter** (`books/scripts/emit_deriv.rb`), the script
   that proposes a typing derivation.
 
 One caveat follows from the list above. The checker reads types from the

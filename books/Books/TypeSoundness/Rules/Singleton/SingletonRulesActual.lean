@@ -3,7 +3,7 @@ import Books.TypeSoundness.Rules.Singleton.SingletonExpr
 import Books.TypeSoundness.Rules.Singleton.SingletonImplicit
 import Books.TypeSoundness.Conformance.Class.ClassGuards
 import Books.TypeSoundness.Conformance.Names.NativeGuards
-import Checker.Guards.SingletonGuards
+import Books.TypeSoundness.Checker.Guards.SingletonGuards
 
 /-! singletonDef/callSingleton(Implicit) providers over actual def-self (install, then
 the native singleton_method_added hook) and actual singleton dispatch. -/

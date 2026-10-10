@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Rules.Method.MethodOptCall
-import Checker.Check.OptShape
+import Books.TypeSoundness.Checker.Check.OptShape
 
 /-! Top-level methods whose parameters are required keywords, called with every keyword
 in declared order. The callee frame then has the required-positional shape. -/

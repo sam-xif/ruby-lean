@@ -4,7 +4,7 @@
 # blocks: there is no report-only step and no path filter. Each step is a `make`
 # target, so a local `make check` and a CI run mean the same thing.
 #
-#   proofs        the model and the checker build; every proof book builds; the
+#   proofs        the model builds; every proof book builds, the checker included; the
 #                 axiom audits; the soundness check over the corpus; the comparator
 #   conformance   the model against CRuby, and the differential tester's own tests
 #   front-end     the desugarer against CRuby

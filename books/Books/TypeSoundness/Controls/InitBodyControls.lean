@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Rules.Init.InitWrite
-import Checker.Controls.WriteControls
+import Books.TypeSoundness.Checker.Controls.WriteControls
 
 /-! The complete 061 initializer body, from its Integer parameter annotations.
 This is a semantic body pilot, not class/constructor admission by the validator.

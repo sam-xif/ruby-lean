@@ -57,7 +57,7 @@ into `dist/`, and the local server otherwise. `?backend=wasm` and
 ## What the browser build cannot do
 
 Sorbet is a C++ program with no WebAssembly port. In the browser the signatures
-are read from the source with Prism instead (`ruby-lean/scripts/read_sigs.rb`).
+are read from the source with Prism instead (`books/scripts/read_sigs.rb`).
 This cannot make the checker accept more: the checker re-derives every declared
 type, so a weaker reader can only lead to more programs being declined.
 

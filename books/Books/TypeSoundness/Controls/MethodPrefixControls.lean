@@ -1,6 +1,6 @@
 import Books.TypeSoundness.Rules.Method.MethodDefine
 import Books.TypeSoundness.Conformance.Core.Boot
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 /-! A native method in main's singleton prefix wins ahead of a checked Object
 definition. The former full state guard must accept this witness, the repair reject it. -/
 namespace Checker.Soundness.Typed

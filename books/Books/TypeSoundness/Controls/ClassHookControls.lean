@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Conformance.Core.Boot
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 
 /-! The former complete main world permits unsafe fresh-class callbacks. -/
 namespace Checker.Soundness.Typed

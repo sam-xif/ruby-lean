@@ -91,7 +91,7 @@ done
 # `Checker/Check/Deriv.lean` re-derives every declared type, so a weaker reader costs
 # blocks and rejects, never a wrong accept. Sorbet's *verdict* is a different
 # thing and is not faked; `read_sigs.rb` reports `"verdict": "not-checked"`.
-cp "$PKG/scripts/emit_deriv.rb" "$PKG/scripts/read_sigs.rb" "$STAGE/opt/deriv/"
+cp "$PKG/../books/scripts/emit_deriv.rb" "$PKG/../books/scripts/read_sigs.rb" "$STAGE/opt/deriv/"
 
 # sorbet-runtime is pure Ruby and not a default gem, so it is not in the
 # distribution — but eleven corpus programs `require` it, and without it the

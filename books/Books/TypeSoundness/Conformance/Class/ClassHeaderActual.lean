@@ -2,7 +2,7 @@ import Books.TypeSoundness.Conformance.Class.ClassChainsActual
 import Books.TypeSoundness.Conformance.Class.ClassDeclaredActual
 import Books.TypeSoundness.Conformance.Class.ClassQueriesActual
 import Books.TypeSoundness.Conformance.Class.ClassNew
-import Checker.Guards.ClassHeader
+import Books.TypeSoundness.Checker.Guards.ClassHeader
 import Books.TypeSoundness.Conformance.Names.NativeGuards
 
 /-! Repair the original fresh-header publication on the actual named/attached heap. -/

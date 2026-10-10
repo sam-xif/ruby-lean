@@ -36,7 +36,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 EXPORT_JSON = ROOT / "desugar" / "bin" / "export-json"
 RUBYCORE = ROOT / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
-RATCHET_VALIDATE = ROOT / "ruby-lean" / ".lake" / "build" / "bin" / "validate-one"
+RATCHET_VALIDATE = ROOT / "books" / ".lake" / "build" / "bin" / "validate-one"
 CORPUS = ROOT / "books" / "corpus"
 TIMEOUT = 120
 LONG = 300
@@ -111,7 +111,7 @@ def desugar(source: str) -> tuple[str | None, dict | None]:
     every query on this server; exit 3 is the desugar's own fragment gate."""
     if not RUBYCORE.exists():
         return None, {"error": "setup",
-                      "message": f"rubycore not built at {RUBYCORE} — run `cd ../ruby-lean && lake build`"}
+                      "message": f"rubycore not built at {RUBYCORE} — run `make run`"}
     try:
         des = subprocess.run([RUBY, str(EXPORT_JSON)], input=source,
                              capture_output=True, text=True, timeout=TIMEOUT)
@@ -169,7 +169,7 @@ def ratchet_sorbet(source: str) -> dict:
         rb = Path(td) / "playground.rb"
         rb.write_text(source)
         p = subprocess.run(
-            [sys.executable, str(ROOT / "ruby-lean/scripts/srb_sigs.py"), "--quiet", str(rb)],
+            [sys.executable, str(ROOT / "books/scripts/srb_sigs.py"), "--quiet", str(rb)],
             capture_output=True, text=True, timeout=LONG)
         if p.returncode != 0:
             return {"error": "sorbet", "message": p.stderr.strip()[:2000] or f"exit {p.returncode}"}
@@ -187,7 +187,7 @@ def ratchet_derive(source: str) -> dict:
         rb = Path(td) / "playground.rb"
         rb.write_text(source)
         sigs = subprocess.run(
-            [sys.executable, str(ROOT / "ruby-lean/scripts/srb_sigs.py"), "--quiet", str(rb)],
+            [sys.executable, str(ROOT / "books/scripts/srb_sigs.py"), "--quiet", str(rb)],
             capture_output=True, text=True, timeout=LONG)
         if sigs.returncode != 0:
             return {"error": "sorbet", "message": sigs.stderr.strip()[:2000]}
@@ -201,7 +201,7 @@ def ratchet_derive(source: str) -> dict:
         sp.write_text(sigs.stdout)
         ap.write_text(core)
         emit = subprocess.run(
-            [RUBY, str(ROOT / "ruby-lean/scripts/emit_deriv.rb"),
+            [RUBY, str(ROOT / "books/scripts/emit_deriv.rb"),
              "--ast", str(ap), "--sigs", str(sp)],
             capture_output=True, text=True, timeout=LONG)
         if emit.returncode != 0:
@@ -219,7 +219,7 @@ def ratchet_derive(source: str) -> dict:
 def ratchet_validate(source: str, deriv) -> dict:
     """Check the displayed Deriv with the trusted `validateD` Bool."""
     if not RATCHET_VALIDATE.exists():
-        return {"error": "setup", "message": f"validate-one not built at {RATCHET_VALIDATE} — run `cd ../ruby-lean && lake build validate-one`"}
+        return {"error": "setup", "message": f"validate-one not built at {RATCHET_VALIDATE} — run `make run`"}
     stripped = strip_chain(source)
     if stripped.get("error"):
         return stripped
@@ -414,7 +414,7 @@ def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8077
     for name, p in (("rubycore", RUBYCORE), ("validate-one", RATCHET_VALIDATE)):
         if not p.exists():
-            print(f"  note: {name} is not built ({p}) — `cd ../ruby-lean && lake build`")
+            print(f"  note: {name} is not built ({p}) — `make run`")
     print(f"playground on http://localhost:{port}   (ruby: {RUBY})")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 

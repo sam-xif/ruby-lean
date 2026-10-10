@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Examples.NilFieldDerivations
-import Checker.Check.Check
+import Books.TypeSoundness.Checker.Check.Check
 
 /-! Unset reads require explicit allocation facts. Open annotations and uncalled bad
 return annotations do not acquire nil facts from the absence of a listed field. -/

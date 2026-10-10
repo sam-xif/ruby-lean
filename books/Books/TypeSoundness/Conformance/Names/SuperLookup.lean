@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Conformance.Names.InheritedLookup
-import Checker.Guards.SuperRoute
+import Books.TypeSoundness.Checker.Guards.SuperRoute
 
 /-! Translate a checked super route to the real superFound lookup. The physical chain is
 unique even when names alias; an earlier occurrence of the defining owner cannot survive

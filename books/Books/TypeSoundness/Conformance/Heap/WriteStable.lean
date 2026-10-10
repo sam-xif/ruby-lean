@@ -1,4 +1,4 @@
-import Checker.Guards.WriteTypes
+import Books.TypeSoundness.Checker.Guards.WriteTypes
 import Books.TypeSoundness.Conformance.Heap.WriteState
 
 /-! The executable type guard is sufficient for denotation preservation, including

@@ -1,6 +1,6 @@
 import Books.TypeSoundness.Conformance.Singleton.SingletonScope
 import Books.TypeSoundness.Rules.Instance.InstanceReturn
-import Checker.Guards.ClassCtx
+import Books.TypeSoundness.Checker.Guards.ClassCtx
 import Books.TypeSoundness.Conformance.Core.SavedFrame
 
 /-! Restore the top-level activation while retaining the body's outgoing declaration and

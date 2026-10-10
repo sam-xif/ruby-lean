@@ -1,4 +1,4 @@
-import Checker.Lang.Expr
+import Books.TypeSoundness.Checker.Lang.Expr
 import Books.TypeSoundness.Semantics.Interp
 
 /-!

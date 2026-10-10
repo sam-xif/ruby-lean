@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Registry.Registry
-import Checker.Controls.RecursiveControls
+import Books.TypeSoundness.Checker.Controls.RecursiveControls
 
 /-! Worked 060: constructor-wise, so the proof-term audit sees exactly the rules used. -/
 set_option autoImplicit false

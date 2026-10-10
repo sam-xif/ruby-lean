@@ -57,7 +57,7 @@ echo 'puts 1 + 2' | bin/ruby-lean     # 3
 make check
 ```
 
-One command builds the model and the checker, builds every proof, audits the
+One command builds the model, the type checker and every proof, audits the
 axioms behind each theorem, runs the checker over its corpus of typed programs,
 and runs the model against CRuby over more than 1800 programs. It stops at the first
 failure. Continuous integration runs the same targets on every pull request and
@@ -72,8 +72,8 @@ minutes.
 | Directory | Contents |
 |---|---|
 | [`ruby-lean/RubyCore/`](ruby-lean/RubyCore/README.md) | The model: an abstract machine for Ruby, and its step function `stepFn` |
-| [`ruby-lean/Checker/`](ruby-lean/Checker/README.md) | A type checker for a fragment of Sorbet-annotated Ruby |
-| [`books/`](books/README.md) | Every proof: the checker's soundness, facts about the model, and proofs about individual programs |
+| [`books/`](books/README.md) | Every proof: facts about the model, proofs about individual programs, and the type-soundness book |
+| [`books/Books/TypeSoundness/`](books/Books/TypeSoundness/README.md) | A [type checker](books/Books/TypeSoundness/Checker/README.md) for a fragment of Sorbet-annotated Ruby, and the proof that what it accepts is safe |
 | [`desugar/`](desugar/README.md) | Ruby source to the core language the model runs |
 | [`difftest/`](difftest/README.md) | Differential testing against CRuby |
 | [`playground/`](playground/README.md) | A browser interface: run, type-check and step through programs |

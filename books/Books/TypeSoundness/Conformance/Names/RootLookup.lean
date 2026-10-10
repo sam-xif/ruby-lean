@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Conformance.Names.InheritedLookup
-import Checker.Guards.MemberRoute
+import Books.TypeSoundness.Checker.Guards.MemberRoute
 
 /-! A declared-chain absence test reduces actual dispatch to the implicit root tail.
 The remaining root lookup is explicit: an empty class table never certifies Object's code. -/

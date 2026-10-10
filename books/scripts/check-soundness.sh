@@ -70,9 +70,9 @@ stage() {
 }
 
 # 1.
-stage "the checker is isolated from the model" ../ruby-lean/scripts/check-isolation.sh
+stage "the checker is isolated from the model" scripts/check-isolation.sh
 stage "the checker's generated sources are fresh" \
-  python3 ../ruby-lean/scripts/generate_audited_checker.py --check
+  python3 scripts/generate_audited_checker.py --check
 
 # 2. The registry first, so a rule without a proof is reported as that and not
 #    as a failure somewhere downstream of it.
@@ -81,7 +81,7 @@ stage "the rule registry" lake build Books.TypeSoundness.Registry.GateStatus \
 stage "the soundness theorem and its axioms" lake build Books.TypeSoundness.Registry.SoundnessAudit
 
 # 3. The whole book, which includes every control under Controls/.
-stage "the checker's own controls" lake build Checker.Controls.ClinkPolicyControls
+stage "the checker's own controls" lake build Books.TypeSoundness.Checker.Controls.ClinkPolicyControls
 stage "the type-soundness book and its controls" lake build TypeSoundness
 stage "the checker executables" lake build validate-one
 stage "the axiom audit of the supporting lemmas" lake env lean scripts/probes/clink-rebuild.lean

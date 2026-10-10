@@ -1,5 +1,5 @@
 import Books.TypeSoundness.Conformance.Heap.WriteState
-import Checker.Guards.ScalarWrite
+import Books.TypeSoundness.Checker.Guards.ScalarWrite
 
 /-! Scalar replacement preserves every first-order observation, including field snapshots
 nested in collections. No alias or ownership assumption is hidden in this transport. -/

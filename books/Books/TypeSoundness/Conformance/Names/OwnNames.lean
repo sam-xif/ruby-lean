@@ -1,4 +1,4 @@
-import Checker.Guards.OwnNames
+import Books.TypeSoundness.Checker.Guards.OwnNames
 import Books.TypeSoundness.Denotation.Ext
 
 /-! Owner-local absence, independent of method bodies and their annotations. This bound
