@@ -1,5 +1,5 @@
 {
-    "challenge_module": "Comparator.Challenge",
+    "challenge_module": "Books.TypeSoundness.Comparator.Challenge",
     "solution_module": "Books.TypeSoundness.Soundness",
     "theorem_names": [
         "Checker.Soundness.Typed.validateD_safe",

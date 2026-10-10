@@ -11,7 +11,7 @@ re-checks the soundness theorem's whole dependency closure in a fresh kernel.
 
 **The statement of the theorem.** A proof is only as useful as what it proves.
 The soundness theorems are restated on their own, with no proofs, in
-`books/Comparator/Challenge.lean`, and the comparator checks that what was
+`books/Books/TypeSoundness/Comparator/Challenge.lean`, and the comparator checks that what was
 proved is exactly that. Reviewing the claim means reading that file and the
 definitions it mentions: `validateD`, the model's `run`, and `typeStuck`.
 

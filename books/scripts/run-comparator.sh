@@ -5,9 +5,9 @@
 #   scripts/run-comparator.sh
 #
 # What a pass means. For `validateD_safe`, `validateD_safe_boot` and `validateD_safe_run`
-# (`Comparator/config.json`), the comparator:
+# (`Books/TypeSoundness/Comparator/config.json`), the comparator:
 #
-#   1. exports the statements from `Comparator/Challenge.lean` (statement only, `sorry`
+#   1. exports the statements from `Books/TypeSoundness/Comparator/Challenge.lean` (statement only, `sorry`
 #      for a proof) and from `Books/TypeSoundness/Soundness.lean` with `lean4export`, and checks that each
 #      statement — and every constant it transitively mentions — is identical in both;
 #   2. checks that the proofs in `Books.TypeSoundness.Soundness` depend on no axiom beyond `propext`,
@@ -20,7 +20,7 @@
 #
 # ## Two things that are not stock, both visible in the output
 #
-# * **The replay is patched** (`Comparator/replay-mutual-siblings.patch`). The comparator
+# * **The replay is patched** (`Books/TypeSoundness/Comparator/replay-mutual-siblings.patch`). The comparator
 #   release for Lean 4.32 replays with `Lean4Checker.Replay`, which, on reaching a mutual
 #   inductive block, pre-replays the constants used by the entry inductive's type and by
 #   every constructor, but not by the *types of the other inductives* in the block.
@@ -48,7 +48,7 @@ COMPARATOR_REPO=https://github.com/leanprover/comparator
 COMPARATOR_REV=07bc4ea40f2266dcb861820a2ec1fa3244ed307f   # tag v4.32.0
 DIR=.lake/comparator
 REPLAY=$DIR/.lake/packages/Lean4Checker/Lean4Checker/Replay.lean
-PATCH=$PWD/Comparator/replay-mutual-siblings.patch
+PATCH=$PWD/Books/TypeSoundness/Comparator/replay-mutual-siblings.patch
 
 if [[ ! -d $DIR/.git ]]; then
   echo "== fetching comparator @ ${COMPARATOR_REV:0:12}"
@@ -70,7 +70,7 @@ git -C "$(dirname "$REPLAY")/.." checkout -q -- Lean4Checker/Replay.lean
 if [[ ${COMPARATOR_UNPATCHED:-0} == 1 ]]; then
   echo "== replay: STOCK (COMPARATOR_UNPATCHED=1)"
 else
-  echo "== replay: patched with Comparator/replay-mutual-siblings.patch"
+  echo "== replay: patched with Books/TypeSoundness/Comparator/replay-mutual-siblings.patch"
   git -C "$(dirname "$REPLAY")/.." apply "$PATCH"
 fi
 echo "== building comparator and lean4export on $(cat lean-toolchain)"
@@ -81,15 +81,6 @@ fi
 
 ABS=$PWD/$DIR
 
-# A checkout that predates the move of the proofs into this package can still hold a
-# compiled `Comparator.Challenge` under the *model's* build directory, with the old
-# theorem names. It is on the search path ahead of ours, and the exporter would read it.
-STALE=../ruby-lean/.lake/build/lib/lean/Comparator
-if [[ -e $STALE ]]; then
-  echo "FAIL: stale build output at $STALE (from before the proofs moved to books/)"
-  echo "  remove it and rerun:  rm -rf ../ruby-lean/.lake/build/{lib/lean,ir}/{Comparator,Denote,Ratchet,Semantics}"
-  exit 1
-fi
 export COMPARATOR_LEAN4EXPORT=${COMPARATOR_LEAN4EXPORT:-$ABS/.lake/packages/lean4export/.lake/build/bin/lean4export}
 if [[ -z ${COMPARATOR_LANDRUN:-} ]]; then
   if command -v landrun >/dev/null; then
@@ -102,10 +93,10 @@ if [[ -z ${COMPARATOR_LANDRUN:-} ]]; then
 fi
 export COMPARATOR_LANDRUN
 
-echo "== comparator: Comparator.Challenge vs Books.TypeSoundness.Soundness"
+echo "== comparator: Books.TypeSoundness.Comparator.Challenge vs Books.TypeSoundness.Soundness"
 LOG=$(mktemp /tmp/rubylean-comparator-XXXXXX.log)
 trap 'rm -f "$LOG"' EXIT
-lake env "$ABS/.lake/build/bin/comparator" Comparator/config.json >"$LOG" 2>&1 && rc=0 || rc=$?
+lake env "$ABS/.lake/build/bin/comparator" Books/TypeSoundness/Comparator/config.json >"$LOG" 2>&1 && rc=0 || rc=$?
 # The build replay is hundreds of lines of linter output; keep the comparator's own.
 grep -E "^(Building|Exporting|Running|Lean default kernel|Your solution|uncaught|error)|Child exited" "$LOG" | cut -c1-240 || true
 if [[ $rc != 0 ]] || ! grep -q "^Your solution is okay!" "$LOG"; then

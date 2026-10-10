@@ -43,6 +43,14 @@ The import graph runs one way, and this is the order to read in.
 | 4 | [`Registry/`](Registry/README.md) | **No rule without its proof**: each rule is paired with its proof, and `AuditBridge.lean` turns a derivation the checker accepted into a certified one |
 | 5 | [`Soundness.lean`](Soundness.lean) | **The theorem**, composing the above in about forty lines |
 
+[`Comparator/`](Comparator/) is the independent check of that theorem.
+`Comparator/Challenge.lean` restates the three soundness theorems with `sorry`
+for a proof, and `make comparator` has
+[`leanprover/comparator`](https://github.com/leanprover/comparator) verify that
+`Soundness.lean` proves exactly those statements, with Lean's three axioms only,
+in a fresh kernel. To review what the book claims, read that file. Its `sorry`s
+are deliberate and are the only ones in the book.
+
 [`Semantics/Interp.lean`](Semantics/Interp.lean) is where the model's `stepFn`
 is imported and `typeStuck` is defined. `Report/Active.lean` is the source of
 the corpus report that `make soundness` prints.

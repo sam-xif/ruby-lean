@@ -53,7 +53,6 @@ every file under `Books/`.
 | `Books/` | The books |
 | `corpus/` | 266 Sorbet-annotated Ruby programs the checker is measured on. Each `NNN-name.rb` has a `NNN-name.meta.json` saying what Sorbet and the checker are expected to answer. `accepted.txt` records which ones the checker accepts |
 | `scripts/` | The checks above; `build_corpus.py`, which runs each corpus program through Sorbet, the desugarer and the derivation emitter; `probes/`, which decide facts about the booted heap |
-| `Comparator/` | The statement-only restatement of the soundness theorems that the comparator checks against |
 | `CorpusReport.lean` | The executable that prints the corpus report |
 | `build/` | Output of `build_corpus.py`. Not committed |
 
