@@ -9,8 +9,8 @@ import argparse
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]  # books/
-CHECKER = ROOT / "Books/TypeSoundness/Checker"
+ROOT = Path(__file__).resolve().parents[1]  # this book
+CHECKER = ROOT / "Checker"
 MOD = "Books.TypeSoundness.Checker"
 MODULES = [
     "CheckInit",
@@ -162,7 +162,7 @@ def generate(module):
         text = text.replace("(hb : DJudge ", "(hb : DJudge (used := used) ")
         text = text.replace("    DJudge b.body.params", "    DJudge (used := used) b.body.params")
     return (
-        f"-- Generated from Checker/Check/{module}.lean by books/scripts/generate_audited_checker.py.\n"
+        f"-- Generated from Checker/Check/{module}.lean by scripts/generate_audited_checker.py.\n"
         "-- Edit the raw source and regenerate; Lean checks the indexed proof and trace.\n"
         f"import {MOD}.Audit.Erase\n" + text
     )

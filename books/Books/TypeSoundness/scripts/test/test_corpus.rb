@@ -2,14 +2,14 @@
 
 require_relative "test_helper"
 
-# The emitter on every program of the checker's corpus (books/corpus/), with
+# The emitter on every program of the checker's corpus (books/Books/TypeSoundness/corpus/), with
 # signatures read by `read_sigs.rb`: the path the browser playground takes.
 # `make soundness` runs the same programs with Sorbet's signatures and then
 # the checker; this measures the emitter and the reader on their own.
 class TestCorpus < Minitest::Test
   include EmitterTestHelper
 
-  CORPUS = File.join(ROOT, "books/corpus")
+  CORPUS = File.join(ROOT, "books/Books/TypeSoundness/corpus")
   ACCEPTED = File.readlines(File.join(CORPUS, "accepted.txt"), chomp: true).freeze
 
   # Programs the checker accepts with Sorbet's signatures, but for which

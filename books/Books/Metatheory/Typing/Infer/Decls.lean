@@ -161,7 +161,7 @@ def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
   | .nilable _ => False
   -- **A class object dispatches from `classOf`, whatever `classOf` says**,
   -- and that phrasing is the measurement rather than a choice
-  -- (`scripts/probes/classobj_probe.lean`): only 27 of the booted heap's 87 class objects
+  -- (`Books/Metatheory/Probes/ClassObj.lean`): only 27 of the booted heap's 87 class objects
   -- have a materialized eigenclass, and the split runs through the classes the
   -- slice uses — `String`/`Array`/`Regexp` have one, `Integer`/`Float`/`Hash` do
   -- not and dispatch through `Class`. So *the eigenclass of the class named `n`* is
@@ -2210,7 +2210,7 @@ step in the fragment leaves alone.
 /-- **Nothing strictly in front of `Object` on `k`'s ancestor chain owns a
     constant** — and `Object` is on the chain at all.
 
-    This is the clause `scripts/probes/consts_probe.lean` measured, and it is
+    This is the clause `Books/Metatheory/Probes/Consts.lean` measured, and it is
     stated over the **reach** rather than over the heap because the obvious
     version is *false*: five names are owned by both `Object` and `T` at the
     prelude-booted heap (`Struct`, `Enumerable`, `Range`, `Hash`, `Array`), so
@@ -2823,7 +2823,7 @@ theorem qualifyMod_inj {a b c d : String}
     fresh-definition paths need — together with `NamedImpliesRegistered` it
     makes *"the constant is absent at the owner"* imply *"no object of the
     qualified name exists anywhere"* (`freshName_not_taken`). Measured before
-    assumed: `scripts/probes/names_probe.lean` reports no two of the prelude-booted
+    assumed: `Books/Metatheory/Probes/Names.lean` reports no two of the prelude-booted
     heap's class objects share a name at all. -/
 def NamesUnique (h : Heap) : Prop :=
   ∀ j k cpj cpk, h.classPayload? j = some cpj → h.classPayload? k = some cpk →
@@ -3078,7 +3078,7 @@ def ClassOk (h : Heap) : Prop :=
   -- with different obligations, and until L194 they shared a table because the read
   -- was built on top of the reopen's. Splitting them is worth 7 method bodies of the
   -- slice, and it is measured rather than argued
-  -- (`scripts/probes/reopen_probe.lean` decides both clause sets per name): the read admits
+  -- (`Books/Metatheory/Probes/Reopen.lean` decides both clause sets per name): the read admits
   -- `T` — a *module*, so unreopenable, and the single most-read constant in the slice
   -- at 259 occurrences — and `Float`, which owns `NAN`/`INFINITY` and therefore fails
   -- `NoShadowBefore`, a clause about reading constants *from inside* the class that
@@ -3098,7 +3098,7 @@ def ClassOk (h : Heap) : Prop :=
     -- **and it is the only one.** `TyClass h (.cls n) j` quantifies over *every*
     -- class object named `n`, so a row on `n` obliges all of them while a `def`
     -- installs on exactly one. Measured before it was assumed
-    -- (`scripts/probes/names_probe.lean`): at the prelude-booted heap no two of the 87
+    -- (`Books/Metatheory/Probes/Names.lean`): at the prelude-booted heap no two of the 87
     -- class objects share a name at all, so the general clause is true and this
     -- restriction of it to the table's own names is what a row costs — the same
     -- shape, and the same argument, as the row above it.
@@ -3115,7 +3115,7 @@ def ClassOk (h : Heap) : Prop :=
     -- rung's whole economy: `evalExpr`'s `.const` walks the frame's cref *before* the
     -- ancestors, so a name-keyed read is only sound if no cref entry can shadow — and
     -- if `Object` is the sole owner then any cref hit *is* `Object`'s, whatever the
-    -- cref is. Measured before it was assumed (`scripts/probes/consts_probe.lean`: `String`
+    -- cref is. Measured before it was assumed (`Books/Metatheory/Probes/Consts.lean`: `String`
     -- has exactly one owner, `Object`), and preserved because nothing in the fragment
     -- writes a constant anywhere else.
     (∀ j, (h.classPayload? j).isSome → j ≠ Boot.objectId → constOwn h j n = none) ∧
@@ -3131,7 +3131,7 @@ def ClassOk (h : Heap) : Prop :=
       -- puts `prepends` *before* the class (`Heap.lean:506`), so a prepended module
       -- defining the same name would shadow a method the `def` step just installed —
       -- and the row's `ResolvesUser` would be false. Measured at the booted heap by
-      -- `scripts/probes/names_probe.lean` (`ancestors String = [9, 40, 1, …]`).
+      -- `Books/Metatheory/Probes/Names.lean` (`ancestors String = [9, 40, 1, …]`).
       (ancestors h k).head? = some k ∧
       -- **L178: the constant-table clause, at this class.** A method body of a
       -- reopenable class is one of the two frames a constant read can happen in, and
@@ -3588,12 +3588,12 @@ theorem constOk_of_classOk {h : Heap} {n : String} {τ : Ty} (hcls : ClassOk h)
     than in `HeapCert.lean` — where `heapOkB` and `classOkB` live — for one reason:
     it has to call `valueTy?`, and that is `Books/Metatheory/Typing/Infer/Locals.lean`'s. The
     one-definition-two-readers rule then says the probe must import *this* rather
-    than re-implement it, which `scripts/probes/consts_probe.lean` does.
+    than re-implement it, which `Books/Metatheory/Probes/Consts.lean` does.
 
     Why a certificate at all, when nothing consumes it yet: `preludeDecls` is the
     table `--assn` reports against, and its `T` row is a claim about the
     prelude-booted heap that the kernel cannot check (`Lean.Json.parse` does not
-    reduce). A row asserted and not decided is exactly what `reopen_probe`
+    reduce). A row asserted and not decided is exactly what `Probes/Reopen.lean`
     exists to prevent. -/
 def constsOkB (h : Heap) (cs : List (String × Ty)) : Bool :=
   cs.all fun e =>
