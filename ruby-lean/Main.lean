@@ -14,6 +14,11 @@ Other modes, none of which runs the program to an observation:
   --fragment     whether the program is in the typed fragment
   --sigs         the Sorbet signatures the program declares
   --lean-term    the program as a Lean term of type `RubyCore.Expr`
+  --preload-json run with `require "json"` preloaded (difftest's control)
+
+Any other argument is a harness error (exit 1 on stderr), never silently
+ignored: a stale caller of a removed flag such as `--check` must not receive a
+program run in place of the answer it asked for.
 -/
 import RubyCore.Obs
 import RubyCore.Sorbet.Fragment
@@ -26,7 +31,41 @@ open RubyCore
 def fuelDefault : Nat := 5_000_000
 def traceStepsDefault : Nat := 3000
 
+/-- The flags `rubycore` recognizes. A flag absent here is a harness error, not
+    a silently ignored argument: `--check` was removed with the pre-ratchet type
+    checker, and a stale caller that still passes it must fail loudly rather than
+    get a program run in place of the verdict it expects. -/
+def knownFlags : List String :=
+  ["--fuel", "--trace", "--trace-from", "--trace-at", "--steps",
+   "--fragment", "--sigs", "--lean-term", "--preload-json"]
+
+/-- Flags that consume the following argument as their value. -/
+def valueFlags : List String := ["--fuel", "--trace-from", "--trace-at"]
+
+/-- Validate `args`, returning the first unrecognized argument (or a value flag
+    left without its value). `--trace`'s step count is optional, so its following
+    token is consumed only when it parses as a number. -/
+def badArg? : List String → Option String
+  | [] => none
+  | a :: [] =>
+    if valueFlags.contains a then some a
+    else if a.startsWith "-" && !knownFlags.contains a then some a
+    else none
+  | a :: b :: rest =>
+    if valueFlags.contains a then badArg? rest
+    else if a == "--trace" then
+      if b.toNat?.isSome then badArg? rest else badArg? (b :: rest)
+    else if knownFlags.contains a then badArg? (b :: rest)
+    else if a.startsWith "-" then some a
+    else badArg? (b :: rest)
+termination_by args => args.length
+decreasing_by all_goals (simp_wf <;> omega)
+
 def main (args : List String) : IO UInt32 := do
+  if let some bad := badArg? args then
+    IO.eprintln s!"rubycore: unrecognized argument '{bad}' (expected one of \
+      {", ".intercalate knownFlags}); refusing to run the program"
+    return 1
   let stdin ← IO.getStdin
   let input ← stdin.readToEnd
   let fuel := ((args.dropWhile (· != "--fuel"))[1]?.bind String.toNat?).getD fuelDefault
