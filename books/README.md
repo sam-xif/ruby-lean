@@ -9,7 +9,7 @@ it, as a collection of *books*. A book is a directory under
 |---|---|---|
 | [`Books/TypeSoundness/`](Books/TypeSoundness/README.md) | A type checker for Sorbet-annotated Ruby ([`Checker/`](Books/TypeSoundness/Checker/README.md)), and the theorem that a program it accepts never ends in an uncaught `NoMethodError`, `ArgumentError` or `TypeError` when the model runs it | [`Soundness.lean`](Books/TypeSoundness/Soundness.lean) |
 | [`Books/Metatheory/`](Books/Metatheory/README.md) | Facts about the model itself: the step relation and the executable `stepFn` agree, and a type-safety principle that needs no type system | [`Machine/Step.lean`](Books/Metatheory/Machine/Step.lean) |
-| [`Books/FastPower/`](Books/FastPower/README.md) | One Ruby program, exponentiation by squaring, computes `b ** n` for every `b` and `n` | [`Proof.lean`](Books/FastPower/Proof.lean) |
+| [`Books/FastPower/`](Books/FastPower/README.md) | Two Ruby programs, a simple loop and exponentiation by squaring, both compute `b ** n` for every `b` and `n`, and the second takes fewer steps for every `n` from 6 up | [`Faster.lean`](Books/FastPower/Faster.lean) |
 
 [`Books/Lib/`](Books/Lib/) is not a book. It is the machinery for proving things
 about a single program. To start a proof about your own program, run
