@@ -32,11 +32,11 @@ fi
 
 # 3. Sorbet — reads the signatures of a typed program. The pipeline uses the
 #    binary inside the `sorbet-static` gem, so the gem is enough; `srb` need not
-#    be on PATH. $SORBET overrides it.
-SORBET_BIN="${SORBET:-}"
-if [[ -z "$SORBET_BIN" && -n "$RUBY_BIN" ]]; then
-  SORBET_BIN="$("$RUBY_BIN" -e 'print File.join(Gem::Specification.find_by_name("sorbet-static").full_gem_path, "libexec", "sorbet")' 2>/dev/null || true)"
-fi
+#    be on PATH. `$SORBET` overrides it. The lookup lives in exactly one place —
+#    `books/scripts/srb_sigs.py:find_sorbet()` — and this script asks it rather
+#    than re-implementing it, so the two cannot drift (issue #41).
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SORBET_BIN="$(python3 "$HERE/books/scripts/srb_sigs.py" --print-sorbet 2>/dev/null || true)"
 if [[ -n "$SORBET_BIN" && -x "$SORBET_BIN" ]] || have srb; then
   say "sorbet" "${SORBET_BIN:-$(command -v srb)}"
 else
