@@ -1,4 +1,5 @@
-# CI runs `make check`, split across four jobs so they run in parallel.
+# CI runs `make check`, split across four jobs so they run in parallel, and a
+# fifth, `CI`, that passes only if all four did.
 #
 # Every job runs on every pull request and every push to main, and every step
 # blocks: there is no report-only step and no path filter. Each step is a `make`
@@ -9,6 +10,7 @@
 #   conformance   the model against CRuby, and the differential tester's own tests
 #   front-end     the desugarer against CRuby
 #   docs          the documentation site builds with no broken links
+#   CI            the workflow's verdict: the one check the ruleset on main requires
 name: CI
 
 on:
@@ -137,3 +139,25 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: make ci-sync
       - run: make docs
+
+  # GitHub reports each job as a check under the job's name; the workflow itself
+  # is never reported. This job is the workflow's verdict, under the name the
+  # ruleset on `main` requires, so the ruleset does not have to list the jobs
+  # above and cannot fall out of step with them. `if: always()` makes it report
+  # when a job fails too, rather than being skipped, which would leave the
+  # required check waiting.
+  ci:
+    name: CI
+    needs: [proofs, conformance, front-end, docs]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for r in $RESULTS; do
+            [[ $r == success ]] || { echo "a job did not succeed: $r"; exit 1; }
+          done
