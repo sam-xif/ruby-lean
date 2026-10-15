@@ -208,6 +208,17 @@ structure EnumData where
   size : EnumSize := .unknown
 deriving Inhabited
 
+/-- The access mode of an open descriptor (issue #7, step 2). `read`/`readWrite`
+    allow `#read`; `write`/`append`/`readWrite` allow `#write`; `write`
+    truncates its inode at open, `append` always writes at end of file. Declared
+    before `Payload` so the `.io` constructor can name it. -/
+inductive IOMode where
+  | read
+  | write
+  | append
+  | readWrite
+deriving Inhabited, BEq
+
 inductive Payload where
   | none
   | enumerator (data : Option EnumData)
@@ -253,6 +264,16 @@ inductive Payload where
       `none`) rather than a textual collapse. A directory and a file are
       distinguished by payload, never by a string convention. -/
   | dir (entries : List (String × ObjId)) (parent : Option ObjId)
+  /-- An **open file descriptor** (issue #7, step 2): a live `IO` object whose
+      `inode` names the `.file` heap object it reads and writes, plus its
+      access `mode`, its byte `pos`, and whether it has been `close`d. Each
+      descriptor is its own object, so per-descriptor position and closed-ness
+      are observable; `pos`/`closed` are mutated by the `IO` builtins, and the
+      inode's bytes are the file itself (shared by every descriptor that names
+      it — the documented step-2 simplification is that a write updates the
+      inode on write, so `flush` is a no-op). Only non-block `File.open`
+      produces one; the block form is step 4. -/
+  | io (inode : ObjId) (mode : IOMode) (pos : Nat) (closed : Bool)
 deriving Inhabited
 
 /-- A Hash's default for missing keys: `Hash.new(v)` stores a static value `val v`;

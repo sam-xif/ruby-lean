@@ -11,6 +11,13 @@ namespace Trace
 -- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
 -- namespace, so there is nothing to open.
 
+/-- Short label for an `IOMode` in trace output. -/
+def ioModeName : IOMode → String
+  | .read => "read"
+  | .write => "write"
+  | .append => "append"
+  | .readWrite => "readWrite"
+
 /-- Short, non-gating rendering of a value (bounded depth against cycles). -/
 partial def valBrief (h : Heap) : Nat → Value → String
   | _, .int n => toString n
@@ -45,6 +52,8 @@ partial def valBrief (h : Heap) : Nat → Value → String
     | .yielder .. => "#<Enumerator::Yielder>"
     | .file b => s!"#<File ({b.length} bytes)>"
     | .dir es _ => s!"#<Dir ({es.length} entries)>"
+    | .io inode mode pos closed =>
+      s!"#<IO inode={inode} mode={ioModeName mode} pos={pos} closed={closed}>"
 
 /-- One-line head label for the expression about to be evaluated. -/
 def exprBrief : Expr → String
