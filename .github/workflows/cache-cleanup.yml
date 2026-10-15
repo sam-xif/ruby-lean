@@ -1,0 +1,31 @@
+# Deletes a pull request's Actions caches once it is closed or merged. Each pull
+# request saves its own copy of the Lean build (about 300 MB), and nothing can
+# restore it after the pull request closes. Left in place, these copies fill the
+# repository's 10 GB cache allowance, and GitHub then evicts the least recently
+# used entries, which can include main's build.
+#
+# `pull_request_target` runs with a token that may delete caches even for a
+# pull request from a fork. It is safe here because nothing is checked out: the
+# job runs no code from the pull request.
+name: Cache cleanup
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  delete-caches:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete the pull request's caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          gh cache list --ref "$REF" --limit 100 --json id --jq '.[].id' |
+            while read -r id; do gh cache delete "$id"; done

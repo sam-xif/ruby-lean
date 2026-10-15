@@ -22,9 +22,12 @@ on:
     # Nightly, so that drift in something fetched from the network is noticed.
     - cron: "0 6 * * *"
 
+# A newer push to a branch cancels the run in progress, except on main: every
+# run on main finishes, so main always saves the build cache that pull requests
+# start from.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache
@@ -44,17 +47,22 @@ jobs:
         with:
           auto-config: false
           lake-package-directory: ruby-lean
-          use-github-cache: true
+          use-github-cache: false # lean-action saves before anything is built
 
-      # lean-action caches ruby-lean/.lake. The proofs build in books/.lake,
-      # which is most of the compile time.
-      - name: Cache the proof books' build
-        uses: actions/cache@v4
-        with:
-          path: books/.lake
-          key: ${{ runner.os }}-books-lake-${{ hashFiles('ruby-lean/lean-toolchain', 'ruby-lean/**/*.lean', 'books/**/*.lean', 'books/lakefile.toml') }}
+      # One cache holds both Lake build directories: the model's (ruby-lean/.lake)
+      # and the books' (books/.lake, which includes the fetched comparator). The
+      # key names the exact sources; any older build for the same toolchain is
+      # restored when there is no exact match, and Lake rebuilds only what changed.
+      - name: Restore the Lean build
+        id: lake
+        uses: actions/cache/restore@v4
+        with: &lake-cache
+          path: |
+            ruby-lean/.lake
+            books/.lake
+          key: ${{ runner.os }}-lake-${{ hashFiles('ruby-lean/lean-toolchain') }}-${{ hashFiles('ruby-lean/**/*.lean', 'books/**/*.lean', 'ruby-lean/lakefile.toml', 'books/lakefile.toml', 'books/lake-manifest.json', 'books/**/run-comparator.sh', 'books/**/Comparator/*.patch') }}
           restore-keys: |
-            ${{ runner.os }}-books-lake-
+            ${{ runner.os }}-lake-${{ hashFiles('ruby-lean/lean-toolchain') }}-
 
       - uses: astral-sh/setup-uv@v5
       - uses: ruby/setup-ruby@v1
@@ -70,6 +78,19 @@ jobs:
       - run: make soundness
       - run: make comparator
 
+      # Saved whatever the outcome, so a failed or cancelled run keeps the
+      # modules it did build. Only a passing run saves under the exact key; any
+      # other saves under a key of its own, which later runs restore by prefix
+      # but never mistake for a complete build.
+      - name: Save the Lean build
+        if: always() && steps.lake.outcome == 'success' && steps.lake.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ruby-lean/.lake
+            books/.lake
+          key: ${{ steps.lake.outputs.cache-primary-key }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
+
   conformance:
     name: conformance (the model against CRuby)
     runs-on: ubuntu-latest
@@ -82,7 +103,13 @@ jobs:
         with:
           auto-config: false
           lake-package-directory: ruby-lean
-          use-github-cache: true
+          use-github-cache: false # lean-action saves before anything is built
+
+      # The proofs job's cache, restored and never saved: this job builds only
+      # the model. The paths must match the proofs job's for the cache to match.
+      - name: Restore the Lean build
+        uses: actions/cache/restore@v4
+        with: *lake-cache
 
       - uses: astral-sh/setup-uv@v5
       - uses: ruby/setup-ruby@v1
