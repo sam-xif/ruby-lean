@@ -171,7 +171,16 @@ def generate(module):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="print the paths this writes, relative to the repository, and exit",
+    )
     args = parser.parse_args()
+    if args.list:
+        for module in MODULES:
+            print((CHECKER / "Audit" / f"{module}.lean").relative_to(ROOT.parent))
+        return
     stale = []
     for module in MODULES:
         path = CHECKER / "Audit" / f"{module}.lean"
