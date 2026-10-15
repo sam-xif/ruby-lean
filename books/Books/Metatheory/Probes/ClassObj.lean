@@ -85,7 +85,7 @@ materializes one (`defs`, `sclass`, `singleton_class` are all out), so the claus
 is *establishable* — but it is a clause, not a free consequence, and it is the arm's
 real price rather than the `Ty` constructor.
 
-    lake env lean --run scripts/probes/classobj_probe.lean
+    lake env lean --run Books/Metatheory/Probes/ClassObj.lean
       -- exit 0 iff no class object is `plainRecv` — the fact today's `valueTy?`
       -- rests on, and the one a regression here would break silently
 -/

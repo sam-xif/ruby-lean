@@ -138,7 +138,7 @@ def plainRecv (h : Heap) (o : ObjId) : Bool :=
 
     `eigen` is deliberately **not** constrained, unlike `plainRecv`'s `eigen.isNone`:
     a class object legitimately has one — 27 of the booted heap's 87 do
-    (`scripts/probes/classobj_probe.lean`) — and its presence is exactly what `classOf`
+    (`Books/Metatheory/Probes/ClassObj.lean`) — and its presence is exactly what `classOf`
     reads. That is why the type is keyed on the class's *own* name while `TyClass`
     names `classOf`'s answer; L180 measured that the two cannot be the same
     string. -/
@@ -1863,7 +1863,7 @@ theorem typeAgree_constSetIn (h : Heap) (j : ObjId) (nm : String) (v : Value) :
     at every id the old heap had. Unrelativized, this statement is *false* — at the
     fresh id `className` moves from `"Object"` to the allocated class's name — and
     that falsity, not `ancestors_congr`'s fuel, is what blocked the producer (L142,
-    `scripts/probes/alloc_probe.lean`).
+    `Books/Metatheory/Probes/Alloc.lean`).
 
     Stated over the pushed heap rather than over `Heap.alloc`'s pair so that the
     producer's consecution case can use it after destructuring; `alloc` is

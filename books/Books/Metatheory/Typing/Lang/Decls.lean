@@ -392,7 +392,7 @@ def tyClassNames : Ty → List String
   -- problem, not this one's. Two candidates and why neither is free:
   --
   -- * the **eigenclass's name** (`#<Class:String>`) is not available:
-  --   `scripts/probes/classobj_probe.lean` measures 60 of the booted heap's 87 class
+  --   `Books/Metatheory/Probes/ClassObj.lean` measures 60 of the booted heap's 87 class
   --   objects with no eigenclass at all, so for most of them the name does not
   --   exist;
   -- * a **prefixed** key (`"%class:" ++ n`) works arithmetically but obliges every
@@ -889,7 +889,7 @@ names** for that reason and for no other — `--sets` reports three singleton-`{
 method bodies whose only blocker is one of `ArgumentError`, `NotImplementedError`
 and `NoMethodError`, read as `raise ArgumentError, "…"`.
 
-The rows are free, and *measured* free: `scripts/probes/reopen_probe.lean` decides all seven
+The rows are free, and *measured* free: `Books/Metatheory/Probes/Reopen.lean` decides all seven
 `ClassOk` clauses for every candidate, and all fourteen below pass all seven. Nothing
 in `books/Books/Metatheory/` changes — `ClassOk` is quantified over the list — so the whole cost is
 `classOkB` still answering `true`, which `check-proofs.sh` runs. (The probe also
@@ -915,7 +915,7 @@ receiver, and that no other class object owns the name.
 
 Splitting the two is worth **seven method bodies** of the slice, and both entries
 below are there because a measurement put them there
-(`scripts/probes/reopen_probe.lean` decides both clause sets per candidate):
+(`Books/Metatheory/Probes/Reopen.lean` decides both clause sets per candidate):
 
 * **`T`** is the slice's most-read constant by a factor of five — 259 occurrences,
   `T.let`/`T.must`/`T.nilable` — and it is a **module**, so it can never be
@@ -979,8 +979,8 @@ def baseConsts : List (String × Ty) :=
     One extra row, and it is the whole point: **`T`** — `sorbet-runtime`'s namespace,
     the slice's most-read constant by a factor of five (259 occurrences of
     `T.let`/`T.must`/`T.nilable`), and a *module*, so it can never be reopenable.
-    `scripts/probes/reopen_probe.lean` decides its four read clauses and
-    `scripts/probes/consts_probe.lean` decides this table's obligation at the booted heap;
+    `Books/Metatheory/Probes/Reopen.lean` decides its four read clauses and
+    `Books/Metatheory/Probes/Consts.lean` decides this table's obligation at the booted heap;
     `check-proofs.sh` runs both, so the row is certified rather than assumed. -/
 def preludeConsts : List (String × Ty) :=
   baseConsts ++ [("T", Ty.clsOf "T")]
@@ -1046,7 +1046,7 @@ def declsOf (_p : Expr) : Decls := baseDecls
     the difference is `T`. Placed here rather than inside `declsOf` because
     `check_sound` establishes `Inv` at the *bare boot* heap, where `T` does not exist:
     the boot-safe table and the prelude-aware one are two tables, each sound at the
-    heap it describes. `scripts/probes/consts_probe.lean` decides this one's obligation at the
+    heap it describes. `Books/Metatheory/Probes/Consts.lean` decides this one's obligation at the
     booted heap and `check-proofs.sh` runs it. -/
 def preludeDecls : Decls := { baseDecls with consts := preludeConsts }
 

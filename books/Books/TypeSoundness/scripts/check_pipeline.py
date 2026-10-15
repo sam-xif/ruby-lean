@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Controls for the pipeline in front of the checker.
 
-    scripts/check_pipeline.py
+    check_pipeline.py
 
 Small programs, built here, go through Sorbet, the derivation emitter and
 `validate-one` exactly as a corpus program does. Each case states whether the
@@ -9,7 +9,7 @@ emitter must propose a derivation and whether the checker must then accept it:
 methods with no signature whose parameter types can be inferred from the body,
 blocks bound to a typed `&b` parameter, and near-identical programs with a
 wrong or conflicting type that must be declined.
-`scripts/check-soundness.sh` runs this; it needs `validate-one` built.
+`check-soundness.sh` runs this; it needs `validate-one` built.
 """
 import json
 from pathlib import Path
@@ -17,7 +17,7 @@ import subprocess
 import sys
 import tempfile
 
-from build_corpus import EXPORT, ROOT, RUBY, TOOLS, strip
+from build_corpus import BOOKS, EXPORT, ROOT, RUBY, TOOLS, strip
 
 
 def run_json(command, data=None):
@@ -248,7 +248,7 @@ item + 1
             accepted = False
             if status == "ok":
                 emitted[name] = proposal["deriv"]
-                verdict = run_json([str(Path(ROOT) / ".lake/build/bin/validate-one")],
+                verdict = run_json([str(Path(BOOKS) / ".lake/build/bin/validate-one")],
                                    json.dumps({"program": ast, "deriv": proposal["deriv"]}))
                 accepted = verdict["validateD"]
             assert accepted == expected, (name, accepted, expected)

@@ -1,8 +1,8 @@
 import RubyCore.Interp
 
-/-! `ruby/fast_power.rb` as a RubyCore term, with its two integer literals
-abstracted: `program b n` is the program that computes `b ** n`. -/
-namespace Books.FastPower
+/-! `fast_power.rb` as a RubyCore term, with its two integer literals abstracted:
+`program b n` is the program that computes `b ** n` by squaring. -/
+namespace Books.FastPower.Fast
 open RubyCore
 
 /-- `left > 0` -/
@@ -19,21 +19,15 @@ abbrev squareE : Expr :=
 /-- `left = left / 2` -/
 abbrev halveE : Expr :=
   .vasgn .lvar "left" (.send (some (.var .lvar "left")) "/" [.int 2] none)
-/-- `@steps = @steps + 1` -/
-abbrev tickE : Expr :=
-  .vasgn .ivar "@steps" (.send (some (.var .ivar "@steps")) "+" [.int 1] none)
 /-- The loop body. -/
-abbrev bodyE : Expr := .seq [.if' oddE mulE none, squareE, halveE, tickE]
+abbrev bodyE : Expr := .seq [.if' oddE mulE none, squareE, halveE]
 /-- `while left > 0 … end` -/
 abbrev loopE : Expr := .while' condE bodyE
 
 /-- `class Power … end` -/
 abbrev classE : Expr :=
   .class' "Power" none (.seq [
-    .def' "initialize" [.req "base"] (.seq [
-      .vasgn .ivar "@base" (.var .lvar "base"),
-      .vasgn .ivar "@steps" (.int 0)]),
-    .def' "steps" [] (.var .ivar "@steps"),
+    .def' "initialize" [.req "base"] (.vasgn .ivar "@base" (.var .lvar "base")),
     .def' "raise_to" [.req "exponent"] (.seq [
       .vasgn .lvar "result" (.int 1),
       .vasgn .lvar "square" (.var .ivar "@base"),
@@ -42,12 +36,12 @@ abbrev classE : Expr :=
       .var .lvar "result"])])
 
 /-- The whole program, for base `b` and exponent `n`. -/
-def program (b n : Int) : Expr :=
+def program (b : Int) (n : Nat) : Expr :=
   .seq [
     classE,
     .vasgn .lvar "power" (.send (some (.const "Power")) "new" [.int b] none),
     .vasgn .lvar "answer" (.send (some (.var .lvar "power")) "raise_to" [.int n] none),
     .send none "puts" [.var .lvar "answer"] none,
-    .array [.var .lvar "answer", .send (some (.var .lvar "power")) "steps" [] none]]
+    .var .lvar "answer"]
 
-end Books.FastPower
+end Books.FastPower.Fast

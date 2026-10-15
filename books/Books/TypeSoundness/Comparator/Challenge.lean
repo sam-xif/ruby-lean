@@ -3,7 +3,7 @@ import Books.TypeSoundness.Conformance.Core.Boot
 
 /-! The *statements* of the validator's end-to-end safety theorems, with no proofs.
 
-This is the trusted half of a `leanprover/comparator` run (`books/scripts/run-comparator.sh`):
+This is the trusted half of a `leanprover/comparator` run (`books/Books/TypeSoundness/scripts/run-comparator.sh`):
 the comparator exports these three statements and the same-named theorems of
 `Books/TypeSoundness/Soundness.lean`, checks that the statements and every constant they mention are
 identical in both environments, that the proofs in `Books.TypeSoundness.Soundness` use only the permitted

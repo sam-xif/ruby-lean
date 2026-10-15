@@ -13,7 +13,7 @@
   `Sorbet/` beside the semantics proper. Typing definitions that only proofs use
   moved to `books/Books/Metatheory/`.
 * The set of corpus programs the checker accepts is recorded in
-  `books/corpus/accepted.txt` and compared on every run.
+  `books/Books/TypeSoundness/corpus/accepted.txt` and compared on every run.
 * The documentation is a site (`make docs-serve`) organized by task.
 
 ## 0.01
