@@ -159,6 +159,20 @@ def nativeCopyView (m : Machine) (recv : Value) (clone : Bool) (freeze : Value) 
   unfold callCoreCopy
   root_dispatch_walk K hK
 
+@[rootFrameLem] theorem runLibraryBody_frame (K : List Kont) (hK : ContextFree K)
+    (m : Machine) (canonical : String) (body : Expr) :
+    runLibraryBody (pushRootK K m) canonical body = rootFrameR K (runLibraryBody m canonical body) := by
+  have hLock := hK.hashLockFree
+  unfold runLibraryBody
+  root_dispatch_walk K hK
+
+@[rootFrameLem] theorem callRequireRelative_frame (K : List Kont) (hK : ContextFree K)
+    (m : Machine) (source raw : String) :
+    callRequireRelative (pushRootK K m) source raw = rootFrameR K (callRequireRelative m source raw) := by
+  have hLock := hK.hashLockFree
+  unfold callRequireRelative
+  root_dispatch_walk K hK
+
 @[rootFrameLem] theorem callRequire_frame (K : List Kont) (hK : ContextFree K)
     (m : Machine) (bid : String) (args : List Value)
     (kw : List (Value × Value)) :

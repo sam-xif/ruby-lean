@@ -58,6 +58,9 @@ theorem pushRootK_kont (K : List Kont) (m : Machine) :
 @[simp, rootFrameLem] theorem pushRootK_featurePrograms (K : List Kont) (m : Machine) :
     (pushRootK K m).featurePrograms = m.featurePrograms := rfl
 
+@[simp, rootFrameLem] theorem pushRootK_requireBodies (K : List Kont) (m : Machine) :
+    (pushRootK K m).requireBodies = m.requireBodies := rfl
+
 @[simp, rootFrameLem] theorem pushRootK_loadedFeatures (K : List Kont) (m : Machine) :
     (pushRootK K m).loadedFeatures = m.loadedFeatures := rfl
 

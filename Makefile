@@ -100,6 +100,7 @@ $(PRELUDE_JSON): $(PRELUDE_SRC)
 # Build the generator first and run the binary, so that nothing Lake prints
 # while building can end up in the generated file.
 GENPRELUDE := $(LAKE) build --log-level=error genprelude >&2 && .lake/build/bin/genprelude
+GENVFS     := $(LAKE) build --log-level=error genvfs >&2 && .lake/build/bin/genvfs
 
 $(PRELUDE_LEAN): $(PRELUDE_JSON) $(PKG)/GenPrelude.lean $(PKG)/RubyCore/Syntax.lean
 	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp
@@ -110,11 +111,13 @@ gen: ## Regenerate every generated Lean source
 	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp && mv RubyCore/Generated/Prelude.lean.tmp RubyCore/Generated/Prelude.lean
 	cd $(PKG) && $(RUBY) scripts/gen_cruby_names.rb  > RubyCore/Generated/CRubyNames.lean
 	cd $(PKG) && $(RUBY) scripts/gen_unicode.rb --verify > RubyCore/Generated/Unicode.lean
+	cd $(PKG) && $(RUBY) scripts/gen_vfs.rb          > RubyCore/Generated/VfsFixtureJson.lean
+	cd $(PKG) && $(GENVFS) > RubyCore/Generated/VfsFixture.lean.tmp && mv RubyCore/Generated/VfsFixture.lean.tmp RubyCore/Generated/VfsFixture.lean
 	python3 books/scripts/generate_audited_checker.py
 
 gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	@set -e; fail=0; \
-	for g in prelude:PreludeJson cruby_names:CRubyNames unicode:Unicode; do \
+	for g in prelude:PreludeJson cruby_names:CRubyNames unicode:Unicode vfs:VfsFixtureJson; do \
 	  s=$${g%%:*}; f=$${g##*:}; \
 	  (cd $(PKG) && $(RUBY) scripts/gen_$$s.rb) > $(STAMP)/$$f.lean; \
 	  if cmp -s $(STAMP)/$$f.lean $(GENERATED)/$$f.lean; then echo "  fresh  RubyCore/Generated/$$f.lean"; \
@@ -125,6 +128,10 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	if cmp -s $(STAMP)/Prelude.lean $(PRELUDE_LEAN); then echo "  fresh  RubyCore/Generated/Prelude.lean"; \
 	else echo "  STALE  RubyCore/Generated/Prelude.lean  (run: make gen)"; \
 	  diff $(PRELUDE_LEAN) $(STAMP)/Prelude.lean | head -40 | cut -c1-600; fail=1; fi; \
+	(cd $(PKG) && $(GENVFS)) > $(STAMP)/VfsFixture.lean; \
+	if cmp -s $(STAMP)/VfsFixture.lean $(GENERATED)/VfsFixture.lean; then echo "  fresh  RubyCore/Generated/VfsFixture.lean"; \
+	else echo "  STALE  RubyCore/Generated/VfsFixture.lean  (run: make gen)"; \
+	  diff $(GENERATED)/VfsFixture.lean $(STAMP)/VfsFixture.lean | head -40 | cut -c1-600; fail=1; fi; \
 	python3 books/scripts/generate_audited_checker.py --check || fail=1; \
 	exit $$fail
 

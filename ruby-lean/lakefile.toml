@@ -1,6 +1,6 @@
 name = "rubylean"
 version = "0.1.0"
-defaultTargets = ["Json", "RubyCore", "rubycore", "genprelude"]
+defaultTargets = ["Json", "RubyCore", "rubycore", "genprelude", "genvfs"]
 
 # The model: an executable semantics of Ruby (`RubyCore/`), and the `rubycore`
 # executable that runs it.
@@ -39,3 +39,11 @@ root = "Main"
 [[lean_exe]]
 name = "genprelude"
 root = "GenPrelude"
+
+# Writes `RubyCore/Generated/VfsFixture.lean` (the require/require_relative library
+# fixture as Lean terms) from `RubyCore/Generated/VfsFixtureJson.lean` (the bodies as
+# exported JSON). Like `genprelude`: depends only on the decoder, never on the terms
+# it writes, so it can always regenerate them.
+[[lean_exe]]
+name = "genvfs"
+root = "GenVfs"
