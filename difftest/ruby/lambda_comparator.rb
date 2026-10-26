@@ -1,12 +1,13 @@
+# frozen_string_literal: true
 # typed: true
+
 require "sorbet-runtime"
 extend T::Sig
 
 sig { returns(T.proc.params(a: String, b: String).returns(Integer)) }
 def comparator_for
   tiebreak = 0
-  cmp = ->(a, b) { tiebreak }
-  cmp
+  ->(_a, _b) { tiebreak }
 end
 
 def use_comparator

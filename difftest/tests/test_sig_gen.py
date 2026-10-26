@@ -8,7 +8,6 @@ import inspect
 import random
 import re
 
-from difftest import sig_gen
 from difftest.sig_gen import (
     ATOMS,
     BOOL,
@@ -23,6 +22,7 @@ from difftest.sig_gen import (
     supertypes,
 )
 
+from difftest import sig_gen
 
 # --------------------------------------------------------------------------
 # Independence from the artifact under test
@@ -48,9 +48,16 @@ def _code_only(obj) -> str:
 # checker's verdict for the report, which is not the same as letting the checker
 # decide what counts as well-typed.
 GENERATION_PATH = (
-    sig_gen.Ty, sig_gen.Gen, sig_gen.Method, sig_gen.Program,
-    sig_gen.build, sig_gen._mutate, sig_gen.sample,
-    sig_gen.incompatible, sig_gen.supertypes, sig_gen._ops_returning,
+    sig_gen.Ty,
+    sig_gen.Gen,
+    sig_gen.Method,
+    sig_gen.Program,
+    sig_gen.build,
+    sig_gen._mutate,
+    sig_gen.sample,
+    sig_gen.incompatible,
+    sig_gen.supertypes,
+    sig_gen._ops_returning,
 )
 
 
@@ -133,7 +140,7 @@ def test_method_names_are_prefixed_for_batch_safety():
     every program redefining `m0`. Uniqueness is what keeps batching legal."""
     seen = set()
     for s in sample(20, 2):
-        names = re.findall(r"^def (\w+)", s.source, re.M)
+        names = re.findall(r"^def (\w+)", s.source, re.MULTILINE)
         assert names, s.source
         for n in names:
             assert n.startswith(s.name + "_"), n
@@ -145,8 +152,8 @@ def test_strict_sigil_sigs_every_method():
     """At `# typed: strict` an unsig'd method draws 7017, which would reject the
     program for a reason unrelated to types."""
     for s in sample(16, 4, sigil="strict", coverage=0.3):
-        n_defs = len(re.findall(r"^def ", s.source, re.M))
-        n_sigs = len(re.findall(r"^sig ", s.source, re.M))
+        n_defs = len(re.findall(r"^def ", s.source, re.MULTILINE))
+        n_sigs = len(re.findall(r"^sig ", s.source, re.MULTILINE))
         assert n_defs == n_sigs, s.source
 
 
@@ -198,8 +205,15 @@ def test_every_mutation_kind_is_reachable():
 def _sample_args(**kw):
     from argparse import Namespace
 
-    base = dict(kind="siggen", count=None, seed=0, intent=None,
-                sigil="true", coverage=1.0, loose=0.25)
+    base = {
+        "kind": "siggen",
+        "count": None,
+        "seed": 0,
+        "intent": None,
+        "sigil": "true",
+        "coverage": 1.0,
+        "loose": 0.25,
+    }
     base.update(kw)
     return Namespace(**base)
 
@@ -229,7 +243,8 @@ def test_sample_rejects_an_unknown_intent_and_lists_the_real_ones(capsys):
 
     assert cmd_checker_sample(_sample_args(intent="nope")) == 2
     err = capsys.readouterr().err
-    assert "wellformed" in err and "illtyped" in err
+    assert "wellformed" in err
+    assert "illtyped" in err
 
 
 def test_sample_refuses_the_incoherent_knob_combination(capsys):
@@ -245,7 +260,8 @@ def test_sample_can_draw_from_the_fragment_fuzzer(capsys):
     assert cmd_checker_sample(_sample_args(kind="fuzz", count=2)) == 0
     out = capsys.readouterr().out
     # the plain-Ruby fragment carries no annotations at all
-    assert "sorbet-runtime" not in out and "sig {" not in out
+    assert "sorbet-runtime" not in out
+    assert "sig {" not in out
 
 
 # --------------------------------------------------------------------------
@@ -264,9 +280,14 @@ def test_decls_cover_exactly_the_sigged_methods():
     for _ in range(30):
         p = build(rng, sigil="true", coverage=0.5)
         sigged = {m.name for m in p.methods if m.sigged}
-        decls = {name for name, _, _ in tuple(
-            (m.name, tuple((n, t.render()) for n, t in m.params), m.declared.render())
-            for m in p.methods if m.sigged)}
+        decls = {
+            name
+            for name, _, _ in tuple(
+                (m.name, tuple((n, t.render()) for n, t in m.params), m.declared.render())
+                for m in p.methods
+                if m.sigged
+            )
+        }
         assert decls == sigged
 
 

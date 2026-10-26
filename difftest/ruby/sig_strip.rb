@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # sig_strip — make a Sorbet-annotated program *less precise*, byte-for-byte.
 #
 # This is the `e ⊑ e'` transform of the gradual guarantee (Siek/Vitousek/Cimini/
@@ -199,7 +201,7 @@ source = $stdin.read
 stripped = strip(source)
 reasons = unstrippable_reasons(stripped)
 unless reasons.empty?
-  warn("unstrippable Sorbet constructs remain: #{reasons.join(', ')}")
+  warn("unstrippable Sorbet constructs remain: #{reasons.join(", ")}")
   exit 3
 end
 print stripped

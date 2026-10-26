@@ -11,6 +11,7 @@ network protocol clients. What is kept is the whole of the rest of the standard
 library, deliberately: the CRuby oracle runs *user* source, and a `require` that
 works in their terminal should work in the page.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -21,9 +22,25 @@ from pathlib import Path
 # program. Names are matched as `<name>-<version>` gem directories and as
 # `<name>` / `<name>.rb` under the stdlib directory.
 DROP = [
-    "debug", "irb", "minitest", "net-ftp", "net-imap", "net-pop", "net-smtp",
-    "observer", "power_assert", "prime", "rake", "rbs", "rdoc", "reline",
-    "repl_type_completor", "rexml", "rss", "syntax_suggest", "test-unit",
+    "debug",
+    "irb",
+    "minitest",
+    "net-ftp",
+    "net-imap",
+    "net-pop",
+    "net-smtp",
+    "observer",
+    "power_assert",
+    "prime",
+    "rake",
+    "rbs",
+    "rdoc",
+    "reline",
+    "repl_type_completor",
+    "rexml",
+    "rss",
+    "syntax_suggest",
+    "test-unit",
     "typeprof",
 ]
 
@@ -41,9 +58,12 @@ def main(stage: str) -> None:
         if root not in p.parents:
             sys.exit(f"refusing to remove {p}: outside {root}")
         if p == root:
-            sys.exit(f"refusing to remove the staging root itself")
-        size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) \
-            if p.is_dir() else p.stat().st_size
+            sys.exit("refusing to remove the staging root itself")
+        size = (
+            sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+            if p.is_dir()
+            else p.stat().st_size
+        )
         shutil.rmtree(p) if p.is_dir() else p.unlink()
         return size
 

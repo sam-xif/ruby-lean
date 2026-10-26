@@ -1,7 +1,6 @@
 """The static-oracle two-by-two, and the corpus's declaration gate."""
 
 import pytest
-
 from difftest.sorbet import FragmentChecker, sorbet_runtime_available, srb_path
 from difftest.sorbet_check import CELLS, classify, runtime_kind
 from difftest.sources import load_sorbet_corpus
@@ -27,7 +26,7 @@ def test_runtime_kind_vocabulary():
 
 
 @pytest.mark.parametrize(
-    "static_ok,kind,exc,cell",
+    ("static_ok", "kind", "exc", "cell"),
     [
         (True, "value", None, "accepted-and-safe"),
         (True, "sorbet_error", "TypeError", "accepted-blamed"),
@@ -117,12 +116,14 @@ def test_fragment_checker_classifies_the_hatches():
         '# typed: strict\nrequire "sorbet-runtime"\nextend T::Sig\n'
         "sig { params(x: Integer).returns(String) }\ndef f(x)\n  x.to_s\nend\nputs f(1)\n"
     )
-    assert clean is not None and clean.in_fragment, clean
+    assert clean is not None
+    assert clean.in_fragment, clean
 
     for source, expected in [
         ("T.unsafe(nil).foo\n", "T.unsafe"),
         ("def g(x)\n  x\nend\n", "g"),
     ]:
         r = fc.check('# typed: true\nrequire "sorbet-runtime"\n' + source)
-        assert r is not None and not r.in_fragment
+        assert r is not None
+        assert not r.in_fragment
         assert expected in [v["what"] for v in r.violations], r.violations

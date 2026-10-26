@@ -19,7 +19,7 @@ HARNESSES = {
     "version": {
         "feature": "version",
         "kind": "version",
-        "body": '''
+        "body": """
 INPUTS.each do |s|
   print(s.inspect, "\\t")
   begin
@@ -36,14 +36,14 @@ INPUTS.each do |s|
   end
   puts("")
 end
-''',
+""",
     },
     # ── the headline pair: two orderings on the same inputs ────────────────
     "pairs": {
         "feature": "vulns/semver",
         "kind": "semver",
         "extra_features": ["version"],
-        "body": '''
+        "body": """
 i = 0
 while i + 1 < INPUTS.length
   a = INPUTS[i]
@@ -63,13 +63,13 @@ while i + 1 < INPUTS.length
   end
   puts("")
 end
-''',
+""",
     },
     # ── SemVer parse + compare against itself and its neighbours ───────────
     "semver": {
         "feature": "vulns/semver",
         "kind": "semver",
-        "body": '''
+        "body": """
 INPUTS.each do |s|
   print(s.inspect, "\\t")
   begin
@@ -85,13 +85,13 @@ INPUTS.each do |s|
   end
   puts("")
 end
-''',
+""",
     },
     # ── package URLs ───────────────────────────────────────────────────────
     "purl": {
         "feature": "vulns/purl",
         "kind": "purl",
-        "body": '''
+        "body": """
 INPUTS.each do |s|
   print(s.inspect, "\\t")
   begin
@@ -102,13 +102,13 @@ INPUTS.each do |s|
   end
   puts("")
 end
-''',
+""",
     },
     # ── forge URLs → OSV query keys ────────────────────────────────────────
     "identify": {
         "feature": "vulns/identify",
         "kind": "url",
-        "body": '''
+        "body": """
 INPUTS.each do |s|
   print(s.inspect, "\\t")
   begin
@@ -119,7 +119,7 @@ INPUTS.each do |s|
   end
   puts("")
 end
-''',
+""",
     },
 }
 
@@ -127,8 +127,7 @@ end
 def program(name: str, inputs: list[str], prefix: str, preamble: str) -> str:
     h = HARNESSES[name]
     lits = ",\n  ".join(_dq(i) for i in inputs)
-    return (preamble + prefix
-            + "\nINPUTS = [\n  " + lits + "\n].freeze\n" + h["body"])
+    return preamble + prefix + "\nINPUTS = [\n  " + lits + "\n].freeze\n" + h["body"]
 
 
 def _dq(s: str) -> str:

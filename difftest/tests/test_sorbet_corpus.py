@@ -6,6 +6,7 @@ These are structural checks only (cheap, no toolchain). Whether each program
 """
 
 import json
+from pathlib import Path
 
 from difftest.sources import (
     RUNTIME_EXPECT,
@@ -60,7 +61,8 @@ def test_annotation_free_categories_really_are_annotation_free():
         if case.provenance["category"] not in NO_RUNTIME_CATEGORIES:
             continue
         assert "T." not in case.source, case.id
-        assert "sig " not in case.source and "sig{" not in case.source, case.id
+        assert "sig " not in case.source, case.id
+        assert "sig{" not in case.source, case.id
 
 
 def test_every_program_declares_a_sigil():
@@ -78,4 +80,4 @@ def test_every_category_is_populated():
 def test_sidecars_are_json_objects_on_disk():
     for case in load_sorbet_corpus():
         path = case.provenance["path"].removesuffix(".rb") + ".json"
-        assert isinstance(json.loads(open(path).read()), dict)
+        assert isinstance(json.loads(Path(path).read_text()), dict)

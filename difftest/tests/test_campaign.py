@@ -1,9 +1,9 @@
 """Mixed-tier campaign: mix parsing, arm thresholds, and end-to-end runs."""
 
+import itertools
 import json
 
 import pytest
-
 from difftest.campaign import WEIGHT_RESOLUTION, _thresholds, parse_mix, run_generative_campaign
 from difftest.control import CRubyRunner
 from difftest.observation import Observation
@@ -19,14 +19,14 @@ def test_parse_mix():
 
 @pytest.mark.parametrize("bad", ["tier1", "tier1=0", "tier1=-1", "tier1=0.5,tier1=0.5", "=3"])
 def test_parse_mix_rejects(bad):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="mix"):
         parse_mix(bad)
 
 
 def test_thresholds_cover_resolution_and_keep_every_arm():
     t = _thresholds({"tier1": 0.999, "tier3": 0.001})
     assert t[-1][1] == WEIGHT_RESOLUTION
-    slots = [t[0][1]] + [b - a for (_, a), (_, b) in zip(t, t[1:])]
+    slots = [t[0][1]] + [b - a for (_, a), (_, b) in itertools.pairwise(t)]
     assert all(s >= 1 for s in slots)  # no requested arm is silently dead
 
 
@@ -42,8 +42,13 @@ def test_mixed_campaign_agrees_and_counts_arms(tmp_path):
     corpus = _write_corpus(tmp_path, ['puts "c0"\n', "p 1 + 1\n", "p [1, 2][5]\n"])
     reporter = Reporter(tmp_path / "report")
     extra = run_generative_campaign(
-        control, IdentityCRubySUT(control), reporter, n=12, seed=1234,
-        mix={"tier1": 0.5, "tier3": 0.5}, corpus_cases={"tier3": corpus},
+        control,
+        IdentityCRubySUT(control),
+        reporter,
+        n=12,
+        seed=1234,
+        mix={"tier1": 0.5, "tier3": 0.5},
+        corpus_cases={"tier3": corpus},
     )
     reporter.finalize("identity")
     counts = extra["campaign"]["arm_counts"]
@@ -57,8 +62,12 @@ def test_mixed_campaign_requires_corpus_for_corpus_arms(tmp_path):
     control = CRubyRunner()
     with pytest.raises(ValueError, match="no corpus cases"):
         run_generative_campaign(
-            control, IdentityCRubySUT(control), Reporter(tmp_path / "r"), n=1,
-            mix={"tier3": 1.0}, corpus_cases={},
+            control,
+            IdentityCRubySUT(control),
+            Reporter(tmp_path / "r"),
+            n=1,
+            mix={"tier3": 1.0},
+            corpus_cases={},
         )
 
 
@@ -82,8 +91,13 @@ def test_mixed_campaign_reports_disagreeing_corpus_case(tmp_path):
     corpus = _write_corpus(tmp_path, ["p 6660\n", 'puts "fine"\n'])
     reporter = Reporter(tmp_path / "report")
     extra = run_generative_campaign(
-        control, _WrongOnMarker(control), reporter, n=30, seed=7,
-        mix={"tier3": 1.0}, corpus_cases={"tier3": corpus},
+        control,
+        _WrongOnMarker(control),
+        reporter,
+        n=30,
+        seed=7,
+        mix={"tier3": 1.0},
+        corpus_cases={"tier3": corpus},
     )
     summary = reporter.finalize("wrong-on-marker")
     assert extra["campaign"]["stopped_early_on_disagreement"]

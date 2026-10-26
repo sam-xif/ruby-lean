@@ -16,6 +16,7 @@ trusted. The checker, `validateD`, reads these files and decides.
 
 Everything this writes is derived and disposable; the `.rb` is the source of truth.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,12 +27,20 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)                 # books/
-RUBY = os.path.dirname(ROOT)                 # the repository
-TOOLS = HERE                                  # the checker's front end: srb_sigs.py, emit_deriv.rb
-STRIPS = [os.path.join(RUBY, "difftest", "ruby", s) for s in
-          ("sig_strip.rb", "visibility_strip.rb", "freeze_strip.rb",
-           "require_strip.rb", "const_inline.rb", "class_sugar_strip.rb")]
+ROOT = os.path.dirname(HERE)  # books/
+RUBY = os.path.dirname(ROOT)  # the repository
+TOOLS = HERE  # the checker's front end: srb_sigs.py, emit_deriv.rb
+STRIPS = [
+    os.path.join(RUBY, "difftest", "ruby", s)
+    for s in (
+        "sig_strip.rb",
+        "visibility_strip.rb",
+        "freeze_strip.rb",
+        "require_strip.rb",
+        "const_inline.rb",
+        "class_sugar_strip.rb",
+    )
+]
 EXPORT = os.path.join(RUBY, "desugar", "bin", "export-json")
 
 
@@ -39,7 +48,7 @@ def strip(src: str) -> str:
     """Remove the annotations: each stripper in turn, `sig_strip` first."""
     cur = src
     for s in STRIPS:
-        p = subprocess.run(["ruby", s], input=cur, capture_output=True, text=True)
+        p = subprocess.run(["ruby", s], input=cur, capture_output=True, text=True, check=False)
         if p.returncode != 0:
             raise RuntimeError(f"{os.path.basename(s)}: {p.stderr.strip()}")
         cur = p.stdout
@@ -54,8 +63,12 @@ def build(base: str, corpus: str, outdir: str) -> dict:
     rec["base"] = base
 
     # 1. Sorbet, over the annotated source.
-    p = subprocess.run([sys.executable, os.path.join(TOOLS, "srb_sigs.py"), "--quiet", rb],
-                       capture_output=True, text=True)
+    p = subprocess.run(
+        [sys.executable, os.path.join(TOOLS, "srb_sigs.py"), "--quiet", rb],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     if p.returncode != 0:
         rec["stage"] = "sorbet"
         rec["error"] = p.stderr.strip()[:400]
@@ -72,14 +85,18 @@ def build(base: str, corpus: str, outdir: str) -> dict:
             stripped = strip(fh.read())
         with open(os.path.join(outdir, base + ".stripped.rb"), "w") as fh:
             fh.write(stripped)
-        e = subprocess.run([EXPORT, os.path.join(outdir, base + ".stripped.rb")],
-                           capture_output=True, text=True)
+        e = subprocess.run(
+            [EXPORT, os.path.join(outdir, base + ".stripped.rb")],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         if e.returncode != 0:
             rec["stage"] = "export"
             rec["error"] = e.stderr.strip()[:400]
             return rec
         rec["program"] = json.loads(e.stdout)
-    except Exception as exc:                      # noqa: BLE001 -- reported, not raised
+    except Exception as exc:  # noqa: BLE001 -- reported, not raised
         rec["stage"] = "strip"
         rec["error"] = str(exc)[:400]
         return rec
@@ -91,8 +108,12 @@ def build(base: str, corpus: str, outdir: str) -> dict:
         json.dump(sigs, fh, indent=1)
     with open(ap, "w") as fh:
         json.dump(rec["program"], fh)
-    d = subprocess.run(["ruby", os.path.join(TOOLS, "emit_deriv.rb"),
-                        "--ast", ap, "--sigs", sp], capture_output=True, text=True)
+    d = subprocess.run(
+        ["ruby", os.path.join(TOOLS, "emit_deriv.rb"), "--ast", ap, "--sigs", sp],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     if d.returncode != 0:
         rec["stage"] = "emit"
         rec["error"] = d.stderr.strip()[:400]
@@ -111,8 +132,9 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
 
     os.makedirs(args.out, exist_ok=True)
-    bases = sorted(f[:-len(".meta.json")] for f in os.listdir(args.corpus)
-                   if f.endswith(".meta.json"))
+    bases = sorted(
+        f[: -len(".meta.json")] for f in os.listdir(args.corpus) if f.endswith(".meta.json")
+    )
     if args.only:
         pfx = tuple(args.only.split(","))
         bases = [b for b in bases if b.startswith(pfx)]
@@ -136,8 +158,10 @@ def main(argv: list[str]) -> int:
     print(f"  derivation emitted:           {emitted}/{len(recs)}")
     for r in recs:
         if r.get("stage") not in ("done",):
-            print(f"  !! {r['base']}: stage {r.get('stage')}: {r.get('error','')[:120]}",
-                  file=sys.stderr)
+            print(
+                f"  !! {r['base']}: stage {r.get('stage')}: {r.get('error', '')[:120]}",
+                file=sys.stderr,
+            )
     return 0
 
 

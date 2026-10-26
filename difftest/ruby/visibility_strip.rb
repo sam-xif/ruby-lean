@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # visibility_strip — remove access-control declarations: make a program *more
 # permissive*, byte-for-byte, changing nothing else.
 #

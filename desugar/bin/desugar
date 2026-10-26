@@ -23,7 +23,7 @@ inputs =
 
 inputs.each_with_index do |(name, src), idx|
   puts "═" * 78 if idx.positive?
-  puts "── source (#{name}) " + "─" * 40
+  puts "── source (#{name}) " + ("─" * 40)
   puts src.strip
   puts
 
@@ -37,14 +37,14 @@ inputs.each_with_index do |(name, src), idx|
     next
   end
 
-  puts "── desugaring rules fired (#{cov.size}) " + "─" * 20
+  puts "── desugaring rules fired (#{cov.size}) " + ("─" * 20)
   puts "   " + cov.map { |r| ":#{r}" }.join("  ")
   puts
-  puts "── RubyCore, rendered back to Ruby " + "─" * 20
+  puts "── RubyCore, rendered back to Ruby " + ("─" * 20)
   puts Render.core(core)
   next unless show_ast
 
   puts
-  puts "── RubyCore AST " + "─" * 40
+  puts "── RubyCore AST " + ("─" * 40)
   PP.pp(core, $stdout, 96)
 end

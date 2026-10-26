@@ -17,6 +17,7 @@ can make the checker decline a program; it cannot make it accept one.
 
 Exit status: 0 accepted, 1 not accepted, 2 the tools are not built (`make run`).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,13 +31,22 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "books", "scripts")
 EXPORT = os.path.join(ROOT, "desugar", "bin", "export-json")
 VALIDATE = os.environ.get(
-    "VALIDATE_ONE", os.path.join(ROOT, "books", ".lake", "build", "bin", "validate-one"))
+    "VALIDATE_ONE", os.path.join(ROOT, "books", ".lake", "build", "bin", "validate-one")
+)
 RUBY = os.environ.get("RUBY", "ruby")
 # Sorbet's annotations and a few surface forms are removed before desugaring;
 # the checker reads the types from the signatures, not from the program text.
-STRIPS = [os.path.join(ROOT, "difftest", "ruby", s) for s in
-          ("sig_strip.rb", "visibility_strip.rb", "freeze_strip.rb",
-           "require_strip.rb", "const_inline.rb", "class_sugar_strip.rb")]
+STRIPS = [
+    os.path.join(ROOT, "difftest", "ruby", s)
+    for s in (
+        "sig_strip.rb",
+        "visibility_strip.rb",
+        "freeze_strip.rb",
+        "require_strip.rb",
+        "const_inline.rb",
+        "class_sugar_strip.rb",
+    )
+]
 
 
 class Declined(Exception):
@@ -48,7 +58,7 @@ class Declined(Exception):
 
 
 def run(stage: str, cmd: list[str], stdin: str | None = None) -> str:
-    p = subprocess.run(cmd, input=stdin, capture_output=True, text=True)
+    p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, check=False)
     if p.returncode != 0:
         raise Declined(stage, p.stderr.strip() or f"exit {p.returncode}")
     return p.stdout
@@ -57,14 +67,16 @@ def run(stage: str, cmd: list[str], stdin: str | None = None) -> str:
 def check(path: str, workdir: str) -> dict:
     result: dict = {"file": path, "accepted": False}
 
-    sigs = json.loads(run("sorbet", [sys.executable, os.path.join(TOOLS, "srb_sigs.py"),
-                                     "--quiet", path]))
+    sigs = json.loads(
+        run("sorbet", [sys.executable, os.path.join(TOOLS, "srb_sigs.py"), "--quiet", path])
+    )
     result["sorbet_clean"] = sigs["srb_clean"]
     result["sorbet_diagnostics"] = sigs["srb_diagnostics"]
     result["signatures"] = len(sigs["sigs"])
     if not sigs["srb_clean"]:
-        raise Declined("sorbet", "Sorbet reports type errors:\n  " +
-                       "\n  ".join(sigs["srb_diagnostics"]))
+        raise Declined(
+            "sorbet", "Sorbet reports type errors:\n  " + "\n  ".join(sigs["srb_diagnostics"])
+        )
 
     with open(path) as fh:
         source = fh.read()
@@ -81,16 +93,21 @@ def check(path: str, workdir: str) -> dict:
     with open(ast_path, "w") as fh:
         json.dump(program, fh)
 
-    emit = json.loads(run("derivation", [RUBY, os.path.join(TOOLS, "emit_deriv.rb"),
-                                         "--ast", ast_path, "--sigs", sigs_path]))
+    emit = json.loads(
+        run(
+            "derivation",
+            [RUBY, os.path.join(TOOLS, "emit_deriv.rb"), "--ast", ast_path, "--sigs", sigs_path],
+        )
+    )
     if emit.get("status") != "ok":
         raise Declined("derivation", emit.get("why", "no derivation was proposed"))
     result["type"] = emit.get("ty")
     with open(os.path.join(workdir, "deriv.json"), "w") as fh:
         json.dump(emit["deriv"], fh)
 
-    verdict = json.loads(run("checker", [VALIDATE],
-                             json.dumps({"program": program, "deriv": emit["deriv"]})))
+    verdict = json.loads(
+        run("checker", [VALIDATE], json.dumps({"program": program, "deriv": emit["deriv"]}))
+    )
     if not verdict.get("validateD"):
         raise Declined("checker", "validateD returned false for the proposed derivation")
     result["accepted"] = True
@@ -117,8 +134,10 @@ def main(argv: list[str]) -> int:
         print(f"ruby-lean-check: no such file: {args.file}", file=sys.stderr)
         return 2
     if not os.access(VALIDATE, os.X_OK):
-        print(f"ruby-lean-check: the checker is not built at {VALIDATE} (run `make run`)",
-              file=sys.stderr)
+        print(
+            f"ruby-lean-check: the checker is not built at {VALIDATE} (run `make run`)",
+            file=sys.stderr,
+        )
         return 2
 
     with tempfile.TemporaryDirectory() as tmp:

@@ -59,7 +59,7 @@ FOLD = {
   "StopIteration" => [StopIteration],
   "UncaughtThrowError" => [UncaughtThrowError],
   "NotImplementedError" => [NotImplementedError],
-  "ScriptError" => [ScriptError],
+  "ScriptError" => [ScriptError]
 }.freeze
 
 # A lambda, not a toplevel def — a def here would land on Object and leak
@@ -96,7 +96,7 @@ HEADER
 # Toplevel `public`/`private`/`include`/`using`/`define_method` etc. live on
 # main's singleton class. Keep them separate from Object's instance methods.
 MAIN_SINGLETON = TOPLEVEL_BINDING.receiver.singleton_class
-  .then { |sc| sc.instance_methods(false) + sc.private_instance_methods(false) }
+                                 .then { |sc| sc.instance_methods(false) + sc.private_instance_methods(false) }
 
 entries = FOLD.map do |name, mods|
   meths = mods.flat_map { |m| m.instance_methods(false) + m.private_instance_methods(false) }
@@ -118,7 +118,7 @@ puts <<~MID
 MID
 sentries = FOLD.map do |name, mods|
   meths = mods.first.singleton_class
-    .then { |sc| sc.instance_methods(false) + sc.private_instance_methods(false) }.uniq.sort
+              .then { |sc| sc.instance_methods(false) + sc.private_instance_methods(false) }.uniq.sort
   "  (\"#{name}\", [\n#{NAME_LINES.call(meths, "    ")}\n  ])"
 end
 puts sentries.join(",\n")
@@ -127,7 +127,7 @@ puts "]\n\n/-- Known constants in modeled namespaces; absence is a gate, not Nam
 puts "def crubyNamespaceConstants : List (String × List String) := ["
 puts FOLD.map { |name, mods|
   names = mods.first.constants(false) - %i[FOLD NAME_LINES MAIN_SINGLETON BUILD_DEPENDENT] - BUILD_DEPENDENT
-  "  (#{name.inspect}, [#{names.map(&:to_s).sort.map(&:inspect).join(', ')}])"
+  "  (#{name.inspect}, [#{names.map(&:to_s).sort.map(&:inspect).join(", ")}])"
 }.join(",\n")
 
 puts <<~MID
@@ -160,15 +160,15 @@ features = %w[forwardable json uri sorbet-runtime].to_h do |feature|
 end
 puts "\n/-- Names introduced by modeled requires; consulted only after a load attempt. -/"
 puts "def crubyFeatureRoots : List (String × List String) := ["
-puts features.map { |feature, (roots, _)| "  (#{feature.inspect}, [#{roots.map(&:inspect).join(', ')}])" }.join(",\n")
+puts features.map { |feature, (roots, _)| "  (#{feature.inspect}, [#{roots.map(&:inspect).join(", ")}])" }.join(",\n")
 puts "]"
 %w[Methods SingletonMethods Constants].each_with_index do |kind, i|
   puts "\ndef crubyFeature#{kind} : List (String × List String) := ["
   namespaces = features.values.flat_map { |_, mods| mods.to_a }.to_h.sort
-  puts namespaces.map { |name, values| "  (#{name.inspect}, [#{values[i].map(&:inspect).join(', ')}])" }.join(",\n")
+  puts namespaces.map { |name, values| "  (#{name.inspect}, [#{values[i].map(&:inspect).join(", ")}])" }.join(",\n")
   puts "]"
 end
-puts <<~'FOOTER'
+puts <<~FOOTER
 
   def crubyClassDefines (className mname : String) : Bool :=
     match crubyMethodNames.find? (·.1 == className) with

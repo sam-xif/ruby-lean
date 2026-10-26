@@ -1,5 +1,4 @@
 import pytest
-
 from difftest.sorbet import (
     SorbetStatic,
     is_sorbet_runtime_error,
@@ -80,9 +79,7 @@ def test_runtime_sig_violation_is_classified(tmp_path):
 def test_genuine_typeerror_is_not_classified_as_sorbet():
     # The discriminator must not swallow Ruby's own TypeErrors — they are the
     # `typeStuck` family the reachability checker cares about.
-    assert not is_sorbet_runtime_error(
-        ("TypeError", "String can't be coerced into Integer")
-    )
+    assert not is_sorbet_runtime_error(("TypeError", "String can't be coerced into Integer"))
     assert not is_sorbet_runtime_error(("NoMethodError", "undefined method 'x'"))
     assert not is_sorbet_runtime_error(None)
 
@@ -103,7 +100,8 @@ def test_strips_sig_and_extend(stripper):
     out = stripper.strip(CLEAN)
     assert "sig" not in out
     assert "T::Sig" not in out
-    assert "def f(x)" in out and "x.to_s" in out
+    assert "def f(x)" in out
+    assert "x.to_s" in out
 
 
 def test_strips_assertion_family(stripper):
@@ -116,13 +114,15 @@ def test_strips_assertion_family(stripper):
         "puts a + b + c + d\n"
     )
     assert "T." not in out
-    assert "a = 1" in out and "b = a" in out and "c = b" in out and "d = c" in out
+    assert "a = 1" in out
+    assert "b = a" in out
+    assert "c = b" in out
+    assert "d = c" in out
 
 
 def test_strips_nested_assertions_to_a_fixpoint(stripper):
     out = stripper.strip(
-        '# typed: true\nrequire "sorbet-runtime"\n'
-        "x = T.must(T.cast(T.unsafe(1), Integer))\n"
+        '# typed: true\nrequire "sorbet-runtime"\nx = T.must(T.cast(T.unsafe(1), Integer))\n'
     )
     assert "x = 1" in out
 
@@ -133,16 +133,15 @@ def test_strips_chained_checked_sig(stripper):
         "sig { params(x: Integer).returns(String).checked(:never) }\n"
         "def label(x)\n  x.to_s\nend\nputs label(1)\n"
     )
-    assert "sig" not in out and "checked" not in out
+    assert "sig" not in out
+    assert "checked" not in out
     assert "def label(x)" in out
 
 
 def test_require_is_kept(stripper):
     # The two variants must differ only in annotation precision, so the require
     # (which changes what is loaded) is deliberately left in place.
-    runnable = CLEAN.replace(
-        "# typed: strict\n", '# typed: strict\nrequire "sorbet-runtime"\n'
-    )
+    runnable = CLEAN.replace("# typed: strict\n", '# typed: strict\nrequire "sorbet-runtime"\n')
     assert 'require "sorbet-runtime"' in stripper.strip(runnable)
 
 
@@ -187,6 +186,7 @@ def test_strips_correctly_with_non_ascii_earlier_in_the_file(stripper):
         "end\n"
         "puts f(1)\n"
     )
-    assert "sig {" not in out and "T::Sig" not in out
+    assert "sig {" not in out
+    assert "T::Sig" not in out
     assert "def f(x)\n  x.to_s\nend" in out, out
     assert "§" in out  # the comment itself survives untouched

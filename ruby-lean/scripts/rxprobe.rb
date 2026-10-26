@@ -14,7 +14,7 @@ def dec(s)
 end
 
 $stdin.each_line do |line|
-  pat, opts, inp = line.chomp("\n").split("\t", 3)
+  pat, opts, inp = line.chomp.split("\t", 3)
   pat = dec(pat)
   inp = dec(inp)
   begin
@@ -27,7 +27,7 @@ $stdin.each_line do |line|
   if m.nil?
     puts "nil"
   else
-    caps = (1..(re.names.empty? ? m.size - 1 : m.size - 1)).map do |i|
+    caps = (1..(m.size - 1)).map do |i|
       m.begin(i).nil? ? "-" : "#{m.begin(i)},#{m.end(i)}"
     end
     puts([m.begin(0), m.end(0), *caps].join("\t"))

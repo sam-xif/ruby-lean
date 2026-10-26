@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import dataclasses
 import itertools
-from typing import Iterator
+from collections.abc import Iterator
 
 from ..tier1 import ast as A
 

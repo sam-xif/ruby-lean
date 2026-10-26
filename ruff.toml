@@ -1,0 +1,32 @@
+# Formatting and linting for every Python file in the repository (`make lint`).
+# The version of ruff is pinned in the Makefile (RUFF).
+#
+# The rule set is ruff's default (which covers likely bugs: unused names,
+# unchecked subprocess calls, blind excepts, mutable defaults) plus import order,
+# modern syntax and pytest style. A finding is fixed, not suppressed: `make
+# check-not-weakened` fails a change that adds a `noqa`.
+target-version = "py312"
+line-length = 100
+# The Python scripts under bin/ have no extension.
+extend-include = ["bin/ruby-lean", "bin/ruby-lean-check", "bin/new-book"]
+
+[lint]
+extend-select = [
+  "I",    # import order
+  "UP",   # syntax the target Python supports
+  "PT",   # pytest style
+  "C4",   # comprehensions
+  "PIE",  # unnecessary code
+]
+ignore = [
+  "E501",    # long lines: the formatter wraps code; long strings and comments stay
+  "RUF001",  # the sources use Unicode arrows and dashes in strings on purpose
+  "RUF002",
+  "RUF003",
+]
+
+[lint.per-file-ignores]
+# tier1 is one generator split across modules that share names with `import *`.
+"difftest/difftest/tiers/tier1/*.py" = ["F403", "F405"]
+# `stripper.strip(source)` is the Sorbet stripper, not `str.strip`.
+"difftest/tests/test_sorbet.py" = ["B005"]

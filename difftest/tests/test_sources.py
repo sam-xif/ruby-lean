@@ -3,7 +3,6 @@
 import json
 
 import pytest
-
 from difftest.sources import load_bootstraptest, load_corpus_cases
 
 
@@ -13,7 +12,12 @@ def _write_bootstraptest(tmp_path, n=3):
         name = f"test_case_{i:03d}.rb"
         (tmp_path / name).write_text(f'print "case{i}"\n')
         manifest.append(
-            {"file": name, "source": "test_case.rb", "assert": "assert_equal", "expected": f"case{i}"}
+            {
+                "file": name,
+                "source": "test_case.rb",
+                "assert": "assert_equal",
+                "expected": f"case{i}",
+            }
         )
     (tmp_path / "manifest.json").write_text(json.dumps(manifest))
     return tmp_path

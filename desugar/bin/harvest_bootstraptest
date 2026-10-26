@@ -41,7 +41,8 @@ ASSERTS = %w[assert_equal assert_normal_exit assert_finish assert_not_equal].fre
 # wrapper runs in, so it cannot be round-tripped faithfully (it surfaces as a
 # `harness_error`, e.g. `test_load_002.rb`). Gate the whole family out until
 # filesystem support lands — see the tracking issue.
-SKIP = /\b(Thread|Ractor|Fiber|ObjectSpace|GC|Process|fork|Mutex|require|require_relative|__FILE__|rand|Time|Signal|trap|at_exit|ENV|sleep|load|Dir|File|FileUtils|FileTest|IO|Pathname|Tempfile)\b/.freeze
+SKIP = /\b(Thread|Ractor|Fiber|ObjectSpace|GC|Process|fork|Mutex|require|require_relative|__FILE__|
+          rand|Time|Signal|trap|at_exit|ENV|sleep|load|Dir|File|FileUtils|FileTest|IO|Pathname|Tempfile)\b/x
 
 # Extract a string literal argument's content, if it is a plain string literal.
 def string_lit(node)
@@ -70,7 +71,7 @@ Dir.glob(File.join(src_dir, "test_*.rb")).sort.each do |file|
 
     args = node.arguments.arguments
     # assert_equal(expected, program[, message]); others: (program[, message])
-    if node.name.to_s == "assert_equal" || node.name.to_s == "assert_not_equal"
+    if %w[assert_equal assert_not_equal].include?(node.name.to_s)
       expected = string_lit(args[0])
       program  = string_lit(args[1])
     else
@@ -94,4 +95,4 @@ end
 
 File.write(File.join(out_dir, "manifest.json"), JSON.pretty_generate(manifest))
 puts "harvested #{kept} programs (skipped #{skipped} out-of-fragment/non-deterministic) into #{out_dir}"
-puts "manifest: #{File.join(out_dir, 'manifest.json')}  (expected values for obs cross-check)"
+puts "manifest: #{File.join(out_dir, "manifest.json")}  (expected values for obs cross-check)"

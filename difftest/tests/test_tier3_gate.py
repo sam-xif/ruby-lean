@@ -8,7 +8,7 @@ runner = CRubyRunner(timeout=5.0)
 
 
 def test_accepts_good_program():
-    assert _validate('puts [1, 2].map { |x| x * 2 }.inspect\n', runner) is None
+    assert _validate("puts [1, 2].map { |x| x * 2 }.inspect\n", runner) is None
 
 
 def test_accepts_deterministic_raiser():
@@ -31,4 +31,5 @@ def test_rejects_timeout():
 def test_prompts_build_for_every_category():
     for cat in CATEGORIES:
         p = build_prompt(cat, 5)
-        assert "exactly 5" in p and "Deterministic" in p
+        assert "exactly 5" in p
+        assert "Deterministic" in p

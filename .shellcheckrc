@@ -1,0 +1,6 @@
+# shellcheck settings for `make lint`. Every finding at every severity fails,
+# except the one below.
+#
+# SC2016: the scripts pass code to another shell (`bash -c '...' _ "$x"`) or
+# write it into a file, and that code must reach it unexpanded.
+disable=SC2016

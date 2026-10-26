@@ -22,7 +22,7 @@ there rather than invent a number, so such a case is reported as a gate.
 
 from __future__ import annotations
 
-BODY = r'''
+BODY = r"""
 V = Homebrew::Vulns::Vulnerability
 
 def norm(s)
@@ -62,17 +62,31 @@ INPUTS.each do |ver|
                    end]))
   puts("")
 end
-'''
+"""
 
 
-def program(case_id: str, advisory_lit: str, versions: list[str],
-            prefix: str, preamble: str, mutations: list[str]) -> str:
+def program(
+    case_id: str,
+    advisory_lit: str,
+    versions: list[str],
+    prefix: str,
+    preamble: str,
+    mutations: list[str],
+) -> str:
     from .gen import ECOSYSTEM, NAME, _dq
+
     head = "".join(f"# mutation: {m}\n" for m in mutations)
     lits = ",\n  ".join(_dq(v) for v in versions)
-    return (head + preamble + prefix
-            + f"\nCASE_ID = {_dq(case_id)}\n"
-            + f"ECOSYSTEM = {_dq(ECOSYSTEM)}\n"
-            + f"NAME = {_dq(NAME)}\n"
-            + f"ADVISORY = {advisory_lit}.freeze\n"
-            + "INPUTS = [\n  " + lits + "\n].freeze\n" + BODY)
+    return (
+        head
+        + preamble
+        + prefix
+        + f"\nCASE_ID = {_dq(case_id)}\n"
+        + f"ECOSYSTEM = {_dq(ECOSYSTEM)}\n"
+        + f"NAME = {_dq(NAME)}\n"
+        + f"ADVISORY = {advisory_lit}.freeze\n"
+        + "INPUTS = [\n  "
+        + lits
+        + "\n].freeze\n"
+        + BODY
+    )

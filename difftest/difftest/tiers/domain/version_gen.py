@@ -26,15 +26,51 @@ from __future__ import annotations
 import random
 
 # ── the alphabets, taken from shapes in the spec suite ─────────────────────
-PRE_WORDS = ["alpha", "beta", "rc", "pre", "a", "b", "c", "RC", "dev", "p",
-             "post", "final", "stable", "src", "bin", "dist"]
+PRE_WORDS = [
+    "alpha",
+    "beta",
+    "rc",
+    "pre",
+    "a",
+    "b",
+    "c",
+    "RC",
+    "dev",
+    "p",
+    "post",
+    "final",
+    "stable",
+    "src",
+    "bin",
+    "dist",
+]
 SEPS = [".", "-", "_", ""]
-PLATFORMS = ["x86_64", "i386", "darwin", "linux", "mingw32", "mswin32", "java",
-             "win32", "win64", "universal"]
-EXTS = ["tar.gz", "tar.bz2", "tar.xz", "tgz", "zip", "gem", "crate", "jar",
-        "nupkg", "whl", "tar"]
-NAMES = ["foo", "bar-baz", "libx", "ruamel.yaml", "gradle-profiler", "bfg",
-         "Newtonsoft.Json", "@scope/pkg", "serde", "aeson", "abc"]
+PLATFORMS = [
+    "x86_64",
+    "i386",
+    "darwin",
+    "linux",
+    "mingw32",
+    "mswin32",
+    "java",
+    "win32",
+    "win64",
+    "universal",
+]
+EXTS = ["tar.gz", "tar.bz2", "tar.xz", "tgz", "zip", "gem", "crate", "jar", "nupkg", "whl", "tar"]
+NAMES = [
+    "foo",
+    "bar-baz",
+    "libx",
+    "ruamel.yaml",
+    "gradle-profiler",
+    "bfg",
+    "Newtonsoft.Json",
+    "@scope/pkg",
+    "serde",
+    "aeson",
+    "abc",
+]
 FORGES = [
     "https://github.com/{n}/{n}/archive/refs/tags/{v}.tar.gz",
     "https://github.com/{n}/{n}/releases/download/{v}/{n}-{v}.zip",
@@ -95,14 +131,14 @@ def semver_string(r: random.Random) -> str:
         ids = [r.choice(PRE_WORDS + [_num(r)]) for _ in range(r.randint(1, 3))]
         s += "-" + ".".join(str(i) for i in ids)
     if r.random() < 0.3:
-        s += "+" + ".".join(r.choice(["exp", "sha", "build", _num(r)])
-                            for _ in range(r.randint(1, 2)))
+        s += "+" + ".".join(
+            r.choice(["exp", "sha", "build", _num(r)]) for _ in range(r.randint(1, 2))
+        )
     return s
 
 
 def url_string(r: random.Random) -> str:
-    return r.choice(FORGES).format(n=r.choice(NAMES), v=version_string(r),
-                                   e=r.choice(EXTS))
+    return r.choice(FORGES).format(n=r.choice(NAMES), v=version_string(r), e=r.choice(EXTS))
 
 
 def purl_string(r: random.Random) -> str:

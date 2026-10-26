@@ -116,7 +116,7 @@ class Harvest
            when Prism::SymbolNode then arg.unescaped
            else s.name.to_s == "subject" ? "subject" : nil
            end
-    { "name" => name, "body" => (s.block.body&.slice || "nil"), "bang" => s.name.to_s == "let!" }
+    { "name" => name, "body" => s.block.body&.slice || "nil", "bang" => s.name.to_s == "let!" }
   end
 
   # `matcher :be_x do |args| match do |expected| … end end` — a matcher defined
@@ -132,7 +132,11 @@ class Harvest
     line = node.location.start_line
     name = begin
       a = node.arguments&.arguments&.first
-      a.is_a?(Prism::StringNode) ? a.unescaped : (a ? a.slice : "(anonymous)")
+      if a.is_a?(Prism::StringNode)
+        a.unescaped
+      else
+        (a ? a.slice : "(anonymous)")
+      end
     end
     ex = Example.new(file: @path, line: line, name: name, described: described.last,
                      memos: memos, helpers: helpers, body: nil, skip: nil)
@@ -314,14 +318,14 @@ class Harvest
     when "be_detected_from"
       # The spec file's own matcher: `expect(v).to be_detected_from(url, **specs)`
       # means `described_class.detect(url, **specs) == v`.
-      inner = args.map { |a| a.is_a?(Prism::KeywordHashNode) ? a.slice : a.slice }.join(", ")
+      inner = args.map(&:slice).join(", ")
       "__DESCRIBED.detect(#{inner}) == __a"
     else
       # `be_foo` is RSpec's predicate form: `__a.foo?`.
       raise Unsupported, "matcher #{name}" unless name.start_with?("be_")
 
       pred = name.delete_prefix("be_")
-      args.empty? ? "__a.#{pred}?" : "__a.#{pred}?(#{args.map(&:slice).join(', ')})"
+      args.empty? ? "__a.#{pred}?" : "__a.#{pred}?(#{args.map(&:slice).join(", ")})"
     end
   end
 end
@@ -331,6 +335,6 @@ Harvest.new(path).run.each do |ex|
   puts JSON.generate({
     "file" => ex.file, "line" => ex.line, "name" => ex.name,
     "described" => ex.described, "memos" => ex.memos,
-    "helpers" => ex.helpers, "body" => ex.body, "skip" => ex.skip,
+    "helpers" => ex.helpers, "body" => ex.body, "skip" => ex.skip
   })
 end

@@ -56,22 +56,26 @@ rewriter = Class.new(Prism::Visitor) do
     @in_casgn = 0
     super()
   end
+
   def visit_def_node(node)
     @in_def += 1
-    super(node)
+    super
     @in_def -= 1
   end
+
   def visit_constant_write_node(node)
     @in_casgn += 1
-    super(node)
+    super
     @in_casgn -= 1
   end
+
   def visit_constant_read_node(node)
     if @in_def.zero? && @in_casgn.positive? && (lit = @literals[node.name.to_s])
       @edits << [node.location.start_offset, node.location.end_offset, lit]
     end
-    super(node)
+    super
   end
+
   # `#{CONST}` inside a regexp literal, CONST a known string constant: fold the
   # string's runtime value into the regexp source (what CRuby's interpolation
   # produces at construction), turning the interpolated literal into a plain
@@ -88,7 +92,7 @@ rewriter = Class.new(Prism::Visitor) do
         end
       end
     end
-    super(node)
+    super
   end
 end.new(literals, strings, edits)
 result.value.accept(rewriter)

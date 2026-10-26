@@ -114,7 +114,7 @@ if [ ! -s "$MODS" ]; then
      find Init Std -name '*.lean' | sed 's/\.lean$//'; } | sort -u) > "$MODS"
 fi
 NMODS=$(wc -l < "$MODS" | tr -d ' ')
-if [ "$(ls "$B/leanc/c" | wc -l | tr -d ' ')" -lt "$NMODS" ]; then
+if [ "$(find "$B/leanc/c" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')" -lt "$NMODS" ]; then
   say "regenerating C for $NMODS Init/Std modules with the native lean"
   export TOOLCHAIN B
   # shellcheck disable=SC2016
@@ -176,7 +176,7 @@ for f in debug thread mpz utf8 object apply exception interrupt memory stackinfo
 "$AR" crs "$B/libleanrt.a" "$B"/rt/*.o
 
 say "compiling Init/Std ($NMODS modules)"
-ls "$B"/leanc/c/*.c | xargs -P "$JOBS" -n 1 -I F "$B/one-lean.sh" F leanobj
+printf '%s\n' "$B"/leanc/c/*.c | xargs -P "$JOBS" -n 1 -I F "$B/one-lean.sh" F leanobj
 "$AR" crs "$B/libleanstd.a" "$B"/leanobj/*.o
 
 # ── 5. link ──────────────────────────────────────────────────────────────────

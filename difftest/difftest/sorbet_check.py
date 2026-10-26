@@ -64,11 +64,7 @@ def classify(static_ok: bool, kind: str, exc_class: str | None) -> str:
             return "accepted-and-safe"
         if kind == "sorbet_error":
             return "accepted-blamed"
-        return (
-            "unsoundness-witness"
-            if exc_class in TYPE_ERROR_FAMILY
-            else "accepted-nontype-error"
-        )
+        return "unsoundness-witness" if exc_class in TYPE_ERROR_FAMILY else "accepted-nontype-error"
     if kind == "value":
         return "conservative-rejection"
     return "rejected-and-blamed" if kind == "sorbet_error" else "rejected-and-unsafe"
@@ -97,9 +93,8 @@ class CheckResult:
     def matches_declaration(self) -> bool:
         """Corpus integrity: the declared (static, runtime) pair is what happened."""
         return (
-            ("clean" if self.static_ok else "errors") == self.declared_static
-            and self.runtime_kind == self.declared_runtime
-        )
+            "clean" if self.static_ok else "errors"
+        ) == self.declared_static and self.runtime_kind == self.declared_runtime
 
     def to_json(self) -> dict:
         return {
@@ -188,9 +183,11 @@ def render_markdown(results: list[CheckResult]) -> str:
     lines += [
         "## Theorem scope — what a soundness proof could be about",
         "",
-        f"**{len(in_frag)}/{len(results)} in the Sorbet fragment** "
-        f"(`ruby-lean/RubyCore/Sorbet/Fragment.lean`); intersected with what `srb` accepts, "
-        f"**{len(scope)} are in scope** for a soundness claim.",
+        (
+            f"**{len(in_frag)}/{len(results)} in the Sorbet fragment** "
+            f"(`ruby-lean/RubyCore/Sorbet/Fragment.lean`); intersected with what `srb` accepts, "
+            f"**{len(scope)} are in scope** for a soundness claim."
+        ),
         "",
         "In scope: " + (", ".join(f"`{r.case.id}`" for r in scope) or "_none_"),
         "",
@@ -262,7 +259,7 @@ def run_check(cases: list[TestCase], out_dir: Path, timeout: float = 60.0) -> di
             fh.write(json.dumps(r.to_json()) + "\n")
     (out_dir / "report.md").write_text(render_markdown(results))
 
-    counts = {cell: 0 for cell in CELLS}
+    counts = dict.fromkeys(CELLS, 0)
     for r in results:
         counts[r.cell] += 1
     summary = {
@@ -271,9 +268,7 @@ def run_check(cases: list[TestCase], out_dir: Path, timeout: float = 60.0) -> di
         "mismatches": [r.case.id for r in results if not r.matches_declaration],
         "in_fragment": [r.case.id for r in results if r.fragment and r.fragment.in_fragment],
         "theorem_scope": [r.case.id for r in results if r.in_theorem_scope],
-        "unsoundness_witnesses": [
-            r.case.id for r in results if r.cell == "unsoundness-witness"
-        ],
+        "unsoundness_witnesses": [r.case.id for r in results if r.cell == "unsoundness-witness"],
         "conservative_rejections": [
             r.case.id for r in results if r.cell == "conservative-rejection"
         ],

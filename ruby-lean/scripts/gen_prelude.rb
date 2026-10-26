@@ -12,12 +12,10 @@ require "export"
 sources = [["core", File.expand_path("../prelude/prelude.rb", __dir__)]]
 sources += Dir[File.expand_path("../prelude/features/*.rb", __dir__)].sort.map { |p| [File.basename(p, ".rb"), p] }
 programs = sources.map do |name, path|
-  begin
-    core, = Desugar.program(File.read(path))
-    [name, Export.json(core, literal_namespace: "prelude:#{name}")]
-  rescue Desugar::Unsupported => e
-    abort "prelude #{name} is out of the desugar fragment: #{e.message}"
-  end
+  core, = Desugar.program(File.read(path))
+  [name, Export.json(core, literal_namespace: "prelude:#{name}")]
+rescue Desugar::Unsupported => e
+  abort "prelude #{name} is out of the desugar fragment: #{e.message}"
 end
 
 # Chunk only between characters, never inside a Lean escape.
@@ -38,7 +36,7 @@ def emit_json(name, json)
   end
   chunks << current unless current.empty?
   puts "def #{name} : String := String.join ["
-  chunks.each_with_index { |c, i| puts %(  "#{c}"#{i == chunks.length - 1 ? "" : ","}) }
+  chunks.each_with_index { |c, i| puts %(  "#{c}"#{"," unless i == chunks.length - 1}) }
   puts "]\n"
 end
 

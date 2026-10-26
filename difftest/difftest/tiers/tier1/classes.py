@@ -8,12 +8,13 @@ from __future__ import annotations
 from hypothesis import strategies as st
 
 from . import ast as A
-from .env import *  # noqa: F403
+from .env import *
 from .env import ClassInfo, Env, ModuleInfo, Sig, _callable_ok  # noqa: F401
-from .exprs import *  # noqa: F403
+from .exprs import *
 from .exprs import _expr, _literal, _method_param_spec  # noqa: F401
-from .stmts import *  # noqa: F403
+from .stmts import *
 from .stmts import _merge, _method_body, _stmt_seq  # noqa: F401
+
 
 @st.composite
 def _module_def(draw, env: Env, name: str) -> tuple[A.ModuleDef, Env]:
@@ -25,7 +26,13 @@ def _module_def(draw, env: Env, name: str) -> tuple[A.ModuleDef, Env]:
         # earlier module methods (bare self-sends once mixed in) + prior classes
         m = draw(
             _method_body(
-                MMETHOD_POOL[k], arity, env.methods + tuple(minfos), (), env.classes, (), None,
+                MMETHOD_POOL[k],
+                arity,
+                env.methods + tuple(minfos),
+                (),
+                env.classes,
+                (),
+                None,
                 sigs=env.sigs,
             )
         )
@@ -64,7 +71,11 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
     for k in range(draw(st.integers(0, len(SMETHOD_POOL)))):
         arity = draw(st.integers(0, len(PARAM_POOL)))
         self_methods.append(
-            draw(_method_body(SMETHOD_POOL[k], arity, env.methods, (), env.classes, (), None, sigs=env.sigs))
+            draw(
+                _method_body(
+                    SMETHOD_POOL[k], arity, env.methods, (), env.classes, (), None, sigs=env.sigs
+                )
+            )
         )
         sinfos.append((SMETHOD_POOL[k], arity))
 
@@ -89,17 +100,43 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
         callable_methods = tuple(env.methods) + tuple(
             e for e in effective if _callable_ok(e[0], DMETHOD_POOL[k])
         )
-        m = draw(_method_body(DMETHOD_POOL[k], arity, callable_methods, eff_ivars, env.classes, env.modules, None, is_def=False, sigs=env.sigs))
+        m = draw(
+            _method_body(
+                DMETHOD_POOL[k],
+                arity,
+                callable_methods,
+                eff_ivars,
+                env.classes,
+                env.modules,
+                None,
+                is_def=False,
+                sigs=env.sigs,
+            )
+        )
         decls.append(A.DefineMethod(DMETHOD_POOL[k], m.params, m.body, False))
         effective = _merge(effective, ((DMETHOD_POOL[k], arity),))
     for k in range(draw(st.integers(0, len(DSM_POOL)))):  # define_singleton_method → class method
         arity = draw(st.integers(0, len(PARAM_POOL)))
-        m = draw(_method_body(DSM_POOL[k], arity, env.methods, (), env.classes, (), None, is_def=False, sigs=env.sigs))
+        m = draw(
+            _method_body(
+                DSM_POOL[k],
+                arity,
+                env.methods,
+                (),
+                env.classes,
+                (),
+                None,
+                is_def=False,
+                sigs=env.sigs,
+            )
+        )
         decls.append(A.DefineMethod(DSM_POOL[k], m.params, m.body, True))
         sinfos.append((DSM_POOL[k], arity))
     if draw(st.booleans()):  # `class << self; def esm; end; end` → class method (sclass)
         arity = draw(st.integers(0, len(PARAM_POOL)))
-        em = draw(_method_body(ESM_POOL[0], arity, env.methods, (), env.classes, (), None, sigs=env.sigs))
+        em = draw(
+            _method_body(ESM_POOL[0], arity, env.methods, (), env.classes, (), None, sigs=env.sigs)
+        )
         decls.append(A.EigenClass((em,)))
         sinfos.append((ESM_POOL[0], arity))
 
@@ -123,7 +160,13 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
         methods.append(
             draw(
                 _method_body(
-                    mname, arity, callable_methods, eff_ivars, env.classes, env.modules, can_super,
+                    mname,
+                    arity,
+                    callable_methods,
+                    eff_ivars,
+                    env.classes,
+                    env.modules,
+                    can_super,
                     sigs=env.sigs,
                 )
             )
@@ -168,7 +211,13 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
         name, ctor_arity, effective, tuple(sinfos), attr_writers, tuple(const_names), has_mm
     )
     node = A.ClassDef(
-        name, sup, tuple(mixins), ivars, tuple(self_methods), tuple(methods), tuple(decls),
+        name,
+        sup,
+        tuple(mixins),
+        ivars,
+        tuple(self_methods),
+        tuple(methods),
+        tuple(decls),
         tuple(tail_decls),
     )
     return node, env.with_class(ci)
@@ -184,7 +233,13 @@ def _reopen(draw, env: Env, ci: ClassInfo) -> tuple[A.ClassDef, Env]:
     )
     m = draw(
         _method_body(
-            ROPEN_POOL[k], arity, callable_methods, IVAR_POOL[: ci.ctor_arity], env.classes, (), None,
+            ROPEN_POOL[k],
+            arity,
+            callable_methods,
+            IVAR_POOL[: ci.ctor_arity],
+            env.classes,
+            (),
+            None,
             sigs=env.sigs,
         )
     )

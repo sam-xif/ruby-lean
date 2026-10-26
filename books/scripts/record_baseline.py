@@ -14,6 +14,7 @@ Two fields. Once recorded, a program whose answer changes fails
   desugarer) that declines the program. Recorded so that a new such failure is
   reported while the known ones are not.
 """
+
 from __future__ import annotations
 
 import glob
@@ -38,9 +39,11 @@ def main(argv: list[str]) -> int:
     corpus = os.path.join(ROOT, "corpus")
     changed = 0
     for f in sorted(glob.glob(os.path.join(build, "*.rung.json"))):
-        rec = json.load(open(f))
+        with open(f) as fh:
+            rec = json.load(fh)
         mp = os.path.join(corpus, rec["base"] + ".meta.json")
-        meta = json.load(open(mp))
+        with open(mp) as fh:
+            meta = json.load(fh)
         before = json.dumps(meta, sort_keys=True)
         meta["expect_sorbet"] = bool(rec.get("srb_clean"))
         note = gist(rec.get("srb_diagnostics", [])) if not rec.get("srb_clean") else None
@@ -49,7 +52,7 @@ def main(argv: list[str]) -> int:
         else:
             meta.pop("sorbet_note", None)
         if rec.get("stage") != "done":
-            meta["known_upstream_failure"] = f"{rec.get('stage')}: {rec.get('error','')[:120]}"
+            meta["known_upstream_failure"] = f"{rec.get('stage')}: {rec.get('error', '')[:120]}"
         else:
             meta.pop("known_upstream_failure", None)
         if json.dumps(meta, sort_keys=True) != before:

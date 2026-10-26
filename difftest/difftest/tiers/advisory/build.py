@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 
-from ..tier0.rspec_harvest import (BLANK_STUB, SORBET_REQUIRE, _ruby, build_prefix)
+from ..tier0.rspec_harvest import BLANK_STUB, SORBET_REQUIRE, _ruby, build_prefix
 from . import gen, harness
 
 FEATURE = "vulns/vulnerability"
@@ -25,8 +25,7 @@ FEATURE = "vulns/vulnerability"
 EXTRA_FEATURES = ["version"]
 
 
-def build(brew_root: str, out_dir: str, n: int, seed: int,
-          ruby: str | None = None) -> dict:
+def build(brew_root: str, out_dir: str, n: int, seed: int, ruby: str | None = None) -> dict:
     ruby = ruby or _ruby()
     os.makedirs(out_dir, exist_ok=True)
     prefix = build_prefix(FEATURE, brew_root, ruby)
@@ -35,14 +34,15 @@ def build(brew_root: str, out_dir: str, n: int, seed: int,
     pre = SORBET_REQUIRE + BLANK_STUB
     manifest = []
     for c in gen.cases(n, seed):
-        src = harness.program(c["id"], gen.to_ruby(c["advisory"]), c["versions"],
-                              prefix, pre, c["mutations"])
+        src = harness.program(
+            c["id"], gen.to_ruby(c["advisory"]), c["versions"], prefix, pre, c["mutations"]
+        )
         with open(os.path.join(out_dir, c["id"] + ".rb"), "w", encoding="utf-8") as f:
             f.write(src)
-        manifest.append({"id": c["id"], "inputs": len(c["versions"]),
-                         "mutations": c["mutations"], "seed": seed})
+        manifest.append(
+            {"id": c["id"], "inputs": len(c["versions"]), "mutations": c["mutations"], "seed": seed}
+        )
     with open(os.path.join(out_dir, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)
         f.write("\n")
-    return {"programs": len(manifest),
-            "inputs": sum(m["inputs"] for m in manifest), "out": out_dir}
+    return {"programs": len(manifest), "inputs": sum(m["inputs"] for m in manifest), "out": out_dir}

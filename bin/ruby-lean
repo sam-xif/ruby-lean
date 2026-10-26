@@ -22,17 +22,20 @@ model and CRuby differ under --compare, 2 the tools are not built (`make run`),
 3 the program uses Ruby that the desugarer or the model does not support; the
 reason is printed.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUBY = os.environ.get("RUBY", "ruby")
 RUBYCORE = os.environ.get(
-    "RUBYCORE", os.path.join(ROOT, "ruby-lean", ".lake", "build", "bin", "rubycore"))
+    "RUBYCORE", os.path.join(ROOT, "ruby-lean", ".lake", "build", "bin", "rubycore")
+)
 EXPORT = os.path.join(ROOT, "desugar", "bin", "export-json")
 # rubycore flags that take a value, and the ones that replace the observation.
 VALUE_FLAGS = {"--fuel", "--trace-from", "--trace-at"}
@@ -41,9 +44,13 @@ RAW_FLAGS = {"--trace", "--steps", "--fragment", "--sigs", "--lean-term"}
 
 def cruby(source: str) -> tuple[str, str | None]:
     """stdout and the uncaught exception, as `Class: message`, under CRuby."""
-    wrapper = ("begin; eval(STDIN.read, TOPLEVEL_BINDING, 'prog.rb'); "
-               "rescue Exception => e; $stderr.print(\"#{e.class}: #{e.message}\"); end")
-    p = subprocess.run([RUBY, "-e", wrapper], input=source, capture_output=True, text=True)
+    wrapper = (
+        "begin; eval(STDIN.read, TOPLEVEL_BINDING, 'prog.rb'); "
+        'rescue Exception => e; $stderr.print("#{e.class}: #{e.message}"); end'
+    )
+    p = subprocess.run(
+        [RUBY, "-e", wrapper], input=source, capture_output=True, text=True, check=False
+    )
     return p.stdout, (p.stderr or None)
 
 
@@ -59,20 +66,24 @@ def main(argv: list[str]) -> int:
     path = None
     if argv and os.path.isfile(argv[-1]) and not (len(argv) > 1 and argv[-2] in VALUE_FLAGS):
         path = argv.pop()
-    source = open(path).read() if path else sys.stdin.read()
+    source = Path(path).read_text() if path else sys.stdin.read()
     raw = any(a in RAW_FLAGS for a in argv)
 
     if not os.access(RUBYCORE, os.X_OK):
         print(f"ruby-lean: the model is not built at {RUBYCORE} (run `make run`)", file=sys.stderr)
         return 2
 
-    d = subprocess.run([RUBY, EXPORT], input=source, capture_output=True, text=True)
+    d = subprocess.run([RUBY, EXPORT], input=source, capture_output=True, text=True, check=False)
     if d.returncode != 0:
-        print("ruby-lean: the desugarer does not support this program:\n  " +
-              d.stderr.strip(), file=sys.stderr)
+        print(
+            "ruby-lean: the desugarer does not support this program:\n  " + d.stderr.strip(),
+            file=sys.stderr,
+        )
         return 3 if d.returncode == 3 else 1
 
-    m = subprocess.run([RUBYCORE, *argv], input=d.stdout, capture_output=True, text=True)
+    m = subprocess.run(
+        [RUBYCORE, *argv], input=d.stdout, capture_output=True, text=True, check=False
+    )
     if m.returncode != 0:
         what = "the model does not support this program" if m.returncode == 3 else "model error"
         print(f"ruby-lean: {what}:\n  " + m.stderr.strip(), file=sys.stderr)

@@ -1,10 +1,10 @@
 """CLI for the differential test engine.
 
-    python -m difftest run --tier 1 -n 200 --sut identity --seed 42
-    python -m difftest run --tier 1 -n 100 --sut desugar --inject-bug
-    python -m difftest run --tier 0 --sut desugar          # bootstraptest corpus
-    python -m difftest gen3 --category eval-order -n 5
-    python -m difftest replay corpus/tier3 --sut identity
+python -m difftest run --tier 1 -n 200 --sut identity --seed 42
+python -m difftest run --tier 1 -n 100 --sut desugar --inject-bug
+python -m difftest run --tier 0 --sut desugar          # bootstraptest corpus
+python -m difftest gen3 --category eval-order -n 5
+python -m difftest replay corpus/tier3 --sut identity
 """
 
 from __future__ import annotations
@@ -20,13 +20,21 @@ from pathlib import Path
 from .control import CRubyRunner
 from .report import Reporter
 from .runner import run_campaign
-from .sources import (REGRESSION_DEFAULT_STATUS, REGRESSION_FAILURES,
-                      REGRESSION_OUTCOMES, load_bootstraptest, load_corpus_cases,
-                      load_advisory_corpus, load_domain_corpus,
-                      load_regressions_corpus, load_slice_corpus,
-                      load_sorbet_corpus, regression_outcome)
-from .tiers import GENERATIVE_ARMS
+from .sources import (
+    REGRESSION_DEFAULT_STATUS,
+    REGRESSION_FAILURES,
+    REGRESSION_OUTCOMES,
+    load_advisory_corpus,
+    load_bootstraptest,
+    load_corpus_cases,
+    load_domain_corpus,
+    load_regressions_corpus,
+    load_slice_corpus,
+    load_sorbet_corpus,
+    regression_outcome,
+)
 from .sut import make_sut
+from .tiers import GENERATIVE_ARMS
 
 BASE = Path(__file__).resolve().parents[1]  # ruby/difftest/
 
@@ -95,9 +103,13 @@ def cmd_gates(args) -> int:
     always a measurement of a real run rather than a hand-kept list."""
     import collections
 
-    d = Path(args.report) if args.report else max(
-        (p for p in (BASE / "reports").iterdir() if p.is_dir()),
-        key=lambda p: p.stat().st_mtime)
+    d = (
+        Path(args.report)
+        if args.report
+        else max(
+            (p for p in (BASE / "reports").iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime
+        )
+    )
     by_reason: collections.Counter = collections.Counter()
     by_file: collections.Counter = collections.Counter()
     verdicts: collections.Counter = collections.Counter()
@@ -154,13 +166,18 @@ def cmd_run(args) -> int:
         known = set(GENERATIVE_ARMS) | set(CORPUS_ARMS)
         unknown = set(mix) - known
         if unknown:
-            print(f"unknown mix arms: {sorted(unknown)}; known: {', '.join(sorted(known))}",
-                  file=sys.stderr)
+            print(
+                f"unknown mix arms: {sorted(unknown)}; known: {', '.join(sorted(known))}",
+                file=sys.stderr,
+            )
             return 2
-        corpus_cases = {name: _load_corpus_arm(name, args)
-                        for name in mix if name not in GENERATIVE_ARMS}
+        corpus_cases = {
+            name: _load_corpus_arm(name, args) for name in mix if name not in GENERATIVE_ARMS
+        }
         extra = run_generative_campaign(
-            control, sut, reporter,
+            control,
+            sut,
+            reporter,
             n=args.n if args.n is not None else 100,
             seed=args.seed,
             mix=mix,
@@ -233,12 +250,20 @@ def cmd_run(args) -> int:
             counts[o["outcome"]] = counts.get(o["outcome"], 0) + 1
         failures = [cid for cid, o in outcomes.items() if o["outcome"] in REGRESSION_FAILURES]
         exit_override = 1 if failures else 0
-        extra = {"regressions": {"ran": len(results), "outcomes": outcomes,
-                                 "counts": counts, "failures": failures,
-                                 "legend": REGRESSION_OUTCOMES}}
+        extra = {
+            "regressions": {
+                "ran": len(results),
+                "outcomes": outcomes,
+                "counts": counts,
+                "failures": failures,
+                "legend": REGRESSION_OUTCOMES,
+            }
+        }
     elif args.tier in ("1", "1.5"):
         extra = run_generative_campaign(
-            control, sut, reporter,
+            control,
+            sut,
+            reporter,
             n=args.n if args.n is not None else 100,
             seed=args.seed,
             mix={f"tier{args.tier}": 1.0},
@@ -306,14 +331,18 @@ def cmd_checker_sample(args) -> int:
     count = args.count if args.count is not None else 4
     if args.kind == "siggen":
         if args.sigil == "strict" and args.coverage < 1.0:
-            print("--sigil strict forces every method to carry a sig (srb 7017); "
-                  "use --sigil true for partial coverage", file=sys.stderr)
+            print(
+                "--sigil strict forces every method to carry a sig (srb 7017); "
+                "use --sigil true for partial coverage",
+                file=sys.stderr,
+            )
             return 2
         # Over-generate when filtering, so `--intent` still yields `count`
         # programs instead of however many happen to fall in the slice.
         n = count * 4 if args.intent else count
-        samples = sig_gen.sample(n, args.seed, sigil=args.sigil,
-                                 coverage=args.coverage, loose=args.loose)
+        samples = sig_gen.sample(
+            n, args.seed, sigil=args.sigil, coverage=args.coverage, loose=args.loose
+        )
     else:
         n = count * 4 if args.intent else count
         samples = fragment_fuzz.sample(n, args.seed)
@@ -321,11 +350,20 @@ def cmd_checker_sample(args) -> int:
     if args.intent:
         samples = [s for s in samples if s.intent == args.intent]
         if not samples:
-            kinds = sorted({s.intent for s in (
-                sig_gen.sample(12, 0) if args.kind == "siggen"
-                else fragment_fuzz.sample(12, 0))})
-            print(f"no `{args.intent}` programs; {args.kind} intents are "
-                  f"{', '.join(kinds)}", file=sys.stderr)
+            kinds = sorted(
+                {
+                    s.intent
+                    for s in (
+                        sig_gen.sample(12, 0)
+                        if args.kind == "siggen"
+                        else fragment_fuzz.sample(12, 0)
+                    )
+                }
+            )
+            print(
+                f"no `{args.intent}` programs; {args.kind} intents are {', '.join(kinds)}",
+                file=sys.stderr,
+            )
             return 2
     samples = samples[:count]
 
@@ -338,8 +376,10 @@ def cmd_checker_sample(args) -> int:
     # Footer on stderr so `> out.rb` stays clean; flush first or the terminal
     # shows it before the programs it describes.
     sys.stdout.flush()
-    print(f"# {len(samples)} program(s); reproduce with "
-          f"--kind {args.kind} --seed {args.seed}", file=sys.stderr)
+    print(
+        f"# {len(samples)} program(s); reproduce with --kind {args.kind} --seed {args.seed}",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -360,9 +400,15 @@ def cmd_checker(args) -> int:
         from .sig_gen import run_sigread
 
         out_dir = _out_dir(args.out, "checker-sigread")
-        summary = run_sigread(count, args.seed, out_dir, sigil=args.sigil,
-                              coverage=args.coverage, loose=args.loose,
-                              timeout=args.timeout)
+        summary = run_sigread(
+            count,
+            args.seed,
+            out_dir,
+            sigil=args.sigil,
+            coverage=args.coverage,
+            loose=args.loose,
+            timeout=args.timeout,
+        )
         _print_summary(summary, out_dir)
         # A reader that loses or garbles a declared type would poison every later
         # typing decision, so any mismatch fails. `undecidable` fails too: the
@@ -373,13 +419,21 @@ def cmd_checker(args) -> int:
     from .sig_gen import run_siggen
 
     if args.sigil == "strict" and args.coverage < 1.0:
-        print("--sigil strict forces every method to carry a sig (srb 7017); "
-              "use --sigil true for partial coverage", file=sys.stderr)
+        print(
+            "--sigil strict forces every method to carry a sig (srb 7017); "
+            "use --sigil true for partial coverage",
+            file=sys.stderr,
+        )
         return 2
     out_dir = _out_dir(args.out, "checker-siggen")
     summary = run_siggen(
-        count, args.seed, out_dir, sigil=args.sigil,
-        coverage=args.coverage, loose=args.loose, timeout=args.timeout,
+        count,
+        args.seed,
+        out_dir,
+        sigil=args.sigil,
+        coverage=args.coverage,
+        loose=args.loose,
+        timeout=args.timeout,
     )
     _print_summary(summary, out_dir)
     return 1 if summary["violations"] else 0
@@ -407,7 +461,9 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     def common(p):
-        p.add_argument("--sut", default="stub", choices=["stub", "identity", "desugar", "lean", "sig-strip"])
+        p.add_argument(
+            "--sut", default="stub", choices=["stub", "identity", "desugar", "lean", "sig-strip"]
+        )
         p.add_argument("--inject-bug", action="store_true", help="desugar SUT: enable DESUGAR_BUG")
         p.add_argument("--timeout", type=float, default=10.0)
         p.add_argument("--out", help="report directory (default: reports/<timestamp>-<label>)")
@@ -416,15 +472,16 @@ def main(argv=None) -> int:
     # tier "1.5" is the tier-1 generator with eval-order probes on (no per-tier
     # flag; a distinct tier id keeps selection uniform).
     p_run.add_argument(
-        "--tier", type=str, default="1",
-        choices=["0", "1", "1.5", "2", "3", "4", "slice", "domain", "advisory",
-                 "regressions"]
+        "--tier",
+        type=str,
+        default="1",
+        choices=["0", "1", "1.5", "2", "3", "4", "slice", "domain", "advisory", "regressions"],
     )
     p_run.add_argument(
         "--mix",
-        help='weighted mixed campaign over generative (tier1, tier1.5) and corpus '
-             '(tier0, tier3, sorbet) arms, e.g. "tier1.5=0.9,tier0=0.05,tier3=0.05" '
-             '(overrides --tier)',
+        help="weighted mixed campaign over generative (tier1, tier1.5) and corpus "
+        '(tier0, tier3, sorbet) arms, e.g. "tier1.5=0.9,tier0=0.05,tier3=0.05" '
+        "(overrides --tier)",
     )
     p_run.add_argument(
         "-n", type=int, help="number of cases (tier 1/mix default: 100; tier 0 default: all)"
@@ -466,11 +523,12 @@ def main(argv=None) -> int:
     p_adv = sub.add_parser(
         "advisory-fuzz",
         help="generate the advisory-shape corpus (R1: the decision core over "
-             "arbitrary JSON.parse output)",
+        "arbitrary JSON.parse output)",
     )
     p_adv.add_argument("--brew", required=True, help="path to a Homebrew/brew checkout")
-    p_adv.add_argument("-n", type=int, default=800,
-                       help="number of (advisory x version) pairs (default 800)")
+    p_adv.add_argument(
+        "-n", type=int, default=800, help="number of (advisory x version) pairs (default 800)"
+    )
     p_adv.add_argument("--seed", type=int, default=7)
     p_adv.add_argument("--out", help="output corpus dir (default corpus/advisory-fuzz)")
     p_adv.add_argument("--ruby", help="Ruby used for linking")
@@ -496,23 +554,39 @@ def main(argv=None) -> int:
     p_checker = sub.add_parser(
         "checker",
         help="generate typed programs and relate their intent to srb; "
-             "check the signature reader against what was declared",
+        "check the signature reader against what was declared",
     )
-    p_checker.add_argument("subcommand",
-                           choices=["siggen", "sample", "sigread"])
-    p_checker.add_argument("--count", type=int, default=None,
-                           help="programs to generate (default 60; 4 for `sample`)")
+    p_checker.add_argument("subcommand", choices=["siggen", "sample", "sigread"])
+    p_checker.add_argument(
+        "--count", type=int, default=None, help="programs to generate (default 60; 4 for `sample`)"
+    )
     p_checker.add_argument("--seed", type=int, default=0)
     p_checker.add_argument("--timeout", type=float, default=300.0)
     p_checker.add_argument("--out", help="report directory")
-    p_checker.add_argument("--sigil", choices=["true", "strict"], default="true",
-                           help="siggen only; `strict` forces coverage=1 (7017)")
-    p_checker.add_argument("--coverage", type=float, default=1.0,
-                           help="siggen only: fraction of methods carrying a sig")
-    p_checker.add_argument("--loose", type=float, default=0.25,
-                           help="siggen only: fraction of sigs widened to a supertype")
-    p_checker.add_argument("--kind", choices=["siggen", "fuzz"], default="siggen",
-                           help="sample only: which generator to draw from")
+    p_checker.add_argument(
+        "--sigil",
+        choices=["true", "strict"],
+        default="true",
+        help="siggen only; `strict` forces coverage=1 (7017)",
+    )
+    p_checker.add_argument(
+        "--coverage",
+        type=float,
+        default=1.0,
+        help="siggen only: fraction of methods carrying a sig",
+    )
+    p_checker.add_argument(
+        "--loose",
+        type=float,
+        default=0.25,
+        help="siggen only: fraction of sigs widened to a supertype",
+    )
+    p_checker.add_argument(
+        "--kind",
+        choices=["siggen", "fuzz"],
+        default="siggen",
+        help="sample only: which generator to draw from",
+    )
     p_checker.add_argument("--intent", help="sample only: show just this intent")
     p_checker.set_defaults(func=cmd_checker)
 

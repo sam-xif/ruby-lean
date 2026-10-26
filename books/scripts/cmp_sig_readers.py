@@ -22,35 +22,72 @@ That is the number to watch: the two `accepted` counts must match.
 
 Run from books/, after `scripts/build_corpus.py` and `lake build validate-one`.
 """
-import json, subprocess, sys, glob, os
+
+import glob
+import json
+import os
+import subprocess
+from pathlib import Path
+
 V = "./.lake/build/bin/validate-one"
+
+
 def verdict(deriv_json, ast):
     d = json.loads(deriv_json)
-    if d["status"] != "ok": return "blocked"
-    p = subprocess.run([V], input=json.dumps({"program": ast, "deriv": d["deriv"]}),
-                       capture_output=True, text=True)
-    if p.returncode != 0: return "validate-error"
+    if d["status"] != "ok":
+        return "blocked"
+    p = subprocess.run(
+        [V],
+        input=json.dumps({"program": ast, "deriv": d["deriv"]}),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if p.returncode != 0:
+        return "validate-error"
     return "accept" if json.loads(p.stdout)["validateD"] else "reject"
 
-same = diff = 0; rows = []; acc_ref = acc_cand = 0
+
+same = diff = 0
+rows = []
+acc_ref = acc_cand = 0
 for astf in sorted(glob.glob("build/*.ast.json")):
-    stem = os.path.basename(astf)[:-len(".ast.json")]
+    stem = os.path.basename(astf)[: -len(".ast.json")]
     sigs_f, rb = f"build/{stem}.sigs.json", f"corpus/{stem}.rb"
-    if not (os.path.exists(sigs_f) and os.path.exists(rb)): continue
-    ast = json.load(open(astf))
-    ref = subprocess.run(["ruby", "scripts/emit_deriv.rb", "--ast", astf,
-        "--sigs", sigs_f], capture_output=True, text=True).stdout
-    rs = subprocess.run(["ruby", "scripts/read_sigs.rb"], stdin=open(rb),
-        capture_output=True, text=True).stdout
-    cand = subprocess.run(["ruby", "scripts/emit_deriv.rb"],
+    if not (os.path.exists(sigs_f) and os.path.exists(rb)):
+        continue
+    with open(astf) as fh:
+        ast = json.load(fh)
+    ref = subprocess.run(
+        ["ruby", "scripts/emit_deriv.rb", "--ast", astf, "--sigs", sigs_f],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    rs = subprocess.run(
+        ["ruby", "scripts/read_sigs.rb"],
+        input=Path(rb).read_text(),
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    cand = subprocess.run(
+        ["ruby", "scripts/emit_deriv.rb"],
         input=json.dumps({"ast": ast, "sigs": json.loads(rs)}),
-        capture_output=True, text=True).stdout
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
     a, b = verdict(ref, ast), verdict(cand, ast)
-    acc_ref += a == "accept"; acc_cand += b == "accept"
-    if a == b: same += 1
+    acc_ref += a == "accept"
+    acc_cand += b == "accept"
+    if a == b:
+        same += 1
     else:
-        diff += 1; rows.append((stem, a, b))
+        diff += 1
+        rows.append((stem, a, b))
 print(f"validateD verdict: {same} identical, {diff} differ")
 print(f"  programs accepted, Sorbet path: {acc_ref}")
 print(f"  programs accepted, Prism path:  {acc_cand}")
-for r in rows: print(f"  !! {r[0]}: sorbet={r[1]} prism={r[2]}")
+for r in rows:
+    print(f"  !! {r[0]}: sorbet={r[1]} prism={r[2]}")

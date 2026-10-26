@@ -8,55 +8,56 @@
 module RubyCore
   # head => arity/shape description (for documentation; is_core checks heads + recursion)
   HEADS = {
-    int:   "[:int, Integer]",
-    flt:   "[:flt, Float]",
-    rat:   "[:rat, Integer numerator, positive Integer denominator]",
-    imag:  "[:imag, Integer/Float/Rational literal]",
-    str:   "[:str, String]",           # literal string, no interpolation
-    sym:   "[:sym, String]",
-    true:  "[:true]",
+    int: "[:int, Integer]",
+    flt: "[:flt, Float]",
+    rat: "[:rat, Integer numerator, positive Integer denominator]",
+    imag: "[:imag, Integer/Float/Rational literal]",
+    str: "[:str, String]", # literal string, no interpolation
+    sym: "[:sym, String]",
+    true: "[:true]",
     false: "[:false]",
-    nil:   "[:nil]",
-    self:  "[:self]",
-    var:   "[:var, kind, name]      kind ∈ :local|:ivar|:cvar|:gvar; name carries any sigil",
+    nil: "[:nil]",
+    self: "[:self]",
+    var: "[:var, kind, name]      kind ∈ :local|:ivar|:cvar|:gvar; name carries any sigil",
     vasgn: "[:vasgn, kind, name, expr]",
     const: "[:const, name]",
     casgn: "[:casgn, name, expr]",
-    cpath: "[:cpath, base_or_nil, name]",         # A::B (base a node) / ::B (base nil, top-level)
-    cpath_asgn: "[:cpath_asgn, base_or_nil, name, expr]",  # A::B = expr
-    send:  "[:send, recv_or_nil, mname, [args], block_or_nil]",
-    vcall: "[:vcall, mname]",  # bare identifier, not a local (Prism variable_call): NameError on miss
-    block: "[:block, [params], [block_locals], [declared], body]",  # {|params; locals| body}; params are param-nodes. `declared` = implicit parse-time block-locals
-    yield: "[:yield, [args]]",                               # yield to the current block
-    if:    "[:if, cond, then, else_or_nil]",
+    cpath: "[:cpath, base_or_nil, name]", # A::B (base a node) / ::B (base nil, top-level)
+    cpath_asgn: "[:cpath_asgn, base_or_nil, name, expr]", # A::B = expr
+    send: "[:send, recv_or_nil, mname, [args], block_or_nil]",
+    vcall: "[:vcall, mname]", # bare identifier, not a local (Prism variable_call): NameError on miss
+    # {|params; locals| body}; params are param-nodes. `declared` = implicit parse-time block-locals
+    block: "[:block, [params], [block_locals], [declared], body]",
+    yield: "[:yield, [args]]", # yield to the current block
+    if: "[:if, cond, then, else_or_nil]",
     while: "[:while, cond, body]",
-    def:   "[:def, name, [params], body]",              # params are param-nodes (see PARAM_HEADS)
+    def: "[:def, name, [params], body]", # params are param-nodes (see PARAM_HEADS)
     array: "[:array, [elems]]",
-    hash:  "[:hash, [[key, val], ...]]",
-    splat: "[:splat, expr_or_nil]",     # only valid as a send-arg / array element (`*e`)
-    fwd:   "[:fwd]",                    # `...` argument forwarding — only valid as a send arg
-    kwargs: "[:kwargs, [elems]]",       # only valid as the last send/super arg; elem = [k,v] (assoc) | [:kwsplat, e_or_nil]
-    blockpass: "[:blockpass, expr_or_nil]",  # only valid in a send/super block slot (`&e`); nil = anonymous `&`
-    return: "[:return, expr_or_nil]",   # primitive non-local control
-    break:  "[:break, expr_or_nil]",
-    next:   "[:next, expr_or_nil]",
-    retry:  "[:retry]",                 # re-run the enclosing begin body
+    hash: "[:hash, [[key, val], ...]]",
+    splat: "[:splat, expr_or_nil]", # only valid as a send-arg / array element (`*e`)
+    fwd: "[:fwd]", # `...` argument forwarding — only valid as a send arg
+    kwargs: "[:kwargs, [elems]]", # only valid as the last send/super arg; elem = [k,v] (assoc) | [:kwsplat, e_or_nil]
+    blockpass: "[:blockpass, expr_or_nil]", # only valid in a send/super block slot (`&e`); nil = anonymous `&`
+    return: "[:return, expr_or_nil]", # primitive non-local control
+    break: "[:break, expr_or_nil]",
+    next: "[:next, expr_or_nil]",
+    retry: "[:retry]", # re-run the enclosing begin body
     # object-model core (C12 category d): class/module bodies are evaluated with a fresh
     # cref + self, so these are irreducible primitives, NOT sugar for Class.new.
-    class:  "[:class, name, super_or_nil, body]",   # name: simple constant String
+    class: "[:class, name, super_or_nil, body]", # name: simple constant String
     module: "[:module, name, body]",
-    sclass: "[:sclass, obj, body]",                 # class << obj; body; end
-    defs:   "[:defs, recv, name, [param_names], body]",  # def recv.name(params); body; end
-    begin:  "[:begin, body, [rescues], else_or_nil, ensure_or_nil]",  # rescue = [[exc_nodes], ref_or_nil, handler]
-    super:  "[:super, [args], block_or_nil]",       # explicit super(...) (incl. super() = empty args)
+    sclass: "[:sclass, obj, body]", # class << obj; body; end
+    defs: "[:defs, recv, name, [param_names], body]", # def recv.name(params); body; end
+    begin: "[:begin, body, [rescues], else_or_nil, ensure_or_nil]", # rescue = [[exc_nodes], ref_or_nil, handler]
+    super: "[:super, [args], block_or_nil]", # explicit super(...) (incl. super() = empty args)
     zsuper: "[:zsuper, block_or_nil]",              # bare super (forwards enclosing args)
     defined: "[:defined, expr]",                    # defined?(expr) — inspects, returns String|nil
-    redo:  "[:redo]",                               # re-run the current loop iteration
+    redo: "[:redo]", # re-run the current loop iteration
     undef: "[:undef, [names]]",                     # undef foo, bar  (names carry any sigil)
     alias: "[:alias, new, old]",                    # alias new old   (method or $global names)
-    for:   "[:for, [[kind, name], ...], coll, body, multiple?]",  # for x in coll; body; end (index leaks)
-    dowhile: "[:dowhile, body, cond]",              # begin; body; end while cond (run-once)
-    seq:   "[:seq, *nodes]"
+    for: "[:for, [[kind, name], ...], coll, body, multiple?]", # for x in coll; body; end (index leaks)
+    dowhile: "[:dowhile, body, cond]", # begin; body; end while cond (run-once)
+    seq: "[:seq, *nodes]"
   }.freeze
 
   # A rescue clause's `=> target` reference (and massign targets) is a [kind, name] pair,
@@ -128,9 +129,15 @@ module RubyCore
     when :int    then node[1].is_a?(Integer) ? nil : "int payload not Integer"
     when :flt    then node[1].is_a?(Float) ? nil : "flt payload not Float"
     when :rat
-      node.length == 3 && node[1].is_a?(Integer) && node[2].is_a?(Integer) && node[2] > 0 ? nil : "invalid rational literal"
+      valid = node.length == 3 && node[1].is_a?(Integer) && node[2].is_a?(Integer) && node[2] > 0
+      valid ? nil : "invalid rational literal"
     when :imag
-      node.length == 2 && node[1].is_a?(Array) && %i[int flt rat].include?(node[1][0]) ? explain(node[1]) : "invalid imaginary literal"
+      if node.length == 2 && node[1].is_a?(Array) && %i[int flt
+                                                        rat].include?(node[1][0])
+        explain(node[1])
+      else
+        "invalid imaginary literal"
+      end
     when :str, :sym then node[1].is_a?(String) ? nil : ":#{head} payload not String"
     when :true, :false, :nil, :self then node.length == 1 ? nil : ":#{head} takes no children"
     when :var
@@ -142,8 +149,8 @@ module RubyCore
       return "vasgn kind invalid: #{kind.inspect}" unless %i[local ivar cvar gvar].include?(kind)
       return "vasgn name not String" unless name.is_a?(String)
       explain(e)
-    when :const  then node[1].is_a?(String) ? nil : "const name not String"
-    when :casgn  then node[1].is_a?(String) ? explain(node[2]) : "casgn name not String"
+    when :const then node[1].is_a?(String) ? nil : "const name not String"
+    when :casgn then node[1].is_a?(String) ? explain(node[2]) : "casgn name not String"
     when :cpath
       _, base, name = node
       return "cpath name not String" unless name.is_a?(String)
@@ -163,10 +170,8 @@ module RubyCore
     when :block
       _, params, locals, declared, body = node
       return "block params: #{params_error(params)}" if params_error(params)
-      return "block locals not Array of String" unless locals.is_a?(Array) && locals.all? { |p| p.is_a?(String) }
-      unless declared.is_a?(Array) && declared.all? { |p| p.is_a?(String) }
-        return "block declared not Array of String"
-      end
+      return "block locals not Array of String" unless locals.is_a?(Array) && locals.all?(String)
+      return "block declared not Array of String" unless declared.is_a?(Array) && declared.all?(String)
       explain(body)
     when :yield
       args = node[1]
@@ -175,7 +180,7 @@ module RubyCore
       nil
     when :if
       _, c, t, e = node
-      [c, t, (e || [:nil])].each { |n| x = explain(n); return "if child: #{x}" if x }
+      [c, t, e || [:nil]].each { |n| x = explain(n); return "if child: #{x}" if x }
       nil
     when :while
       _, c, b = node
@@ -217,7 +222,7 @@ module RubyCore
       (x = explain(obj)) ? "sclass obj: #{x}" : explain(body)
     when :defs
       _, recv, name, params, body = node
-      return "defs recv: #{explain(recv)}" if !is_core?(recv)
+      return "defs recv: #{explain(recv)}" unless is_core?(recv)
       return "defs name not String" unless name.is_a?(String)
       return "defs params: #{params_error(params)}" if params_error(params)
       explain(body)
@@ -251,13 +256,14 @@ module RubyCore
       node.length == 1 ? nil : ":redo takes no children"
     when :undef
       names = node[1]
-      return "undef names not Array of String" unless names.is_a?(Array) && names.all? { |x| x.is_a?(String) }
+      return "undef names not Array of String" unless names.is_a?(Array) && names.all?(String)
       nil
     when :alias
       node[1].is_a?(String) && node[2].is_a?(String) ? nil : "alias names not String"
     when :for
       _, targets, coll, body = node
-      return "for multiple marker invalid" unless node.length == 4 || (node.length == 5 && [true, false].include?(node[4]))
+      return "for multiple marker invalid" unless node.length == 4 || (node.length == 5 && [true,
+                                                                                            false].include?(node[4]))
       return "for targets not Array" unless targets.is_a?(Array) && !targets.empty?
       targets.each do |kn|
         return "for target not [kind, name]" unless kn.is_a?(Array) && kn.length == 2 && kn[1].is_a?(String)

@@ -96,8 +96,22 @@ RX_BACKREF_POOL: tuple[tuple[str, str], ...] = ((r"(\d)\1", ""), (r"(a|b)-\1", "
 
 # Subjects chosen so the pool above both matches and misses on real content.
 RX_SUBJECT_POOL: tuple[str, ...] = (
-    "1.2.3", "1.2", "10.20.30", "0.1.0-rc.1", "v2.4", "1.2.3_1",
-    "abc", "ok", "OK", "zap-42", "es5-shim-4.6.7", "a b", "", "11", "aab", "x.y",
+    "1.2.3",
+    "1.2",
+    "10.20.30",
+    "0.1.0-rc.1",
+    "v2.4",
+    "1.2.3_1",
+    "abc",
+    "ok",
+    "OK",
+    "zap-42",
+    "es5-shim-4.6.7",
+    "a b",
+    "",
+    "11",
+    "aab",
+    "x.y",
 )
 
 # No backreference syntax (`\1`) in a replacement — the model gates a replacement
@@ -105,7 +119,11 @@ RX_SUBJECT_POOL: tuple[str, ...] = (
 RX_REPL_POOL: tuple[str, ...] = ("-", "", "Z", "<>")
 
 TR_POOL: tuple[tuple[str, str], ...] = (
-    ("a-z", "A-Z"), ("0-9", "#"), ("abc", "x"), ("^0-9", "."), ("aeiou", ""),
+    ("a-z", "A-Z"),
+    ("0-9", "#"),
+    ("abc", "x"),
+    ("^0-9", "."),
+    ("aeiou", ""),
 )
 
 
@@ -133,7 +151,7 @@ def regex_probe(draw, idx: int) -> tuple:
 
     rxv, sjv, mv = f"rx{idx}", f"sj{idx}", f"md{idx}"
     rx, sj, md = A.LocalRead(rxv), A.LocalRead(sjv), A.LocalRead(mv)
-    guarded = lambda name, args=(): A.And(md, A.MethodCall(md, name, args))  # noqa: E731
+    guarded = lambda name, args=(): A.And(md, A.MethodCall(md, name, args))
 
     split_args: tuple = (rx,) if limit is None else (rx, A.IntLit(limit))
     stmts: list[A.Node] = [
@@ -164,7 +182,10 @@ def regex_probe(draw, idx: int) -> tuple:
         # `Purl.encode` actually takes
         _show(
             A.BlockCall(
-                sj, blk_meth, (rx,), A.Block(("w",), (A.MethodCall(A.LocalRead("w"), "upcase", ()),))
+                sj,
+                blk_meth,
+                (rx,),
+                A.Block(("w",), (A.MethodCall(A.LocalRead("w"), "upcase", ()),)),
             )
         ),
         # `$~` and friends are *views* of the last match, not stored globals
@@ -214,9 +235,7 @@ def regex_scope_probe(draw, idx: int) -> tuple:
     S, R = A.LocalRead("s"), A.LocalRead("r")
     # `$~ && $~[0]` rather than `$~[0]`: a miss must read as an observable nil, not
     # as a NoMethodError that ends the program.
-    view = lambda: A.And(  # noqa: E731
-        A.GvarRead("$~"), A.Index(A.GvarRead("$~"), A.IntLit(0))
-    )
+    view = lambda: A.And(A.GvarRead("$~"), A.Index(A.GvarRead("$~"), A.IntLit(0)))
 
     # (suffix, statements run before the callee reads its own `$~`)
     callees: tuple[tuple[str, tuple], ...] = (
@@ -258,7 +277,11 @@ def regex_scope_probe(draw, idx: int) -> tuple:
     )
     # A proc matches in the frame it was **defined** in, so the method that calls it
     # sees nothing [V] — the one case the captured chain answers and the stack cannot.
-    stmts.append(A.MethodDef(p + "mk", ("s", "r"), (A.Lambda("proc", (), (A.MethodCall(S, "match", (R,)),)),)))
+    stmts.append(
+        A.MethodDef(
+            p + "mk", ("s", "r"), (A.Lambda("proc", (), (A.MethodCall(S, "match", (R,)),)),)
+        )
+    )
     stmts.append(A.MethodDef(p + "run", ("pr",), (A.ProcCall(A.LocalRead("pr"), ()), view())))
 
     stmts.append(A.Assign(sjv, A.StrLit(subject)))
@@ -332,6 +355,7 @@ def regex_interp_probe(draw, idx: int) -> tuple:
 
 # ─── Range endpoints: what a range *refuses* to be ──────────────────────────
 
+
 def _ends() -> tuple[tuple[A.Node, A.Node], ...]:
     """Endpoint pairs, one per arm of CRuby's `range_init` check: comparable,
     cross-type (raises), and the nil ends that skip the check entirely. The
@@ -386,9 +410,7 @@ def range_probe(draw, idx: int) -> tuple:
     excl = draw(st.booleans())
     # third argument by truthiness, not by being a Bool: `Range.new(1, 2, 3)` is
     # exclusive [V]
-    extra = draw(
-        st.sampled_from([A.BoolLit(True), A.BoolLit(False), A.NilLit(), A.IntLit(3)])
-    )
+    extra = draw(st.sampled_from([A.BoolLit(True), A.BoolLit(False), A.NilLit(), A.IntLit(3)]))
     inst = A.New(cname, ())
     stmts: list[A.Node] = [cls]
     pairs = list(_ends()) + [(inst, inst), (inst, A.IntLit(1)), (A.IntLit(1), inst)]
@@ -453,7 +475,7 @@ def comparable_probe(draw, idx: int) -> tuple:
     # sort / min / max / sort_by, each mapped back to the key so the observation is
     # the *ordering* and not an object address
     arr = A.ArrayLit(tuple(A.LocalRead(n) for n in names))
-    key_of = lambda recv: A.BlockCall(  # noqa: E731
+    key_of = lambda recv: A.BlockCall(
         recv, "map", (), A.Block(("e",), (A.MethodCall(A.LocalRead("e"), "v", ()),))
     )
     stmts.append(_show(key_of(A.MethodCall(arr, "sort", ()))))
@@ -511,9 +533,7 @@ def coerce_probe(draw, idx: int) -> tuple:
     """
     cname, ename = f"Coe{idx}", f"Ceq{idx}"
     k = draw(st.sampled_from([1, 2, 4]))
-    shape = draw(
-        st.sampled_from(["pair", "zero", "nil", "scalar", "one", "three", "strs"])
-    )
+    shape = draw(st.sampled_from(["pair", "zero", "nil", "scalar", "one", "three", "strs"]))
     supply = draw(st.sampled_from(["def", "mm", "none", "liar", "rtm"]))
     recv = draw(st.sampled_from([0, 6, -3]))
     o = A.LocalRead("o")
@@ -550,9 +570,7 @@ def coerce_probe(draw, idx: int) -> tuple:
         )
     if supply == "rtm":
         methods.append(
-            A.MethodDef(
-                "respond_to_missing?", ("n", "ia"), (A.BoolLit(draw(st.booleans())),)
-            )
+            A.MethodDef("respond_to_missing?", ("n", "ia"), (A.BoolLit(draw(st.booleans())),))
         )
     cls = A.ClassDef(
         name=cname,

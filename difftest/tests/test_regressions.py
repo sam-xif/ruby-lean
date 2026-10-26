@@ -9,12 +9,10 @@ files on disk, read by nothing.
 import json
 
 import pytest
-
 from difftest.campaign import _file_regression
 from difftest.compare import CaseResult, Verdict
 from difftest.observation import Observation
-from difftest.sources import (REGRESSION_FAILURES, load_regressions_corpus,
-                              regression_outcome)
+from difftest.sources import REGRESSION_FAILURES, load_regressions_corpus, regression_outcome
 from difftest.testcase import TestCase
 
 
@@ -57,7 +55,7 @@ def test_unknown_status_is_rejected_loudly(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "status,verdict,expected",
+    ("status", "verdict", "expected"),
     [
         ("fixed", "agree", "held"),
         ("fixed", "agree_weakened", "held"),

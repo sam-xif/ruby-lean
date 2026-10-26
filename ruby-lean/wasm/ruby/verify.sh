@@ -100,10 +100,11 @@ fi
 EOF
 chmod +x "${TMPDIR:-/tmp}/rl-verify-one.sh"
 
-n=$(ls "$CORPUS"/*.rb | wc -l | tr -d ' ')
+PROGRAMS=("$CORPUS"/*.rb)
+n=${#PROGRAMS[@]}
 echo "corpus: $n programs · jobs: $ONLY · $JOBS-way parallel"
 res="${TMPDIR:-/tmp}/rl-verify-results.txt"
-ls "$CORPUS"/*.rb | xargs -P "$JOBS" -n 1 "${TMPDIR:-/tmp}/rl-verify-one.sh" > "$res" 2>&1
+printf '%s\n' "${PROGRAMS[@]}" | xargs -P "$JOBS" -n 1 "${TMPDIR:-/tmp}/rl-verify-one.sh" > "$res" 2>&1
 
 rc=0
 for job in desugar strip deriv oracle; do

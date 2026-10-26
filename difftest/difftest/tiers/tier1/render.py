@@ -95,7 +95,9 @@ def _stmt(node, depth: int) -> list[str]:
             header = pad + f"def {name}" + render_params(params)
             return [header] + _stmts(body, depth + 1) + [pad + "end"]
         case A.ClassDef():
-            header = pad + f"class {node.name}" + (f" < {node.superclass}" if node.superclass else "")
+            header = (
+                pad + f"class {node.name}" + (f" < {node.superclass}" if node.superclass else "")
+            )
             lines = [header]
             for mod, how in node.mixins:
                 lines.append(pad + _INDENT + f"{how} {mod}")
@@ -191,7 +193,11 @@ def _stmt(node, depth: int) -> list[str]:
             return lines + [pad + "end"]
         case A.DefineMethod(name, params, body, singleton):
             fn = "define_singleton_method" if singleton else "define_method"
-            header = pad + f"{fn}(:{name}) do" + (f" |{', '.join(_param(p) for p in params)}|" if params else "")
+            header = (
+                pad
+                + f"{fn}(:{name}) do"
+                + (f" |{', '.join(_param(p) for p in params)}|" if params else "")
+            )
             return [header] + _stmts(body, depth + 1) + [pad + "end"]
         case _:
             return [pad + expr(node)]

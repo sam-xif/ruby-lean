@@ -89,7 +89,7 @@ ADVERSARIAL = [
   ["(.*?)-(.*)", 0, ["a-b-c", "-"]],
   # empty-body repetition must terminate and must not loop
   ["(a*)*", 0, ["", "b", "aaa"]],
-  ["(a?)*b", 0, ["b", "ab", "aaab"]],
+  ["(a?)*b", 0, %w[b ab aaab]],
   ["(|a)*", 0, ["aaa", ""]],
   # captures must be restored on backtracking
   ["(a)|(b)", 0, %w[a b c]],
@@ -104,24 +104,24 @@ ADVERSARIAL = [
   ["a{,2}b", 0, %w[b ab aab aaab]],
   ["a{1,2}", 0, %w[a aa aaa]],
   # anchors
-  ["\\A\\d+\\z", 0, ["12", "12\n", "a12"]],
-  ["\\A\\d+\\Z", 0, ["12", "12\n", "12\n\n"]],
-  ["^b", 0, ["a\nb", "b", "ab"]],
-  ["a$", 0, ["a\nb", "a", "ba\n"]],
+  ["\\A\\d+\\z", 0, %W[12 12\n a12]],
+  ["\\A\\d+\\Z", 0, %W[12 12\n 12\n\n]],
+  ["^b", 0, %W[a\nb b ab]],
+  ["a$", 0, %W[a\nb a ba\n]],
   ["^$", 0, ["", "\n", "a\n\nb"]],
   # dot and multiline
-  ["a.b", 0, ["a\nb", "axb"]],
-  ["a.b", 4, ["a\nb", "axb"]],
+  ["a.b", 0, %W[a\nb axb]],
+  ["a.b", 4, %W[a\nb axb]],
   # classes
-  ["[^a-c]+", 0, ["abcd", "abc", "dea"]],
+  ["[^a-c]+", 0, %w[abcd abc dea]],
   ["[]a]+", 0, ["]a", "a]"]],
   ["[a-]+", 0, ["a-a", "-"]],
   ["[\\d.]+", 0, ["1.2x", "x"]],
-  ["[^\\d]+", 0, ["ab1", "12"]],
+  ["[^\\d]+", 0, %w[ab1 12]],
   # case folding, including the inline form
   ["ABC", 1, %w[abc ABC AbC]],
-  ["(?i:beta)\\d", 0, ["BETA1", "beta1", "Beta1"]],
-  ["(?i)rc\\d", 0, ["RC2", "rc2"]],
+  ["(?i:beta)\\d", 0, %w[BETA1 beta1 Beta1]],
+  ["(?i)rc\\d", 0, %w[RC2 rc2]],
   ["[a-f]+", 1, %w[ABC abc XYZ]],
   # lookahead
   ["a(?=b)", 0, %w[ab ac]],
@@ -129,11 +129,11 @@ ADVERSARIAL = [
   ["(?!-|api/)([^/]+)", 0, ["-x", "api/x", "ok"]],
   # nested groups and named groups
   ["((a)(b))c", 0, ["abc"]],
-  ["\\AHEAD(?:-(?<commit>.*))?\\Z", 0, ["HEAD", "HEAD-abc", "HEADX"]],
+  ["\\AHEAD(?:-(?<commit>.*))?\\Z", 0, %w[HEAD HEAD-abc HEADX]],
   # extended mode
   ["a  b  # comment\n  c", 2, %w[abc ab]],
   # a pathological-looking but bounded case: the engine must answer, not hang
-  ["(a+)+b", 0, ["aaaaaaaaac", "aaaaaaaaab"]]
+  ["(a+)+b", 0, %w[aaaaaaaaac aaaaaaaaab]]
 ].freeze
 
 lines = []

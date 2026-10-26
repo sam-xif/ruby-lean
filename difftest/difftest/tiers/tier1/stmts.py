@@ -8,10 +8,11 @@ from __future__ import annotations
 from hypothesis import strategies as st
 
 from . import ast as A
-from .env import *  # noqa: F403
+from .env import *
 from .env import Env, Sig, _callable_ok  # noqa: F401
-from .exprs import *  # noqa: F403
+from .exprs import *
 from .exprs import _block_call, _expr, _lambda, _literal, _method_param_spec  # noqa: F401
+
 
 @st.composite
 def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
@@ -40,7 +41,16 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         kinds += ["attr_assign", "attr_assign"]
     free_loop_vars = tuple(v for v in LOOP_POOL if v not in env.frozen)
     if depth > 0:
-        kinds += ["if", "begin", "begin", "retry_begin", "proc_def", "block_iter", "for", "redo_loop"]
+        kinds += [
+            "if",
+            "begin",
+            "begin",
+            "retry_begin",
+            "proc_def",
+            "block_iter",
+            "for",
+            "redo_loop",
+        ]
         if free_loop_vars:
             kinds += ["while", "times", "dowhile"]
     kind = draw(st.sampled_from(kinds))
@@ -60,7 +70,9 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         # a fresh (unused) external constant slot → no "already initialized" reinit
         name = draw(st.sampled_from(tuple(e for e in EXT_CONST_POOL if e not in ci.consts)))
         new_ci = replace(ci, consts=ci.consts + (name,))
-        return A.ConstPathAssign(ci.name, name, draw(_expr(env, 1))), env.update_class(ci.name, new_ci)
+        return A.ConstPathAssign(ci.name, name, draw(_expr(env, 1))), env.update_class(
+            ci.name, new_ci
+        )
     if kind == "opassign":
         name = draw(st.sampled_from(env.assignable))
         op = draw(st.sampled_from(["+=", "-=", "*=", "||="]))
@@ -88,8 +100,10 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         return A.Assign(name, lit), env.with_indexable(name, kindk)
     if kind == "index_assign":
         name, ik = draw(st.sampled_from(env.indexables))
-        index = A.SymLit(draw(st.sampled_from(SYM_POOL))) if ik == "hash" else A.IntLit(
-            draw(st.integers(0, 3))
+        index = (
+            A.SymLit(draw(st.sampled_from(SYM_POOL)))
+            if ik == "hash"
+            else A.IntLit(draw(st.integers(0, 3)))
         )
         if draw(st.booleans()):
             return A.IndexAssign(A.LocalRead(name), index, draw(_expr(env, 1))), env
@@ -150,7 +164,9 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
             coll = A.ArrayLit(tuple(draw(_literal()) for _ in range(draw(st.integers(0, 3)))))
         else:
             lo = draw(st.integers(0, 3))
-            coll = A.RangeLit(A.IntLit(lo), A.IntLit(lo + draw(st.integers(0, 3))), draw(st.booleans()))
+            coll = A.RangeLit(
+                A.IntLit(lo), A.IntLit(lo + draw(st.integers(0, 3))), draw(st.booleans())
+            )
         body_env = replace(env.with_local(var), in_block=True)
         body, _ = draw(_stmt_seq(body_env, depth - 1, 1, 2))
         # the loop var leaks to the enclosing scope (Ruby `for` semantics)
@@ -174,9 +190,13 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         extra, _ = draw(_stmt_seq(inner_env, max(depth - 2, 0), 1, 1))
         # guard += 1 on every (re)entry, then redo only while guard < limit → bounded
         block_body = (
-            A.OpAssign(guard, "+=", A.IntLit(1)),
-            A.If(A.BinOp("<", A.LocalRead(guard), A.IntLit(limit)), (A.Redo(),), None),
-        ) + extra + (A.NilLit(),)
+            (
+                A.OpAssign(guard, "+=", A.IntLit(1)),
+                A.If(A.BinOp("<", A.LocalRead(guard), A.IntLit(limit)), (A.Redo(),), None),
+            )
+            + extra
+            + (A.NilLit(),)
+        )
         return A.RedoLoop(guard, coll, blockvar, block_body), env.with_frozen(guard)
     if kind == "begin":
         body, _ = draw(_stmt_seq(env, depth - 1, 1, 2))
@@ -251,7 +271,9 @@ def _merge(base: tuple, add: tuple) -> tuple:
 
 
 @st.composite
-def _method_body(draw, name, arity, callable_methods, ivars, classes, modules, can_super, is_def=True, sigs=()):
+def _method_body(
+    draw, name, arity, callable_methods, ivars, classes, modules, can_super, is_def=True, sigs=()
+):
     """A `MethodDef` whose body may self-send `callable_methods`, read `ivars`,
     instantiate `classes`, and (when `can_super` is set) call `super`.
 

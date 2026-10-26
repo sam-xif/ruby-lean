@@ -21,6 +21,13 @@ RUBY  ?= ruby
 LAKE  ?= lake
 UV    ?= uv
 
+# The linters run through uvx at exact versions, so they need nothing installed
+# beyond uv. RuboCop is a gem, pinned in Gemfile.lock.
+RUFF       := uvx --from ruff==0.17.0 ruff
+SHELLCHECK := uvx --from shellcheck-py==0.11.0.1 shellcheck
+ACTIONLINT := uvx --from actionlint-py==1.7.12.25 actionlint
+RUBOCOP    := bundle exec rubocop
+
 PKG       := ruby-lean
 LEAN_BIN  := $(PKG)/.lake/build/bin
 WASM_OUT  := $(PKG)/wasm/out
@@ -35,7 +42,7 @@ RUBY_SRC  ?= $(CACHE)/ruby-src-$(RUBY_REF)
 BOOTSTRAP := desugar/corpus/bootstraptest
 
 .PHONY: help all check prereqs ci-sync deps lean lean-exes desugar difftest run \
-        books metatheory soundness comparator \
+        books metatheory soundness comparator lint format \
         gen gen-check desugar-test desugar-coverage difftest-test conformance feature-loading \
         book-checks \
         wasm playground playground-serve docs docs-serve clean distclean
@@ -50,7 +57,7 @@ all: lean desugar difftest run ## Build the model, the checker, the desugarer an
 # failure. CI runs exactly these targets, so a local `make check` and a CI run
 # mean the same thing. Nothing here is optional and nothing is skipped.
 
-CHECKS := prereqs ci-sync gen-check lean books metatheory soundness comparator \
+CHECKS := prereqs ci-sync lint gen-check lean books metatheory soundness comparator \
           desugar-test desugar-coverage difftest-test conformance feature-loading \
           book-checks docs
 
@@ -66,6 +73,26 @@ ci-sync: ## Fail if CI does not run every target of `make check`
 
 $(STAMP):
 	@mkdir -p $@
+
+# ── Formatting and linting ───────────────────────────────────────────────────
+# Every Python file (ruff.toml), the Ruby tooling (.rubocop.yml: not the prelude
+# or the corpora, which are programs under test), every shell script
+# (.shellcheckrc) and the workflows. A finding fails; `make format` applies the
+# formatters and the fixes that cannot change behaviour.
+
+SHELL_SCRIPTS = $(shell git ls-files '*.sh')
+
+lint: deps ## Formatting and lint: ruff, RuboCop, shellcheck, actionlint
+	$(RUFF) format --check --diff .
+	$(RUFF) check .
+	$(RUBOCOP)
+	$(SHELLCHECK) $(SHELL_SCRIPTS)
+	$(ACTIONLINT)
+
+format: deps ## Apply the formatters and the safe automatic fixes
+	$(RUFF) format .
+	$(RUFF) check --fix .
+	$(RUBOCOP) --autocorrect
 
 # ── Ruby gems ────────────────────────────────────────────────────────────────
 
@@ -194,10 +221,6 @@ desugar-test: deps $(BOOTSTRAP) | $(STAMP) ## Round-trip every program in desuga
 
 desugar-coverage: deps $(BOOTSTRAP) ## How much of bootstraptest the desugarer supports; fails below desugar/coverage-baseline.json
 	$(RUBY) desugar/bin/coverage
-
-run: lean-exes desugar ## Build what bin/ruby-lean and bin/ruby-lean-check need; with FILE=prog.rb, also run it
-	@if [ -n "$(FILE)" ]; then bin/ruby-lean $(FILE); \
-	else echo "  ready: bin/ruby-lean prog.rb, bin/ruby-lean-check prog.rb"; fi
 
 # ── Differential testing ─────────────────────────────────────────────────────
 

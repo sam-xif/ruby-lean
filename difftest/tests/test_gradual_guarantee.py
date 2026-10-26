@@ -1,11 +1,10 @@
 """The gradual-guarantee probe: the relation, and that it actually detects."""
 
 import pytest
-
 from difftest.compare import Verdict, gradual_guarantee_compare
+from difftest.control import CRubyRunner
 from difftest.observation import Observation
 from difftest.runner import run_case
-from difftest.control import CRubyRunner
 from difftest.sorbet import sorbet_runtime_available
 from difftest.sut import SigStripSUT
 from difftest.testcase import TestCase as Case  # aliased: pytest tries to collect *TestCase
@@ -29,15 +28,14 @@ SIG_ERR = ("TypeError", "Parameter 'x': Expected type Integer, got type String")
 
 def test_identical_observations_agree():
     v, why = gradual_guarantee_compare(obs("1\n"), obs("1\n"), obs("1\n"))
-    assert v is Verdict.AGREE and why is None
+    assert v is Verdict.AGREE
+    assert why is None
 
 
 def test_trapped_escaping_error_is_licensed():
     # precise blames; stripped runs on; with enforcement off the precise
     # program matches the stripped one -> attributable to enforcement
-    v, why = gradual_guarantee_compare(
-        obs("1\n", exc=SIG_ERR), obs("1\n2\n"), obs("1\n2\n")
-    )
+    v, why = gradual_guarantee_compare(obs("1\n", exc=SIG_ERR), obs("1\n2\n"), obs("1\n2\n"))
     assert v is Verdict.AGREE_WEAKENED
     assert "attributable to runtime enforcement" in why
 
@@ -118,7 +116,7 @@ puts f(1)
 
 @requires_runtime
 @pytest.mark.parametrize(
-    "source,expected",
+    ("source", "expected"),
     [
         (CLEAN_PROGRAM, Verdict.AGREE),
         (REFLECTION_VIOLATION, Verdict.DISAGREE),
