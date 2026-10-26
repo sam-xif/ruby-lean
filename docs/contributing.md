@@ -8,9 +8,9 @@
 make check
 ```
 
-It builds the model, the type checker and every proof, audits their axioms,
-runs the checker over its corpus, runs the model against CRuby, and builds these
-docs. It stops at the first failure and prints which check failed. Continuous
+It lints the code, builds the model, the type checker and every proof, audits
+their axioms, runs the checker over its corpus, runs the unit tests, runs the
+model against CRuby, and builds these docs. It stops at the first failure and prints which check failed. Continuous
 integration runs the same targets on every pull request, and every one of them
 blocks the merge. Nothing is report-only, and `make ci-sync` fails if `make
 check` gains a target that continuous integration does not run.
@@ -22,9 +22,11 @@ While working, run the part you are changing:
 | The model (`ruby-lean/RubyCore/`, `ruby-lean/prelude/`) | `make conformance`, then `make books` |
 | The checker (`books/Books/TypeSoundness/Checker/`) | `make soundness` |
 | A proof (`books/`) | `make books`; `cd books && ./scripts/check-soundness.sh --proofs-only` |
-| The desugarer (`desugar/`) | `make desugar-test desugar-coverage` |
+| The desugarer (`desugar/`) | `make desugar-unit desugar-test desugar-coverage` |
+| The derivation emitter or the signature reader (`books/scripts/`) | `make emitter-unit` |
 | The differential tester (`difftest/`) | `make difftest-test` |
 | The docs | `make docs` |
+| Any Python, Ruby tooling, shell script or workflow | `make lint`; `make format` applies the fixes that cannot change behaviour |
 
 A change to the model can break a proof while `make lean` still passes, because
 the proofs are a separate Lake package. Always finish with
@@ -47,7 +49,7 @@ false acceptance, which is the one trade this design exists to refuse.
 
 ## Recorded results
 
-Four files record a result that a change is not allowed to make worse. Each
+These files record a result that a change is not allowed to make worse. Each
 check prints what moved and how to record an improvement.
 
 | File | Records | Update with |
@@ -56,9 +58,43 @@ check prints what moved and how to record an improvement.
 | `desugar/coverage-baseline.json` | How many `bootstraptest` programs the desugarer supports | `ruby desugar/bin/coverage --save` |
 | `books/corpus/accepted.txt` | Exactly which corpus programs the checker accepts | `books/scripts/check-soundness.sh --record` |
 | `books/corpus/*.meta.json` | For each corpus program, what Sorbet and the checker are expected to answer | By hand, with the program |
+| `desugar/test/coverage-baseline.json` | Line and branch coverage of `desugar/lib/` by its unit tests, and the files measured | `scripts/check-coverage.py --save desugar` |
+| `books/scripts/test/coverage-baseline.json` | The same for the derivation emitter and the signature reader | `scripts/check-coverage.py --save emitter` |
+| `difftest/tests/coverage-baseline.json` | The same for `difftest/difftest/` | `scripts/check-coverage.py --save difftest` |
 
 Commit the updated file with the change that caused it, so the diff shows what
 moved.
+
+## What a change may not weaken
+
+`make check` says a version of the repository meets the standard it records. A
+change could also meet it by lowering the standard: editing a baseline down,
+dropping a target from `make check`, deleting a `#print axioms` line, adding a
+`sorry`. `scripts/check-not-weakened.py` compares two versions and fails if any
+of these moved the wrong way:
+
+* a recorded result above fell, or an accepted program or a measured file
+  disappeared;
+* `make check` runs fewer targets; fewer theorems have their axioms audited; the
+  comparator re-checks fewer theorems or permits another axiom;
+* there are more `sorry`, `native_decide`, axiom declarations, `implemented_by`,
+  lint suppressions, skipped tests, or ignored errors in CI and the Makefile;
+* there are fewer test functions.
+
+```sh
+make check-not-weakened            # the working tree against origin/main
+```
+
+On a pull request, CI runs it from the base branch's copy of the script on the
+merge of the pull request into its base (`.github/workflows/not-weakened.yml`),
+so a pull request cannot change the comparison that judges it. A change that
+has to weaken one of these, such as deleting a test that tested nothing, is
+merged by a maintainer.
+
+The files that define the checks themselves (CI, the Makefile, `scripts/`, the
+lint and coverage configuration, the toolchain pins and the comparator's
+theorem statement) are listed in `.github/CODEOWNERS`, and a change to one needs
+the owner's review.
 
 ## Generated files
 
@@ -133,3 +169,7 @@ proved. See [Prove a program correct](guides/prove-a-program.md).
 * Documentation describes what the code does now. History belongs in commit
   messages.
 * A proof file has no `sorry`, no `native_decide` and no new axiom.
+* Python is formatted and linted by ruff (`ruff.toml`), the Ruby tooling by
+  RuboCop (`.rubocop.yml`), shell scripts by shellcheck and the workflows by
+  actionlint; `make lint` runs all four. Fix a finding rather than suppress it.
+  The prelude and the corpora are programs under test and are not linted.

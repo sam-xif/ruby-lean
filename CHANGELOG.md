@@ -15,6 +15,15 @@
 * The set of corpus programs the checker accepts is recorded in
   `books/corpus/accepted.txt` and compared on every run.
 * The documentation is a site (`make docs-serve`) organized by task.
+* `make lint` formats and lints the Python (ruff), the Ruby tooling (RuboCop),
+  the shell scripts (shellcheck) and the workflows (actionlint).
+* Unit tests for the desugarer (`make desugar-unit`) and for the derivation
+  emitter and signature reader (`make emitter-unit`). These suites and
+  difftest's record their line and branch coverage, which may not fall.
+* `make check-not-weakened`, and a pull-request check run from `main`'s copy,
+  fail a change that weakens a check: a recorded result that fell, a dropped
+  check or audited theorem, a new `sorry` or lint suppression, fewer tests.
+  `.github/CODEOWNERS` lists the files that define the checks.
 
 ## 0.01
 

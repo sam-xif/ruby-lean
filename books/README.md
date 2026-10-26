@@ -51,7 +51,7 @@ every file under `Books/`.
 |---|---|
 | `Books/` | The books |
 | `corpus/` | 268 Sorbet-annotated Ruby programs the checker is measured on. Each `NNN-name.rb` has a `NNN-name.meta.json` saying what Sorbet and the checker are expected to answer. `accepted.txt` records which ones the checker accepts |
-| `scripts/` | The checks above; the scripts in front of the checker (`srb_sigs.py`, `read_sigs.rb`, `emit_deriv.rb`) and `build_corpus.py`, which runs each corpus program through them; `generate_audited_checker.py`; `probes/`, which decide facts about the booted heap |
+| `scripts/` | The checks above; the scripts in front of the checker (`srb_sigs.py`, `read_sigs.rb`, `emit_deriv.rb`) and `build_corpus.py`, which runs each corpus program through them; `generate_audited_checker.py`; `probes/`, which decide facts about the booted heap; `test/`, the emitter's and reader's unit tests (`make emitter-unit`) |
 | `CorpusReport.lean` | The executable that prints the corpus report |
 | `build/` | Output of `build_corpus.py`. Not committed |
 

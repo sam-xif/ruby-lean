@@ -48,7 +48,8 @@ make check
 This is the one command that says whether the repository is sound. It stops at
 the first failure, and continuous integration runs the same targets. It:
 
-1. builds the model (`make lean`);
+1. lints the Python, the Ruby tooling, the shell scripts and the workflows
+   (`make lint`), and builds the model (`make lean`);
 2. builds every proof book, the type checker among them (`make books`). The first build takes from several
    minutes on a many-core machine to about half an hour on a small one, and
    later builds take seconds;
@@ -58,9 +59,11 @@ the first failure, and continuous integration runs the same targets. It:
    with the recorded one (`make soundness`);
 5. runs the model against CRuby over about 1300 programs from CRuby's own test
    suite, and fails on any disagreement (`make conformance`);
-6. tests the desugarer against CRuby (`make desugar-test`), runs the
-   differential tester's own tests (`make difftest-test`), and compares each
-   program book's theorem with what CRuby does (`make book-checks`);
+6. runs the unit tests of the desugarer, the derivation emitter and the
+   differential tester, each against a recorded coverage baseline
+   (`make desugar-unit`, `make emitter-unit`, `make difftest-test`), tests the
+   desugarer against CRuby (`make desugar-test`), and compares each program
+   book's theorem with what CRuby does (`make book-checks`);
 7. builds this documentation with link checking (`make docs`), and checks that
    continuous integration runs every one of these targets (`make ci-sync`).
 

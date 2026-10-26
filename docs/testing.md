@@ -33,9 +33,11 @@ build.
 | `make soundness` | The 268 typed programs of `books/corpus/` | Any disagrees |
 | `make feature-loading` | `require`: scope, caching, re-entry and retry after a failed load | The model and CRuby differ |
 | `make book-checks` | Each program book's program, on a grid of inputs | CRuby, the model and the theorem do not all agree |
-| `make difftest-test` | The differential tester's own unit tests, including the Sorbet probes | Any test fails, or is skipped because a tool is missing |
+| `make difftest-test` | The differential tester's own unit tests, including the Sorbet probes | Any test fails, is skipped because a tool is missing, or coverage falls below the recorded baseline |
 | `make desugar-test` | Every program in `desugar/corpus/` | The desugared program behaves differently from the original under CRuby |
 | `make desugar-coverage` | `bootstraptest` | The desugarer supports fewer programs than the recorded baseline |
+| `make desugar-unit` | The desugarer's unit tests (`desugar/test/`) | Any test fails, or coverage falls below the recorded baseline |
+| `make emitter-unit` | The derivation emitter's and signature reader's unit tests (`books/scripts/test/`) | Any test fails, or coverage falls below the recorded baseline |
 
 ### The baseline
 
@@ -76,6 +78,28 @@ twice usually returns the same value. So the test programs log each
 subexpression as it is evaluated, and the logs must match in order and in
 count. `ruby desugar/bin/run --bug` injects that double evaluation and shows the
 test catching it.
+
+## Unit tests
+
+The front end and the tester also have unit tests, which run in seconds and
+say which function broke rather than which program disagreed:
+
+* `desugar/test/` gives each rewrite rule of the desugarer a program and the
+  core program it must produce (`test_rules.rb` fails if a rule has none), and
+  checks that every result is well formed, already linearized, renders to Ruby
+  that parses, and exports. It also covers the programs the desugarer must
+  decline, the renderer, the export format and the round-trip check itself.
+* `books/scripts/test/` runs the derivation emitter on every program of the
+  checker's corpus with signatures read by `read_sigs.rb` (the browser
+  playground's path), and unit-tests the type join, the builtin signature
+  table and the signature reader.
+* `difftest/tests/` tests the differential tester. Its property tests are
+  derandomized, so a run passes or fails the same way every time.
+
+Each suite records the line and branch coverage of the code it tests, and the
+files measured, in a `coverage-baseline.json` beside it;
+`scripts/check-coverage.py` fails the build if coverage falls or a file stops
+being measured.
 
 ## Generated programs
 
