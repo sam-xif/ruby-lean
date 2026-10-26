@@ -11,13 +11,17 @@ __pycache__/
 .coverage
 
 # Derived artifacts
+# Generated Lean sources — build outputs, not committed. `make gen` (and any
+# build target) regenerates them from their inputs; see the README in each dir.
+ruby-lean/RubyCore/Generated/*.lean
+books/Books/TypeSoundness/Checker/Audit/*.lean
+# transient generator temp files
+*.lean.tmp
 # Makefile stamps and scratch (make clean removes it)
 .make/
 # books/build/ is regenerated from books/corpus/*.rb by scripts/build_corpus.py
 books/build/
 difftest/reports/
-# The heap the prelude boot produces, as Lean terms: written by `make` (genbootedheap)
-ruby-lean/RubyCore/Generated/BootedHeap.lean
 # playground/build.sh output: the assembled static site and its archive.
 playground/dist/
 playground/dist.tar.gz
