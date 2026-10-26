@@ -1,0 +1,61 @@
+# Fails a pull request that weakens what `make check` checks: a recorded result
+# that fell, a check or an audited theorem that was dropped, a new `sorry` or
+# lint suppression, fewer tests (scripts/check-not-weakened.py says which).
+#
+# CI proves the pull request passes the checks it contains, and the pull request
+# could have edited those checks. So this judges it with a version it cannot
+# edit: `pull_request_target` runs the workflow and the script from the base
+# branch. The pull request's commits are fetched and merged into the base as
+# data (`git merge-tree` only writes objects; it checks nothing out and runs no
+# hooks or filters), and the script only reads the result. Nothing from the pull
+# request is executed, and the token can only read.
+#
+# The ruleset on `main` requires this check by its name, `checks not weakened`.
+# A pull request that has to weaken a check is merged by a maintainer instead.
+name: Checks not weakened
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited] # edited: the base branch can change
+
+permissions:
+  contents: read
+
+concurrency:
+  group: not-weakened-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  not-weakened:
+    name: checks not weakened
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the base branch (the script that judges comes from here)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Merge the pull request into the base, as data
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          git -c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
+            fetch --no-tags "$REPO_URL" "+refs/pull/${PR}/head:refs/remotes/pr/head"
+          if ! tree=$(git merge-tree --write-tree "$BASE" refs/remotes/pr/head); then
+            echo "The pull request does not merge cleanly into its base; update it and this runs again."
+            exit 1
+          fi
+          echo "tree=${tree%%$'\n'*}" >> "$GITHUB_OUTPUT"
+
+      - name: Compare the merge with the base
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          TREE: ${{ steps.merge.outputs.tree }}
+        run: python3 scripts/check-not-weakened.py --base "$BASE" --head "$TREE"

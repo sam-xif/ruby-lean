@@ -44,7 +44,7 @@ BOOTSTRAP := desugar/corpus/bootstraptest
 .PHONY: help all check prereqs ci-sync deps lean lean-exes desugar difftest run \
         books metatheory soundness comparator lint format \
         gen gen-check desugar-test desugar-coverage desugar-unit emitter-unit difftest-test \
-        conformance feature-loading book-checks \
+        conformance feature-loading book-checks check-not-weakened \
         wasm playground playground-serve docs docs-serve clean distclean
 
 help: ## List the targets
@@ -341,6 +341,15 @@ docs: ## Build the documentation site into site/; a broken link fails
 
 docs-serve: ## Serve the docs with live reload on :8000
 	$(MKDOCS) serve
+
+# ── Changes that weaken the checks ───────────────────────────────────────────
+# Not part of `make check`, which judges one version: this compares two. CI runs
+# it on every pull request from the base branch's copy (.github/workflows/not-weakened.yml).
+
+BASE ?= origin/main
+
+check-not-weakened: ## Fail if the working tree weakens a check relative to BASE (default origin/main)
+	python3 scripts/check-not-weakened.py --base $(BASE)
 
 # ── Cleanup ─────────────────────────────────────────────────────────────────
 

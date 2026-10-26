@@ -1,0 +1,43 @@
+# The files that decide what counts as passing. A pull request that changes one
+# needs a code owner's review before it can merge (the ruleset on `main`
+# requires it). Everything else, including the recorded results that only move
+# one way, is judged by CI and by `checks not weakened` (scripts/check-not-weakened.py).
+#
+# Order matters only in that a later line overrides an earlier one for the same file.
+
+# CI, this file, and the rules agents follow
+/.github/                                       @sam-xif
+/AGENTS.md                                      @sam-xif
+
+# What `make check` runs, and the scripts behind it
+/Makefile                                       @sam-xif
+/scripts/                                       @sam-xif
+/books/scripts/check-*.sh                       @sam-xif
+/books/scripts/run-comparator.sh                @sam-xif
+/books/scripts/check_pipeline.py                @sam-xif
+/books/scripts/generate_audited_checker.py      @sam-xif
+/books/scripts/probes/                          @sam-xif
+/desugar/bin/run                                @sam-xif
+/desugar/bin/coverage                           @sam-xif
+/ruby-lean/scripts/check-feature-loading.py     @sam-xif
+
+# The statement of the soundness theorem the comparator re-checks
+/books/Books/TypeSoundness/Comparator/          @sam-xif
+
+# Lint configuration, and how the test suites measure coverage and skips
+/ruff.toml                                      @sam-xif
+/.rubocop.yml                                   @sam-xif
+/.shellcheckrc                                  @sam-xif
+/desugar/test/test_helper.rb                    @sam-xif
+/books/scripts/test/test_helper.rb              @sam-xif
+/difftest/tests/conftest.py                     @sam-xif
+/difftest/pyproject.toml                        @sam-xif
+
+# Toolchains and pinned tools: a version change can move a verdict
+/mise.toml                                      @sam-xif
+/Gemfile                                        @sam-xif
+/Gemfile.lock                                   @sam-xif
+/ruby-lean/lean-toolchain                       @sam-xif
+/ruby-lean/lakefile.toml                        @sam-xif
+/books/lakefile.toml                            @sam-xif
+/books/lake-manifest.json                       @sam-xif
