@@ -16,24 +16,7 @@ class TestCorpus < Minitest::Test
   # `read_sigs.rb` misses a signature, and why the emitter then blocks. The list
   # may only shrink: when the reader learns one, its test fails until the entry
   # is removed.
-  READER_GAPS = {
-    "073-class-factory-method" => "no signature for <Class:Point>#origin",
-    "077-module-basic" => "no signature for <Class:M>#foo",
-    "078-module-method-with-arg" => "no signature for <Class:Greeter>#hello",
-    "079-module-multiple-methods" => "no signature for <Class:M>#foo",
-    "080-module-method-calls-method" => "no signature for <Class:M>#value",
-    "081-module-with-arithmetic" => "no signature for <Class:Calc>#add",
-    "082-module-calling-another-module" => "no signature for <Class:M2>#bar",
-    "083-module-returns-array" => "no signature for <Class:M>#pair",
-    "084-module-boolean-method" => "no signature for <Class:M>#positive?",
-    "085-module-nested-call-chain" => "no signature for <Class:M>#greeting",
-    "086-module-passing-multiple-args" => "no signature for <Class:M>#sum3",
-    "095-block-param-ampersand" => "run: missing declared block signature",
-    "146-const-attr-reader" => "no signature for Point#x",
-    "157-param-block" => "run: missing declared block signature",
-    "261-bound-block-alias-and-yield" => "run: missing declared block signature",
-    "267-param-nilable-positional" => "no signature for <Class:Shelf>#tax"
-  }.freeze
+  READER_GAPS = {}.freeze
 
   Dir.glob(File.join(CORPUS, "*.rb")).sort.each do |path|
     base = File.basename(path, ".rb")

@@ -70,7 +70,14 @@ class TestReadSigs < Minitest::Test
 
   # Each method the reader does not file, and why.
   DROPPED = {
-    "module M\n  sig { returns(Integer) }\n  def self.a = 1\nend" => "module owner M -- outside the fragment",
+    "module A\n  class B\n    sig { returns(Integer) }\n    def b = 1\n  end\nend" =>
+      "namespaced owner A::B -- Ty.cls carries flat names here",
+    "class P\n  class << self\n    sig { returns(Integer) }\n    def self.a = 1\n  end\nend" =>
+      "unsupported singleton owner <Class:<Class:P>>",
+    "o = Object.new\nsig { returns(Integer) }\ndef o.a = 1" => "singleton method on o -- outside the fragment",
+    "class P\n  attr_reader :c\nend" => "no declared return type",
+    "sig { params(b: T.proc.returns(Integer)).returns(Integer) }\ndef r(&b) = 1" =>
+      "block parameter b not supported: T.proc.returns(Integer)",
     "class A::B\n  sig { returns(Integer) }\n  def b = 1\nend" =>
       "namespaced owner A::B -- Ty.cls carries flat names here",
     "sig { params(x: T.untyped).returns(Integer) }\ndef c(x) = 1" => "parameter x not in Ty: T.untyped",
@@ -85,6 +92,55 @@ class TestReadSigs < Minitest::Test
       assert_empty sigs["sigs"]
       assert_equal([why], sigs["dropped"].map { |d| d["why"] })
     end
+  end
+
+  # Each method as Sorbet's symbol table files it: owner, name, parameters, and
+  # the declared block. Checked against `srb_sigs.py` on the same source.
+  FILED = {
+    "module M\n  sig { returns(Integer) }\n  def a = 1\nend" =>
+      [["M", "a", [], { "tag" => "int" }]],
+    "module M\n  sig { returns(Integer) }\n  def self.a = 1\nend" =>
+      [["<Class:M>", "a", [], { "tag" => "int" }]],
+    "class P\n  class << self\n    sig { returns(Integer) }\n    def a = 1\n  end\nend" =>
+      [["<Class:P>", "a", [], { "tag" => "int" }]],
+    "class P\n  sig { returns(Integer) }\n  attr_reader :x, :y\nend" =>
+      [["P", "x", [], { "tag" => "int" }], ["P", "y", [], { "tag" => "int" }]],
+    "class P\n  sig { params(b: Integer).returns(Integer) }\n  attr_writer :b\nend" =>
+      [["P", "b=", [{ "name" => "b", "ty" => { "tag" => "int" } }], { "tag" => "int" }]],
+    "class P\n  sig { returns(Integer) }\n  attr_accessor :a\nend" =>
+      [["P", "a", [], { "tag" => "int" }],
+       ["P", "a=", [{ "name" => "a", "ty" => { "tag" => "int" } }], { "tag" => "int" }]]
+  }.freeze
+
+  FILED.each_with_index do |(src, want), i|
+    define_method(:"test_files_#{i}_#{want.first[0..1].join("_").gsub(/\W+/, "_")}") do
+      sigs, = read_sigs(src)
+      assert_empty sigs["dropped"]
+      assert_equal(want, sigs["sigs"].map { |s| [s["cls"], s["name"], s["params"], s["ret"]] })
+    end
+  end
+
+  def test_a_declared_block
+    sigs, = read_sigs(<<~RUBY)
+      sig { params(n: Integer, b: T.proc.params(x: Integer, y: Symbol).returns(Integer)).returns(Integer) }
+      def run(n, &b) = b.call(n, :k)
+    RUBY
+    assert_equal [{ "cls" => "Object", "name" => "run", "line" => 2,
+                    "params" => [{ "name" => "n", "ty" => { "tag" => "int" } }], "ret" => { "tag" => "int" },
+                    "block" => { "name" => "b", "args" => [{ "tag" => "int" }, { "tag" => "sym" }],
+                                 "ret" => { "tag" => "int" } } }], sigs["sigs"]
+  end
+
+  def test_an_anonymous_block_has_no_block_signature
+    sigs, = read_sigs("sig { returns(Integer) }\ndef run(&) = 1")
+    refute sigs["sigs"].first.key?("block")
+  end
+
+  def test_a_block_type_outside_ty_is_not_a_signature
+    assert_nil block_signature("T.proc.params(x: T.untyped).returns(Integer)")
+    assert_nil block_signature("T.proc.params(x).returns(Integer)")
+    assert_nil block_signature("T.proc.params(x: Integer).returns(T.untyped)")
+    assert_nil block_signature(nil)
   end
 
   def test_a_parse_error_reads_no_signatures

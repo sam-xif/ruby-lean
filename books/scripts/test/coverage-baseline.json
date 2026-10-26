@@ -1,6 +1,6 @@
 {
-  "line": 94.91,
-  "branch": 79.28,
+  "line": 98.17,
+  "branch": 82.33,
   "files": [
     "books/scripts/emit_deriv.rb",
     "books/scripts/read_sigs.rb"
