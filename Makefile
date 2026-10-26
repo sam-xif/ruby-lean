@@ -256,7 +256,7 @@ $(STAMP)/uv: difftest/pyproject.toml difftest/uv.lock | $(STAMP)
 difftest-test: $(STAMP)/uv deps lean-exes ## difftest's own unit tests; fails below their coverage baseline
 	@rm -f $(STAMP)/coverage/difftest.json
 	cd difftest && DIFFTEST_NO_SKIPS=1 $(UV) run pytest -q \
-	  --cov=difftest --cov-branch --cov-report=term --cov-report=json:../$(STAMP)/coverage/difftest.json
+	  --cov=difftest --cov-branch --cov-report=term-missing:skip-covered --cov-report=json:../$(STAMP)/coverage/difftest.json
 	python3 scripts/check-coverage.py difftest
 
 $(BOOTSTRAP):
