@@ -190,36 +190,126 @@ def def_param_names(params)
   out.compact
 end
 
-# Every `def` in the file, with the `sig` that immediately precedes it, the
-# owner's flat class name, and whether the owner is one this fragment admits.
+# The `&name` parameter, or nil (none, or anonymous `&`, which Sorbet calls
+# `<blk>` and `srb_sigs.py` skips).
+def def_block_name(params)
+  params&.block&.name&.to_s
+end
+
+# A declared Proc type as {args:, ret:}, or nil when it is not
+# `T.proc.params(...).returns(...)` over types in `Ty`  (srb_sigs.py's
+# `block_signature`).
+def block_signature(raw)
+  m = /\AT\.proc\.params\((.*)\)\.returns\((.*)\)\z/m.match(raw.to_s)
+  return nil unless m
+
+  args = split_args(m[1]).map do |param|
+    pair = param.split(":", 2)
+    ty = pair.length == 2 ? to_ty(pair[1]) : nil
+    return nil if ty.nil?
+
+    ty
+  end
+  ret = to_ty(m[2])
+  ret ? { "args" => args, "ret" => ret } : nil
+end
+
+# Sorbet's name for the singleton class of `owner`: `Point` -> `<Class:Point>`,
+# `A::B` -> `A::<Class:B>`.
+def singleton_owner(owner)
+  prefix, _, last = owner.rpartition("::")
+  prefix.empty? ? "<Class:#{last}>" : "#{prefix}::<Class:#{last}>"
+end
+
+# Sorbet's name for a class or module written `path` inside `owner`: nesting
+# is lexical, so `module A; class B` is `A::B`. A top-level `::B` is `B`.
+def nested_owner(owner, path)
+  return path.delete_prefix("::") if path.start_with?("::") || owner == "Object"
+
+  "#{owner}::#{path}"
+end
+
+# Why an owner, as Sorbet names it, is outside the fragment (`srb_sigs.py`'s
+# owner rules), or nil. A singleton class's own singleton class
+# (`<Class:<Class:P>>`) is one of them.
+def owner_problem(owner)
+  if owner.start_with?("<Class:") && !/\A<Class:[A-Z]\w*>\z/.match?(owner)
+    "unsupported singleton owner #{owner}"
+  elsif owner.include?("::")
+    "namespaced owner #{owner} -- Ty.cls carries flat names here"
+  end
+end
+
+# The methods Sorbet synthesizes for `attr_reader`/`attr_writer`/`attr_accessor`
+# under one `sig`. A reader takes the sig as is. A writer `x=` has one parameter
+# named `x`: `attr_writer`'s sig declares it; `attr_accessor`'s sig declares only
+# the reader's return type, which Sorbet gives the writer as both its parameter
+# and its return.
+def attr_entries(call, sig, owner, owner_why)
+  names = (call.arguments&.arguments || []).filter_map do |a|
+    a.unescaped if a.is_a?(Prism::SymbolNode) || a.is_a?(Prism::StringNode)
+  end
+  line = call.location.start_line
+  names.flat_map do |n|
+    reader = { owner: owner, name: n, line: line, def_params: [], block: nil, sig: sig, owner_why: owner_why }
+    writer_sig =
+      if call.name == :attr_accessor && sig&.dig(:ret)
+        { params: [[n, sig[:ret]]], ret: sig[:ret] }
+      else
+        sig
+      end
+    writer = reader.merge(name: "#{n}=", def_params: [n], sig: writer_sig)
+    case call.name
+    when :attr_reader then [reader]
+    when :attr_writer then [writer]
+    else [reader, writer]
+    end
+  end
+end
+
+ATTR_METHODS = %i[attr_reader attr_writer attr_accessor].freeze
+
+# Every `def` in the file, with the `sig` that immediately precedes it and the
+# owner's name as Sorbet's symbol table prints it (`Point`, `<Class:Point>`,
+# `A::B`). `owner_why` is a reason the owner is out of the fragment that its
+# name does not show (`owner_problem` covers the ones it does).
 def collect(node, owner, owner_why, out)
   stmts =
     case node
     when Prism::ProgramNode then node.statements.body
     when Prism::StatementsNode then node.body
-    when Prism::ClassNode, Prism::ModuleNode then node.body ? node.body.body : []
+    when Prism::ClassNode, Prism::ModuleNode, Prism::SingletonClassNode then node.body ? node.body.body : []
     when Prism::BeginNode then node.statements ? node.statements.body : []
     else []
     end
 
   prev = nil
   stmts.each do |st|
+    sig = prev.is_a?(Prism::CallNode) && prev.name == :sig ? read_sig_block(prev) : nil
     case st
     when Prism::ClassNode, Prism::ModuleNode
-      path = st.constant_path.slice
-      why =
-        if path.include?("::")
-          "namespaced owner #{path} -- Ty.cls carries flat names here"
-        elsif st.is_a?(Prism::ModuleNode)
-          "module owner #{path} -- outside the fragment"
-        end
-      collect(st, path.split("::").last, why, out)
+      collect(st, nested_owner(owner, st.constant_path.slice), owner_why, out)
+    when Prism::SingletonClassNode
+      if st.expression.is_a?(Prism::SelfNode)
+        collect(st, singleton_owner(owner), owner_why, out)
+      else
+        collect(st, owner, owner_why || "singleton class of #{st.expression.slice} -- outside the fragment", out)
+      end
+    when Prism::CallNode
+      out.concat(attr_entries(st, sig, owner, owner_why)) if st.receiver.nil? && ATTR_METHODS.include?(st.name)
     when Prism::DefNode
-      sig = prev.is_a?(Prism::CallNode) && prev.name == :sig ? read_sig_block(prev) : nil
+      d_owner = owner
       why = owner_why
-      why ||= "singleton method (def self.x) -- outside the fragment" if st.receiver
-      out << { owner: owner, name: st.name.to_s, line: st.location.start_line,
-               def_params: def_param_names(st.parameters), sig: sig, owner_why: why }
+      if st.receiver.is_a?(Prism::SelfNode)
+        d_owner = singleton_owner(owner)
+      elsif st.receiver
+        # Sorbet files `def o.x` under the enclosing `<Class:...>`, which is
+        # not where Ruby puts it (o's own singleton class). Declined instead.
+        why ||= "singleton method on #{st.receiver.slice} -- outside the fragment"
+      end
+      out << { owner: d_owner, name: st.name.to_s, line: st.location.start_line,
+               def_params: def_param_names(st.parameters), block: def_block_name(st.parameters),
+               sig: sig, owner_why: why }
       # A `def` inside a method body redefines at runtime, and Sorbet's symbol
       # table sees it. Missing it is not merely a lost message: rung 236 is the
       # regression test for found-issues.md F3, where exactly this redefinition
@@ -249,9 +339,13 @@ def read_sigs(src)
   sigs = []
   dropped = []
   entries.each do |e|
-    common = { "cls" => e[:owner], "name" => e[:name], "line" => e[:line] }
-    if e[:owner_why]
-      dropped << common.merge("why" => e[:owner_why])
+    why = e[:owner_why] || owner_problem(e[:owner])
+    # Sorbet files a method under its owner's last name segment, and a dropped
+    # one under the full name, which is what says why it was dropped.
+    cls = why ? e[:owner] : e[:owner].split("::").last
+    common = { "cls" => cls, "name" => e[:name], "line" => e[:line] }
+    if why
+      dropped << common.merge("why" => why)
       next
     end
     # No `sig` at all reads as no declared return type -- the same drop
@@ -285,7 +379,17 @@ def read_sigs(src)
       dropped << common.merge("why" => bad)
       next
     end
-    sigs << common.merge("params" => params, "ret" => ret)
+    sig = common.merge("params" => params, "ret" => ret)
+    if e[:block]
+      raw = declared[e[:block]]
+      block = block_signature(raw)
+      if block.nil?
+        dropped << common.merge("why" => "block parameter #{e[:block]} not supported: #{raw}")
+        next
+      end
+      sig["block"] = { "name" => e[:block] }.merge(block)
+    end
+    sigs << sig
   end
 
   [{
