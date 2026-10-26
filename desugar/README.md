@@ -21,11 +21,16 @@ harness prints `desugar(P)` back as Ruby and checks that CRuby behaves the same
 on both, including the order in which side effects happen.
 
 ```sh
-make desugar-test desugar-coverage    # from the repository root; what `make check` runs
+make desugar-unit desugar-test desugar-coverage    # from the repository root; what `make check` runs
 ruby bin/run corpus/seeds --verbose   # one directory, printing each rendered core program
 ruby bin/run --bug                    # inject a known-wrong rewrite and watch the tests catch it
 ruby bin/coverage --full              # what blocks each unsupported bootstraptest program
 ```
+
+`make desugar-unit` runs the unit tests in `test/`: each rewrite rule's expected
+output, the programs that must be declined, and the renderer and export format.
+`test/coverage-baseline.json` records their line and branch coverage of `lib/`,
+which may not fall.
 
 `coverage-baseline.json` records how many of CRuby's `bootstraptest` programs
 the desugarer supports. `bin/coverage` fails if the number falls;
@@ -47,6 +52,7 @@ test observes evaluation order and not only values.
 | `lib/roundtrip.rb` | The round-trip check and the classification of a disagreement |
 | `bin/harvest_bootstraptest` | Extracts test programs from a checkout of CRuby's `bootstraptest/` |
 | `corpus/seeds/` | Hand-written test programs, including ones that observe evaluation order |
+| `test/` | Unit tests (minitest), and the coverage they must keep |
 
 [Adding Ruby to the model](../docs/contributing.md#adding-ruby-to-the-model)
 describes how to extend it.

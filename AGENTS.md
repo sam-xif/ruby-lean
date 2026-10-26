@@ -10,10 +10,22 @@ greater length.
 make check
 ```
 
-It must end with `make check: ALL CHECKS PASSED`. It builds the model, builds
-every proof book (the type checker is part of one), audits axioms, runs the checker over its
-corpus, and runs the model against CRuby. Do not commit on a failure, do not
-skip a failing target, and do not weaken a check to make it pass.
+It must end with `make check: ALL CHECKS PASSED`. It lints, builds the model,
+builds every proof book (the type checker is part of one), audits axioms, runs
+the checker over its corpus, runs the unit tests, and runs the model against
+CRuby. Do not commit on a failure, do not skip a failing target, and do not
+weaken a check to make it pass.
+
+Then, before opening a pull request:
+
+```sh
+make check-not-weakened
+```
+
+It compares your change with `origin/main` and fails if a recorded result fell,
+a check or an audited theorem was dropped, a `sorry`, `native_decide`, axiom,
+lint suppression or test skip was added, or the number of tests fell. CI runs
+the same comparison, from `main`'s copy of the script, on every pull request.
 
 While iterating, run the narrower target for what you changed (`make help`
 lists them), then `make check` once at the end:
@@ -23,9 +35,11 @@ lists them), then `make check` once at the end:
 | `ruby-lean/RubyCore/`, `ruby-lean/prelude/` | `make conformance`, then `make books` |
 | `books/Books/TypeSoundness/Checker/` | `make soundness` |
 | anything else under `books/` | `make books` |
-| `desugar/` | `make desugar-test desugar-coverage` |
+| `desugar/` | `make desugar-unit desugar-test desugar-coverage` |
+| `books/scripts/emit_deriv.rb`, `books/scripts/read_sigs.rb` | `make emitter-unit` |
 | `difftest/` | `make difftest-test` |
 | `docs/`, any README | `make docs` |
+| any Python, Ruby tooling, shell script or workflow | `make lint` (`make format` fixes what it can) |
 
 The proofs are a separate Lake package (`books/`). A change to the model can
 break a proof while `make lean` still passes, so `make books` is
@@ -45,12 +59,20 @@ never optional.
    CRuby is a bug.
 4. **No `sorry`, no `native_decide`, no new axiom** in a proof.
 5. **Recorded results only improve.** `difftest/coverage-baseline.json`,
-   `desugar/coverage-baseline.json` and `books/corpus/accepted.txt` are compared
-   on every run. Update one only with the command the failing check prints, in
-   the same commit as the change that moved it, and never to hide a regression.
+   `desugar/coverage-baseline.json`, `books/corpus/accepted.txt` and each unit-test
+   suite's `coverage-baseline.json` are compared on every run. Update one only
+   with the command the check prints, in the same commit as the change that
+   moved it, and never to hide a regression.
 6. **Regenerate, do not edit, generated files** (`ruby-lean/RubyCore/Generated/`,
    `books/Books/TypeSoundness/Checker/Audit/`): `make gen`.
-7. **Documentation describes the present.** Put history in commit messages. Use
+7. **Fix a lint finding; do not suppress it.** No `noqa`, `rubocop:disable`,
+   `shellcheck disable` or test skip. New code in `desugar/`, `books/scripts/`
+   or `difftest/` comes with unit tests, or its suite's coverage falls.
+8. **Some files need the owner's review** (`.github/CODEOWNERS`): CI, the
+   Makefile, `scripts/`, the lint and coverage configuration, the toolchain
+   pins and the comparator's theorem statement. Keep changes to them in a pull
+   request of their own.
+9. **Documentation describes the present.** Put history in commit messages. Use
    names an outsider can read; do not introduce project-internal nicknames.
 
 ## Where things are
