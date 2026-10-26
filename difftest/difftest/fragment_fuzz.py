@@ -137,8 +137,9 @@ def sample(count: int, seed: int) -> list[Sample]:
 # ---------------------------------------------------------------------------
 
 
-def srb_batch(samples: list[Sample], srb: str | None = None,
-              timeout: float = 300.0) -> dict[str, list[StaticError]]:
+def srb_batch(
+    samples: list[Sample], srb: str | None = None, timeout: float = 300.0
+) -> dict[str, list[StaticError]]:
     """One `srb tc` over the whole sample, keyed by program name.
 
     Per-file checking (what `SorbetStatic` does, for hermeticity) costs a
@@ -159,7 +160,11 @@ def srb_batch(samples: list[Sample], srb: str | None = None,
             (root / f"{s.name}.rb").write_text(s.source)
         proc = subprocess.run(
             [srb, "tc", "--dir", ".", "--color=never"],
-            capture_output=True, text=True, timeout=timeout, cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=root,
+            check=False,
         )
         raw = proc.stdout + proc.stderr
     for line in raw.splitlines():
@@ -175,9 +180,7 @@ def srb_batch(samples: list[Sample], srb: str | None = None,
             tail = msg.rsplit("https://srb.help/", 1)[1].strip()
             if tail.isdigit():
                 code = int(tail)
-        errors[name].append(
-            StaticError(int(lineno) if lineno.isdigit() else 0, code, msg.strip())
-        )
+        errors[name].append(StaticError(int(lineno) if lineno.isdigit() else 0, code, msg.strip()))
     return errors
 
 

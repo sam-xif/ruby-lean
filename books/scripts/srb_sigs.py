@@ -22,6 +22,7 @@ fragment gate, and it is what makes "rewrite the corpus to be typed" a measurabl
 Output: `{"version":1, "file":, "sigs":[{cls,name,params:[{name,ty}],ret,line}],
 "dropped":[{cls,name,why}], "errors": <srb's own diagnostics count>}`.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,10 +41,19 @@ def find_sorbet() -> str:
     ruby = os.environ.get("RUBY", "ruby")
     try:
         p = subprocess.run(
-            [ruby, "-e",
-             'print File.join(Gem::Specification.find_by_name("sorbet-static").full_gem_path, '
-             '"libexec", "sorbet")'],
-            capture_output=True, text=True, timeout=30)
+            [
+                ruby,
+                "-e",
+                (
+                    'print File.join(Gem::Specification.find_by_name("sorbet-static").full_gem_path, '
+                    '"libexec", "sorbet")'
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
         if p.returncode == 0 and os.path.exists(p.stdout):
             return p.stdout
     except (OSError, subprocess.SubprocessError):
@@ -70,11 +80,27 @@ GROUND = {
 # and the spine is not in the signature -- it comes from the instantiation. So a bare
 # user-class name maps to `.cls`, which is a **known divergence**, recorded in
 # `emit_deriv.rb`'s header as the gap it is rather than papered over here.
-BUILTIN_CLS = {"String", "Regexp", "Array", "Hash", "Object", "Exception",
-               "StandardError", "RuntimeError", "ArgumentError", "TypeError",
-               "NameError", "NoMethodError", "ZeroDivisionError", "IndexError",
-               "KeyError", "RangeError", "IOError", "FrozenError",
-               "NotImplementedError"}
+BUILTIN_CLS = {
+    "String",
+    "Regexp",
+    "Array",
+    "Hash",
+    "Object",
+    "Exception",
+    "StandardError",
+    "RuntimeError",
+    "ArgumentError",
+    "TypeError",
+    "NameError",
+    "NoMethodError",
+    "ZeroDivisionError",
+    "IndexError",
+    "KeyError",
+    "RangeError",
+    "IOError",
+    "FrozenError",
+    "NotImplementedError",
+}
 
 FLAT_NAME = re.compile(r"^[A-Z][A-Za-z0-9_]*$")
 
@@ -116,24 +142,24 @@ def to_ty(s: str, untyped: str = "exclude") -> dict | None:
     if s in ("Sorbet::Private::Static::Void", "void"):
         return {"tag": "any"}
     if s.startswith("T.nilable(") and s.endswith(")"):
-        inner = to_ty(s[len("T.nilable("):-1], untyped)
+        inner = to_ty(s[len("T.nilable(") : -1], untyped)
         if inner is None:
             return None
         return inner if inner == {"tag": "nilT"} else {"tag": "nilable", "elem": inner}
     if s.startswith("T.class_of(") and s.endswith(")"):
-        inner = s[len("T.class_of("):-1].strip()
+        inner = s[len("T.class_of(") : -1].strip()
         return {"tag": "clsOf", "name": inner} if FLAT_NAME.match(inner) else None
     if s.startswith("T::Array[") and s.endswith("]"):
-        inner = to_ty(s[len("T::Array["):-1], untyped)
+        inner = to_ty(s[len("T::Array[") : -1], untyped)
         return {"tag": "arrayOf", "elem": inner} if inner else None
     if s.startswith("T::Hash[") and s.endswith("]"):
-        parts = split_args(s[len("T::Hash["):-1])
+        parts = split_args(s[len("T::Hash[") : -1])
         if len(parts) != 2:
             return None
         k, v = (to_ty(p, untyped) for p in parts)
         return {"tag": "hashOf", "key": k, "val": v} if k and v else None
     if s.startswith("T.any(") and s.endswith(")"):
-        parts = split_args(s[len("T.any("):-1])
+        parts = split_args(s[len("T.any(") : -1])
         tys = [to_ty(p, untyped) for p in parts]
         if len(tys) != 2 or any(t is None for t in tys):
             return None
@@ -160,9 +186,7 @@ METHOD = re.compile(
     r"(?P<vis> : \w+)? \((?P<args>[^)]*)\)"
     r"(?: -> (?P<ret>.+?))? @ (?P<loc>\S+)\s*$"
 )
-ARGUMENT = re.compile(
-    r"^\s*argument (?P<name>[^<]+)<(?P<kind>[^>]*)>(?: -> (?P<ty>.+?))? @ "
-)
+ARGUMENT = re.compile(r"^\s*argument (?P<name>[^<]+)<(?P<kind>[^>]*)>(?: -> (?P<ty>.+?))? @ ")
 
 SYNTHETIC = ("<static-init>", "<block>", "<any>")
 
@@ -170,7 +194,10 @@ SYNTHETIC = ("<static-init>", "<block>", "<any>")
 def run(path: str, binary: str, args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
         [binary, "--no-config", "--silence-dev-message", "--typed=true", *args, path],
-        capture_output=True, text=True)
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def block_signature(raw: str | None, untyped: str) -> dict | None:
@@ -249,9 +276,14 @@ def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
                 why = f"unsupported singleton owner {owner}"
             elif "::" in owner:
                 why = f"namespaced owner {owner} -- Ty.cls carries flat names here"
-            cur = {"owner": owner.split("::")[-1] if why is None else owner,
-                   "name": name, "line": int(loc.split(":")[-1]),
-                   "raw_ret": m.group("ret"), "args": [], "owner_dropped": why}
+            cur = {
+                "owner": owner.split("::")[-1] if why is None else owner,
+                "name": name,
+                "line": int(loc.split(":")[-1]),
+                "raw_ret": m.group("ret"),
+                "args": [],
+                "owner_dropped": why,
+            }
             continue
         if cur is None:
             continue
@@ -283,14 +315,18 @@ def main(argv: list[str]) -> int:
     table = run(args.file, binary, ["-p", "symbol-table"])
     check = run(args.file, binary, [])
     if not table.stdout.strip():
-        print(f"srb produced no symbol table for {args.file} (binary: {binary})",
-              file=sys.stderr)
+        print(f"srb produced no symbol table for {args.file} (binary: {binary})", file=sys.stderr)
         return 2
     sigs, dropped = parse(table.stdout, args.file, args.untyped)
-    out = {"version": 1, "file": args.file, "sorbet": binary,
-           "sigs": sigs, "dropped": dropped,
-           "srb_clean": check.returncode == 0,
-           "srb_diagnostics": (check.stderr or check.stdout).strip().splitlines()[:20]}
+    out = {
+        "version": 1,
+        "file": args.file,
+        "sorbet": binary,
+        "sigs": sigs,
+        "dropped": dropped,
+        "srb_clean": check.returncode == 0,
+        "srb_diagnostics": (check.stderr or check.stdout).strip().splitlines()[:20],
+    }
     print(json.dumps(out, indent=1))
     if not args.quiet:
         for d in dropped:

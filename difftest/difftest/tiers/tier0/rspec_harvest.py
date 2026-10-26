@@ -83,7 +83,7 @@ SLICE = [
 # actual value and the matcher's verdict: tier 0 asks whether CRuby and the
 # model agree, not whether Homebrew's suite passes, so a model bug that changes
 # a value shows up even where the verdict would agree either way.
-PREAMBLE = '''
+PREAMBLE = """
 def __exp(label, act, vd)
   ok = true
   v = begin
@@ -113,7 +113,7 @@ def __exr(label, blk, cls, negated)
     puts("#{label} raised #{e.class} #{m} #{negated}")
   end
 end
-'''
+"""
 
 
 @dataclass
@@ -143,8 +143,8 @@ def _import_linker():
     root = _repo_root()
     if root not in sys.path:
         sys.path.insert(0, root)
-    from linker import emit, graph  # noqa: E402
-    from linker.cli import SCRIPT, default_ruby  # noqa: E402
+    from linker import emit, graph
+    from linker.cli import SCRIPT, default_ruby
 
     return emit, graph, SCRIPT, default_ruby
 
@@ -154,16 +154,23 @@ def _ruby() -> str:
 
 
 def harvest_file(spec_path: str, ruby: str, script: str) -> list[Example]:
-    proc = subprocess.run([ruby, script, spec_path], capture_output=True, text=True)
+    proc = subprocess.run([ruby, script, spec_path], capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise RuntimeError(f"{spec_path}: {proc.stderr.strip()[:400]}")
     out = []
     for line in proc.stdout.splitlines():
         r = json.loads(line)
         out.append(
-            Example(file=r["file"], line=r["line"], name=r["name"],
-                    described=r["described"], memos=r["memos"],
-                    helpers=r["helpers"], body=r["body"], skip=r["skip"])
+            Example(
+                file=r["file"],
+                line=r["line"],
+                name=r["name"],
+                described=r["described"],
+                memos=r["memos"],
+                helpers=r["helpers"],
+                body=r["body"],
+                skip=r["skip"],
+            )
         )
     return out
 
@@ -203,7 +210,7 @@ end
 
 SORBET_REQUIRE = (
     'require "sorbet-runtime"\n'
-    'class Module\n  include T::Sig\nend\n'
+    "class Module\n  include T::Sig\nend\n"
     # `Version.detect` wraps its argument in `Pathname(...)` and `Version.parse`
     # percent-decodes with `URI`. Homebrew loads both from its boot path; the
     # control has no boot path, so the program requires them and the model
@@ -245,7 +252,6 @@ STDLIB_REQUIRES = [("Forwardable", "forwardable")]
 # **example** only, not the library: `version.rb` defines its own `to_json` and
 # scanning the prefix too would gate 28 programs that never call one.
 STDLIB_METHOD_REQUIRES = [("to_json", "json")]
-
 
 
 DESCRIBED_RE = re.compile(r"(^|[^\w.:])described_class\b")
@@ -327,8 +333,7 @@ def harvest(brew_root: str, out_dir: str, ruby: str | None = None) -> dict:
             rel = os.path.relpath(ex.file, test_dir)
             ex.file = rel
             if ex.skip:
-                skipped.append({"file": rel, "line": ex.line, "name": ex.name,
-                                "reason": ex.skip})
+                skipped.append({"file": rel, "line": ex.line, "name": ex.name, "reason": ex.skip})
                 continue
             path = os.path.join(out_dir, ex.ident + ".rb")
             with open(path, "w", encoding="utf-8") as f:
@@ -338,16 +343,29 @@ def harvest(brew_root: str, out_dir: str, ruby: str | None = None) -> dict:
             # `control_invalid` verdict forever and teach us nothing, so it is
             # reported as a skip instead. (Two of the slice's examples reach
             # constants outside it — `URI` and `HOMEBREW_CELLAR`.)
-            proc = subprocess.run([ruby, path], capture_output=True, text=True)
+            proc = subprocess.run([ruby, path], capture_output=True, text=True, check=False)
             if proc.returncode != 0:
                 os.unlink(path)
                 first = (proc.stderr.strip().splitlines() or [""])[0]
-                skipped.append({"file": rel, "line": ex.line, "name": ex.name,
-                                "reason": f"control cannot run it: {first[-160:]}"})
+                skipped.append(
+                    {
+                        "file": rel,
+                        "line": ex.line,
+                        "name": ex.name,
+                        "reason": f"control cannot run it: {first[-160:]}",
+                    }
+                )
                 continue
-            manifest.append({"id": ex.ident, "file": rel, "line": ex.line,
-                             "name": ex.name, "described": ex.described,
-                             "feature": feature})
+            manifest.append(
+                {
+                    "id": ex.ident,
+                    "file": rel,
+                    "line": ex.line,
+                    "name": ex.name,
+                    "described": ex.described,
+                    "feature": feature,
+                }
+            )
 
     with open(os.path.join(out_dir, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)

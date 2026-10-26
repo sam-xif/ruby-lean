@@ -55,7 +55,7 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Ty:
     head: str
-    args: tuple["Ty", ...] = ()
+    args: tuple[Ty, ...] = ()
 
     def render(self) -> str:
         if not self.args:
@@ -240,9 +240,16 @@ class Gen:
 MUTATIONS = ("arg-type", "return-type", "builtin-arg")
 
 
-def build(rng: random.Random, *, sigil: str = "true", coverage: float = 1.0,
-          loose: float = 0.25, intent: str = "wellformed",
-          n_methods: int = 2, prefix: str = "") -> Program:
+def build(
+    rng: random.Random,
+    *,
+    sigil: str = "true",
+    coverage: float = 1.0,
+    loose: float = 0.25,
+    intent: str = "wellformed",
+    n_methods: int = 2,
+    prefix: str = "",
+) -> Program:
     """One program. `intent="illtyped"` applies exactly one mutation, so a
     program that `srb` accepts anyway is a candidate finding rather than a pile
     of confounded breakages."""
@@ -286,7 +293,8 @@ def _mutate(rng: random.Random, g: Gen, prog: Program) -> None:
         if kind == "arg-type":
             cands = [
                 (i, m, j, t)
-                for i, m in enumerate(prog.methods) if m.sigged
+                for i, m in enumerate(prog.methods)
+                if m.sigged
                 for j, (_, t) in enumerate(m.params)
                 if incompatible(t) is not None
             ]
@@ -300,8 +308,7 @@ def _mutate(rng: random.Random, g: Gen, prog: Program) -> None:
             prog.mutation = kind
             return
         if kind == "return-type":
-            cands = [m for m in prog.methods
-                     if m.sigged and incompatible(m.declared) is not None]
+            cands = [m for m in prog.methods if m.sigged and incompatible(m.declared) is not None]
             if not cands:
                 continue
             m = rng.choice(cands)
@@ -332,8 +339,9 @@ class Sample:
     decls: tuple[tuple[str, tuple[tuple[str, str], ...], str], ...] = ()
 
 
-def sample(count: int, seed: int, *, sigil: str = "true", coverage: float = 1.0,
-           loose: float = 0.25) -> list[Sample]:
+def sample(
+    count: int, seed: int, *, sigil: str = "true", coverage: float = 1.0, loose: float = 0.25
+) -> list[Sample]:
     """Half well-typed, half intended ill-typed. Deterministic by seed, so any
     program in a report can be reproduced from the numbers printed with it."""
     rng = random.Random(seed)
@@ -341,11 +349,13 @@ def sample(count: int, seed: int, *, sigil: str = "true", coverage: float = 1.0,
     for i in range(count):
         intent = "wellformed" if i % 2 == 0 else "illtyped"
         name = f"s{i:04d}"
-        p = build(rng, sigil=sigil, coverage=coverage, loose=loose, intent=intent,
-                  prefix=f"{name}_")
+        p = build(
+            rng, sigil=sigil, coverage=coverage, loose=loose, intent=intent, prefix=f"{name}_"
+        )
         decls = tuple(
             (m.name, tuple((pn, pt.render()) for pn, pt in m.params), m.declared.render())
-            for m in p.methods if m.sigged
+            for m in p.methods
+            if m.sigged
         )
         out.append(Sample(name, intent, p.mutation, sigil, coverage, p.render(), decls))
     return out
@@ -381,9 +391,16 @@ GEN_CELLS: dict[str, str] = {
 GEN_PINNED_ZERO_CELLS = ("gen-typed-rejected",)
 
 
-def run_siggen(count: int, seed: int, out_dir, *, sigil: str = "true",
-               coverage: float = 1.0, loose: float = 0.25,
-               timeout: float = 300.0) -> dict:
+def run_siggen(
+    count: int,
+    seed: int,
+    out_dir,
+    *,
+    sigil: str = "true",
+    coverage: float = 1.0,
+    loose: float = 0.25,
+    timeout: float = 300.0,
+) -> dict:
     import json
 
     from .control import CRubyRunner
@@ -416,12 +433,17 @@ def run_siggen(count: int, seed: int, out_dir, *, sigil: str = "true",
         else:
             cell = "gen-illtyped-accepted"
 
-        rows.append({
-            "name": s.name, "intent": s.intent, "mutation": s.mutation,
-            "cell": cell, "runtime": rt,
-            "srb_errors": [e.to_json() for e in errs],
-            "source": s.source,
-        })
+        rows.append(
+            {
+                "name": s.name,
+                "intent": s.intent,
+                "mutation": s.mutation,
+                "cell": cell,
+                "runtime": rt,
+                "srb_errors": [e.to_json() for e in errs],
+                "source": s.source,
+            }
+        )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / "cases.jsonl").open("w") as fh:
@@ -431,26 +453,30 @@ def run_siggen(count: int, seed: int, out_dir, *, sigil: str = "true",
     caught = sum(1 for r in rows if r["cell"] == "gen-illtyped-caught")
     injected = sum(1 for r in rows if r["intent"] == "illtyped")
     summary = {
-        "count": count, "seed": seed, "sigil": sigil,
-        "coverage": coverage, "loose": loose,
+        "count": count,
+        "seed": seed,
+        "sigil": sigil,
+        "coverage": coverage,
+        "loose": loose,
         "cells": {c: sum(1 for r in rows if r["cell"] == c) for c in GEN_CELLS},
         # Per mutation kind, so a kind srb never catches stands out instead of
         # being averaged away.
         "by_mutation": {
             k: {
                 "total": sum(1 for r in rows if r["mutation"] == k),
-                "caught": sum(1 for r in rows
-                              if r["mutation"] == k and r["cell"] == "gen-illtyped-caught"),
+                "caught": sum(
+                    1 for r in rows if r["mutation"] == k and r["cell"] == "gen-illtyped-caught"
+                ),
             }
             for k in MUTATIONS
         },
         "srb_catch_rate": (caught / injected) if injected else None,
-        "violations": [
-            r["name"] for r in rows
-            if r["cell"] in GEN_PINNED_ZERO_CELLS
+        "violations": [r["name"] for r in rows if r["cell"] in GEN_PINNED_ZERO_CELLS],
+        "findings": [
+            r["name"]
+            for r in rows
+            if r["cell"] in ("gen-unsoundness-witness", "gen-illtyped-accepted")
         ],
-        "findings": [r["name"] for r in rows
-                     if r["cell"] in ("gen-unsoundness-witness", "gen-illtyped-accepted")],
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     return summary
@@ -461,9 +487,16 @@ def run_siggen(count: int, seed: int, out_dir, *, sigil: str = "true",
 # ---------------------------------------------------------------------------
 
 
-def run_sigread(count: int, seed: int, out_dir, *, sigil: str = "true",
-                coverage: float = 1.0, loose: float = 0.25,
-                timeout: float = 300.0) -> dict:
+def run_sigread(
+    count: int,
+    seed: int,
+    out_dir,
+    *,
+    sigil: str = "true",
+    coverage: float = 1.0,
+    loose: float = 0.25,
+    timeout: float = 300.0,
+) -> dict:
     """Does `rubycore --sigs` recover what the generator declared?
 
     A real oracle rather than a self-consistency check: the generator chose the
@@ -483,22 +516,32 @@ def run_sigread(count: int, seed: int, out_dir, *, sigil: str = "true",
     for s in samples:
         got = reader.read(s.source)
         if got is None:
-            rows.append({"name": s.name, "status": "undecidable",
-                         "expected": [list(d) for d in s.decls], "got": None})
+            rows.append(
+                {
+                    "name": s.name,
+                    "status": "undecidable",
+                    "expected": [list(d) for d in s.decls],
+                    "got": None,
+                }
+            )
             continue
         # Compare as sorted tuples: the reader reports source order, and so does
         # the generator, but pinning order would test the traversal rather than
         # the reading.
-        want = sorted((m, list(ps), r) for m, ps, r in
-                      ((m, [list(p) for p in ps], r) for m, ps, r in s.decls))
-        have = sorted((d["method"],
-                       [[p["name"], p["type"]] for p in d["params"]],
-                       d["returns"]) for d in got)
-        rows.append({
-            "name": s.name,
-            "status": "agree" if want == have else "mismatch",
-            "expected": want, "got": have,
-        })
+        want = sorted(
+            (m, list(ps), r) for m, ps, r in ((m, [list(p) for p in ps], r) for m, ps, r in s.decls)
+        )
+        have = sorted(
+            (d["method"], [[p["name"], p["type"]] for p in d["params"]], d["returns"]) for d in got
+        )
+        rows.append(
+            {
+                "name": s.name,
+                "status": "agree" if want == have else "mismatch",
+                "expected": want,
+                "got": have,
+            }
+        )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / "cases.jsonl").open("w") as fh:
@@ -507,7 +550,10 @@ def run_sigread(count: int, seed: int, out_dir, *, sigil: str = "true",
 
     n_sigs = sum(len(s.decls) for s in samples)
     summary = {
-        "count": count, "seed": seed, "sigil": sigil, "coverage": coverage,
+        "count": count,
+        "seed": seed,
+        "sigil": sigil,
+        "coverage": coverage,
         "signatures_read": n_sigs,
         "agree": sum(1 for r in rows if r["status"] == "agree"),
         "mismatch": [r["name"] for r in rows if r["status"] == "mismatch"],

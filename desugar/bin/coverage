@@ -19,7 +19,6 @@ lib = File.expand_path("../lib", __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require "desugar"
 require "json"
-require "set"
 
 full = ARGV.delete("--full")
 save = ARGV.delete("--save")
@@ -86,7 +85,7 @@ files.each do |f|
     Desugar.program(src)
     in_fragment += 1
   rescue Desugar::Unsupported => e
-    key = e.message.sub(/node type :/, "node:").sub(/ \(.*\)/, "")
+    key = e.message.sub("node type :", "node:").sub(/ \(.*\)/, "")
     first_blocker[key] += 1
   rescue StandardError => e
     first_blocker["<error:#{e.class}>"] += 1
@@ -129,22 +128,22 @@ end
 
 if File.exist?(baseline_path)
   base = JSON.parse(File.read(baseline_path))
-  puts "\nbaseline: in-fragment=#{base['in_fragment']} (of #{base['parseable']})  " \
+  puts "\nbaseline: in-fragment=#{base["in_fragment"]} (of #{base["parseable"]})  " \
        "current=#{in_fragment} (of #{parseable})"
   regressed = false
   # The corpus is harvested from a pinned CRuby tag, so `parseable` is fixed, and
   # `in_fragment` may only rise.
   if in_fragment < base["in_fragment"]
-    warn "REGRESSION: in-fragment dropped from #{base['in_fragment']} to #{in_fragment}"
+    warn "REGRESSION: in-fragment dropped from #{base["in_fragment"]} to #{in_fragment}"
     regressed = true
   end
   if parseable != base["parseable"]
-    warn "REGRESSION: the corpus has #{parseable} parseable programs, the baseline #{base['parseable']}: " \
+    warn "REGRESSION: the corpus has #{parseable} parseable programs, the baseline #{base["parseable"]}: " \
          "it is not the pinned one (remove desugar/corpus/bootstraptest and rerun `make desugar-coverage`)"
     regressed = true
   end
   exit 1 if regressed
-  puts "up #{in_fragment - base['in_fragment']} since baseline" if in_fragment > base["in_fragment"]
+  puts "up #{in_fragment - base["in_fragment"]} since baseline" if in_fragment > base["in_fragment"]
 else
   puts "\n(no baseline yet; run with --save to create coverage-baseline.json)"
 end

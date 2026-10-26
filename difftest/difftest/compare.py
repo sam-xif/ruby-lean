@@ -61,9 +61,15 @@ def compare(control: Observation, sut: Observation) -> tuple[Verdict, str | None
     # answer — inconclusive, same neutral bucket as a SUT timeout. (When the
     # control *also* overflows, run_case already excluded the case as
     # control_invalid before the SUT ran, so this only fires on the asymmetric case.)
-    if (b.exception and b.exception[0] == "SystemStackError"
-            and not (a.exception and a.exception[0] == "SystemStackError")):
-        return Verdict.SUT_UNSUPPORTED, "sut stack overflow (extra frames per call tip a control-terminating program over; inconclusive)"
+    if (
+        b.exception
+        and b.exception[0] == "SystemStackError"
+        and not (a.exception and a.exception[0] == "SystemStackError")
+    ):
+        return (
+            Verdict.SUT_UNSUPPORTED,
+            "sut stack overflow (extra frames per call tip a control-terminating program over; inconclusive)",
+        )
     parts = []
     if a.stdout != b.stdout:
         parts.append(f"stdout: {a.stdout!r} vs {b.stdout!r}")

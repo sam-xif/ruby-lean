@@ -35,7 +35,7 @@ def test_every_program_carries_the_sigil():
 
 
 def test_intents_are_evenly_distributed():
-    counts = {i: 0 for i in INTENTS}
+    counts = dict.fromkeys(INTENTS, 0)
     for s in sample(30, 5):
         counts[s.intent] += 1
     assert set(counts.values()) == {10}
@@ -89,12 +89,14 @@ def test_srb_batch_parses_codes_and_keys_by_program(monkeypatch):
 
     from difftest.fragment_fuzz import Sample
 
-    samples = [Sample("g0000", "wellformed", "# typed: true\n1\n"),
-               Sample("g0001", "injected-literal", "# typed: true\n1 + nil\n")]
+    samples = [
+        Sample("g0000", "wellformed", "# typed: true\n1\n"),
+        Sample("g0001", "injected-literal", "# typed: true\n1 + nil\n"),
+    ]
     raw = (
         "./g0001.rb:2: Expected `Integer` but found `NilClass` for argument "
         "`arg0` https://srb.help/7002\n"
-        "     2 |1 + nil\n"        # continuation line, must be ignored
+        "     2 |1 + nil\n"  # continuation line, must be ignored
         "./nope.rb:1: stray https://srb.help/9999\n"  # unknown file, ignored
     )
 

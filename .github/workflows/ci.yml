@@ -1,5 +1,5 @@
-# CI runs `make check`, split across four jobs so they run in parallel, and a
-# fifth, `CI`, that passes only if all four did.
+# CI runs `make check`, split across five jobs so they run in parallel, and a
+# sixth, `CI`, that passes only if all five did.
 #
 # Every job runs on every pull request and every push to main, and every step
 # blocks: there is no report-only step and no path filter. Each step is a `make`
@@ -9,6 +9,8 @@
 #                 axiom audits; the soundness check over the corpus; the comparator
 #   conformance   the model against CRuby, and the differential tester's own tests
 #   front-end     the desugarer against CRuby
+#   lint          formatting and lint over the Python, the Ruby tooling, the shell scripts
+#                 and the workflows
 #   docs          the documentation site builds with no broken links
 #   CI            the workflow's verdict: the one check the ruleset on main requires
 name: CI
@@ -157,6 +159,19 @@ jobs:
       - run: make desugar-test
       - run: make desugar-coverage
 
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+      - run: make deps
+      - run: make lint
+
   docs:
     name: docs
     runs-on: ubuntu-latest
@@ -175,7 +190,7 @@ jobs:
   # required check waiting.
   ci:
     name: CI
-    needs: [proofs, conformance, front-end, docs]
+    needs: [proofs, conformance, front-end, lint, docs]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

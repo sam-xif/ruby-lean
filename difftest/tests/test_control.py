@@ -1,5 +1,4 @@
 import pytest
-
 from difftest.control import CRubyRunner
 
 

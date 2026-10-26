@@ -20,9 +20,11 @@ module Linearize
   def definitely_jumps?(node)
     case node[0]
     when :return, :break, :next, :retry, :redo then true
-    when :seq  then node[1..].any? { |n| definitely_jumps?(n) }
+    when :seq then node[1..].any? { |n| definitely_jumps?(n) }
     when :if
-      c, t, e = node[1], node[2], node[3]
+      c = node[1]
+      t = node[2]
+      e = node[3]
       definitely_jumps?(c) || (definitely_jumps?(t) && !e.nil? && definitely_jumps?(e))
     else false
     end

@@ -57,7 +57,7 @@ GROUND = {
   "NilClass" => { "tag" => "nilT" },
   "TrueClass" => { "tag" => "bool" },
   "FalseClass" => { "tag" => "bool" },
-  "T::Boolean" => { "tag" => "bool" },
+  "T::Boolean" => { "tag" => "bool" }
 }.freeze
 
 # `Ty.cls` is for the builtin classes, "whose instances have no ivars this
@@ -115,7 +115,7 @@ def to_ty(s, untyped = "exclude")
     return nil unless parts.length == 2
 
     k, v = parts.map { |p| to_ty(p, untyped) }
-    return (k && v) ? { "tag" => "hashOf", "key" => k, "val" => v } : nil
+    return k && v ? { "tag" => "hashOf", "key" => k, "val" => v } : nil
   end
   if s.start_with?("T.any(") && s.end_with?(")")
     tys = split_args(s[6..-2]).map { |p| to_ty(p, untyped) }
@@ -291,7 +291,7 @@ def main
   puts JSON.generate({
     "version" => 1, "file" => "(stdin)", "sigs" => sigs, "dropped" => dropped,
     # Sorbet did not run. Said out loud so a caller cannot read silence as approval.
-    "reader" => "prism", "sorbet" => nil, "verdict" => "not-checked",
+    "reader" => "prism", "sorbet" => nil, "verdict" => "not-checked"
   })
   0
 end

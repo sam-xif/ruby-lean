@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import os
 
-from ..tier0.rspec_harvest import (BLANK_STUB, SORBET_REQUIRE, _ruby, build_prefix)
+from ..tier0.rspec_harvest import BLANK_STUB, SORBET_REQUIRE, _ruby, build_prefix
 from . import harness, version_gen
 
 # 250 inputs in one program overran the SUT timeout on the two Version-heavy
@@ -22,8 +22,9 @@ from . import harness, version_gen
 BATCH = 50
 
 
-def build(brew_root: str, out_dir: str, n: int, seed: int,
-          ruby: str | None = None, batch: int = BATCH) -> dict:
+def build(
+    brew_root: str, out_dir: str, n: int, seed: int, ruby: str | None = None, batch: int = BATCH
+) -> dict:
     ruby = ruby or _ruby()
     os.makedirs(out_dir, exist_ok=True)
     manifest = []
@@ -34,16 +35,22 @@ def build(brew_root: str, out_dir: str, n: int, seed: int,
             prefix = build_prefix(extra, brew_root, ruby) + prefix
         inputs = version_gen.sample(h["kind"], per_harness, seed + hash(hname) % 9973)
         for b in range(0, len(inputs), batch):
-            chunk = inputs[b:b + batch]
+            chunk = inputs[b : b + batch]
             pre = SORBET_REQUIRE + BLANK_STUB
             src = harness.program(hname, chunk, prefix, pre)
             ident = f"{hname}-{seed}-{b // batch:03d}"
             with open(os.path.join(out_dir, ident + ".rb"), "w", encoding="utf-8") as f:
                 f.write(src)
-            manifest.append({"id": ident, "harness": hname, "kind": h["kind"],
-                             "inputs": len(chunk), "seed": seed})
+            manifest.append(
+                {
+                    "id": ident,
+                    "harness": hname,
+                    "kind": h["kind"],
+                    "inputs": len(chunk),
+                    "seed": seed,
+                }
+            )
     with open(os.path.join(out_dir, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)
         f.write("\n")
-    return {"programs": len(manifest),
-            "inputs": sum(m["inputs"] for m in manifest), "out": out_dir}
+    return {"programs": len(manifest), "inputs": sum(m["inputs"] for m in manifest), "out": out_dir}

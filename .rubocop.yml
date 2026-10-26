@@ -1,0 +1,119 @@
+# Linting and formatting for the repository's Ruby tooling (`make lint`). The
+# version of RuboCop is pinned in Gemfile.lock.
+#
+# Only the tools are checked: the desugarer, the derivation emitter and the
+# signature reader, the difftest strippers, the generators and the tests. Ruby
+# that is a program under test is not: the prelude the model boots from, the
+# corpora, the program books' programs and the mutation fixtures. Rewriting one
+# of those changes what is being tested.
+#
+# A finding is fixed, not suppressed: `make check-not-weakened` fails a change
+# that adds a `rubocop:disable`.
+AllCops:
+  TargetRubyVersion: 4.0
+  NewCops: enable
+  SuggestExtensions: false
+  Include:
+    - "desugar/lib/**/*.rb"
+    - "desugar/bin/*"
+    - "desugar/test/**/*.rb"
+    - "books/scripts/**/*.rb"
+    - "books/Books/*/check.rb"
+    - "difftest/ruby/*.rb"
+    - "ruby-lean/scripts/*.rb"
+    - "Gemfile"
+  Exclude:
+    - "desugar/corpus/**/*"
+    - "books/corpus/**/*"
+    - "difftest/corpus/**/*"
+    - "difftest/ruby/mutations/**/*"
+    - "ruby-lean/prelude/**/*"
+    - "**/.lake/**/*"
+    - ".make/**/*"
+
+# The tools are dispatchers over syntax-tree node types: one `case` arm per
+# node is clearer than a method split for the sake of a size limit.
+Metrics:
+  Enabled: false
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+# Syntax-tree code names a node `n`, a type `t`, an expression `e`.
+Naming/MethodParameterName:
+  Enabled: false
+
+# Every file opens with a comment that says what it is for; a class-level one
+# would repeat it.
+Style/Documentation:
+  Enabled: false
+
+# The code stacks guard clauses (`return a if ...` one per line, as a table of
+# cases); a blank line after each would break the table up.
+Layout/EmptyLineAfterGuardClause:
+  Enabled: false
+
+# `:true` and `:false` are node types of the core language, not mistyped booleans.
+Lint/BooleanSymbol:
+  Enabled: false
+
+# A dispatch arm that does two things reads as one line: `then fire(:redo); [:redo]`.
+Style/Semicolon:
+  AllowAsExpressionSeparator: true
+
+# Dispatch tables give each node type its own arm even when two arms build the
+# same thing, so that each arm reads as the rule for its node type. A
+# conditional whose two branches are identical is still caught, by
+# Style/IdenticalConditionalBranches.
+Lint/DuplicateBranch:
+  Enabled: false
+
+# `Dir.glob` sorts, but not in the order `Array#sort` does for a recursive
+# pattern; the explicit `sort` is what makes the order the same everywhere.
+Lint/RedundantDirGlobSort:
+  Enabled: false
+
+# A constant sits next to the method that uses it, which may be below `private`.
+Lint/UselessConstantScoping:
+  Enabled: false
+
+# `is_core?` and `is_a_refine` are named after the checker's own functions.
+Naming/PredicatePrefix:
+  Enabled: false
+
+# Style preferences the code does not follow, and that find no bugs.
+Style/StringConcatenation:
+  Enabled: false
+Style/NumericPredicate:
+  Enabled: false
+Style/FormatStringToken:
+  Enabled: false
+Style/OneClassPerFile:
+  Enabled: false
+Style/OptionalBooleanParameter:
+  Enabled: false
+Style/SafeNavigationChainLength:
+  Enabled: false
+Style/SpecialGlobalVars:
+  Enabled: false
+Layout/LineLength:
+  Max: 120
+  AllowedPatterns: ['^\s*#']
+
+# `extend T::Sig` at the top level is how a Sorbet-annotated script declares its signatures.
+Style/MixinUsage:
+  Exclude:
+    - "difftest/ruby/lambda_comparator.rb"
+
+# It loads the output of its own subprocess (`cruby_feature_names.rb`).
+Security/MarshalLoad:
+  Exclude:
+    - "ruby-lean/scripts/gen_cruby_names.rb"
+
+# `foo({` then the keys one level in, not aligned under the parenthesis.
+Layout/FirstHashElementIndentation:
+  EnforcedStyle: consistent
+Layout/FirstArrayElementIndentation:
+  EnforcedStyle: consistent

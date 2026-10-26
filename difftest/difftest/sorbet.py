@@ -75,6 +75,7 @@ def sorbet_runtime_available() -> bool:
         capture_output=True,
         text=True,
         timeout=60.0,
+        check=False,
     )
     return proc.returncode == 0
 
@@ -99,7 +100,9 @@ def require_toolchain(static: bool = True, runtime: bool = True) -> None:
 # --metrics-file counters and the LSP protocol), so the human output is parsed;
 # the trailing srb.help URL makes the code extraction unambiguous. Continuation
 # lines (context, snippets) are indented and deliberately skipped.
-_ERR_RE = re.compile(r"^(?P<file>\S+?):(?P<line>\d+): (?P<msg>.*?) https://srb\.help/(?P<code>\d+)\s*$")
+_ERR_RE = re.compile(
+    r"^(?P<file>\S+?):(?P<line>\d+): (?P<msg>.*?) https://srb\.help/(?P<code>\d+)\s*$"
+)
 _ERR_NOCODE_RE = re.compile(r"^(?P<file>\S+?):(?P<line>\d+): (?P<msg>.*?)\s*$")
 _COUNT_RE = re.compile(r"^Errors: (\d+)\s*$")
 
@@ -153,7 +156,7 @@ class SorbetStatic:
                 cmd += ["--typed", force_sigil]
             cmd.append(str(path))
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=self.timeout, cwd=d
+                cmd, capture_output=True, text=True, timeout=self.timeout, cwd=d, check=False
             )
             raw = (proc.stdout + proc.stderr).replace(str(path), "case.rb")
         errors = tuple(_parse_errors(raw))
@@ -164,9 +167,7 @@ class SorbetStatic:
         # tool failure — that way a future code change degrades loudly, never
         # into a silent "clean".
         if proc.returncode != 0 and not errors:
-            raise SorbetUnavailable(
-                f"srb tc failed (exit {proc.returncode}): {raw.strip()[:500]}"
-            )
+            raise SorbetUnavailable(f"srb tc failed (exit {proc.returncode}): {raw.strip()[:500]}")
         return StaticResult(errors=errors, raw=raw)
 
 
@@ -177,9 +178,7 @@ def _parse_errors(raw: str) -> list[StaticError]:
             continue  # continuation/context line
         m = _ERR_RE.match(line)
         if m:
-            errors.append(
-                StaticError(int(m["line"]), int(m["code"]), m["msg"].strip())
-            )
+            errors.append(StaticError(int(m["line"]), int(m["code"]), m["msg"].strip()))
             continue
         m = _ERR_NOCODE_RE.match(line)
         if m and not _COUNT_RE.match(line):
@@ -223,6 +222,7 @@ class SigStripper:
             capture_output=True,
             text=True,
             timeout=self.timeout,
+            check=False,
         )
         if proc.returncode == 3:
             return Unstrippable(proc.stderr.strip())
@@ -289,11 +289,19 @@ class FragmentChecker:
     about that semantics, so it must not drift into a separate reimplementation.
     """
 
-    def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
-                 runner: CRubyRunner | None = None):
+    def __init__(
+        self,
+        harness_lib: Path | None = None,
+        lean_bin: Path | None = None,
+        runner: CRubyRunner | None = None,
+    ):
         root = Path(__file__).resolve().parents[2]
         self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar" / "lib"
-        self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.lean_bin = (
+            Path(lean_bin)
+            if lean_bin
+            else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
+        )
         self.runner = runner or CRubyRunner()
 
     def check(self, source: str) -> FragmentResult | None:
@@ -303,13 +311,21 @@ class FragmentChecker:
 
         proc = subprocess.run(
             [self.runner.ruby, "-e", _EXPORT_SNIPPET_FOR_FRAGMENT, str(self.harness_lib)],
-            input=source, capture_output=True, text=True, timeout=self.runner.timeout,
+            input=source,
+            capture_output=True,
+            text=True,
+            timeout=self.runner.timeout,
+            check=False,
         )
         if proc.returncode != 0:
             return None
         lean = subprocess.run(
             [str(self.lean_bin), "--fragment"],
-            input=proc.stdout, capture_output=True, text=True, timeout=self.runner.timeout,
+            input=proc.stdout,
+            capture_output=True,
+            text=True,
+            timeout=self.runner.timeout,
+            check=False,
         )
         if lean.returncode != 0:
             return None
@@ -329,11 +345,19 @@ class SigReader:
     drift into a separate reimplementation.
     """
 
-    def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
-                 runner: CRubyRunner | None = None):
+    def __init__(
+        self,
+        harness_lib: Path | None = None,
+        lean_bin: Path | None = None,
+        runner: CRubyRunner | None = None,
+    ):
         root = Path(__file__).resolve().parents[2]
         self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar" / "lib"
-        self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.lean_bin = (
+            Path(lean_bin)
+            if lean_bin
+            else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
+        )
         self.runner = runner or CRubyRunner()
 
     def read(self, source: str) -> list[dict] | None:
@@ -343,13 +367,21 @@ class SigReader:
 
         proc = subprocess.run(
             [self.runner.ruby, "-e", _EXPORT_SNIPPET_FOR_FRAGMENT, str(self.harness_lib)],
-            input=source, capture_output=True, text=True, timeout=self.runner.timeout,
+            input=source,
+            capture_output=True,
+            text=True,
+            timeout=self.runner.timeout,
+            check=False,
         )
         if proc.returncode != 0:
             return None
         lean = subprocess.run(
             [str(self.lean_bin), "--sigs"],
-            input=proc.stdout, capture_output=True, text=True, timeout=self.runner.timeout,
+            input=proc.stdout,
+            capture_output=True,
+            text=True,
+            timeout=self.runner.timeout,
+            check=False,
         )
         if lean.returncode != 0:
             return None
@@ -396,15 +428,15 @@ print Export.json(core)
 # the `raised != stuck` point of `../books/AGENTS.md` §Type safety as reachability §2). Classifying
 # after the fact leaves the observed behavior untouched.
 _SIG_ERROR_PATTERNS = (
-    "Parameter '",            # CallValidation: argument type check
-    "Return value:",          # CallValidation: return type check
-    "Block parameter",        # CallValidation: block arg check
+    "Parameter '",  # CallValidation: argument type check
+    "Return value:",  # CallValidation: return type check
+    "Block parameter",  # CallValidation: block arg check
     "T.let:",
     "T.cast:",
     "T.must:",
     "T.bind:",
     "T.assert_type!:",
-    "Expected type ",         # the shared tail of the CallValidation messages
+    "Expected type ",  # the shared tail of the CallValidation messages
     "Passed `nil` into T.must",
 )
 

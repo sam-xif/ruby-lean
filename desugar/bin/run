@@ -33,7 +33,7 @@ disagreements = []
 normal_form_fails = []
 ast_fails = []
 
-puts "desugar round-trip  (oracle: #{Observe::ORACLE})#{inject_bug ? '  [DESUGAR_BUG injected]' : ''}"
+puts "desugar round-trip  (oracle: #{Observe::ORACLE})#{"  [DESUGAR_BUG injected]" if inject_bug}"
 puts "=" * 72
 
 files.each do |file|
@@ -41,7 +41,7 @@ files.each do |file|
   name = file.sub(%r{\A.*/corpus/}, "")
   r = Roundtrip.check(src, inject_bug: inject_bug)
   tally[r.status] += 1
-  covered |= (r.coverage || [])
+  covered |= r.coverage || []
 
   mark =
     case r.status
@@ -62,17 +62,20 @@ files.each do |file|
   line = "[#{mark}] #{name}"
   line += "   (#{r.reason})" if %i[out_of_fragment parse_error harness_error].include?(r.status)
   puts line
-  if verbose && r.rendered
-    puts "        render: #{r.rendered}"
-  end
+  puts "        render: #{r.rendered}" if verbose && r.rendered
 end
 
 puts "=" * 72
 puts "agree: #{tally[:agree]}  disagree: #{tally[:disagree]}  " \
      "out-of-fragment: #{tally[:out_of_fragment]}  parse-error: #{tally[:parse_error]}  " \
      "harness-error: #{tally[:harness_error]}"
-puts "  * = agreed but render round-trip unstable — render↔parse artifact, AST-space idempotent, benign (#{normal_form_fails.size}): #{normal_form_fails.join(', ')}" unless normal_form_fails.empty?
-puts "  AST = agreed but AST-space desugar NON-IDEMPOTENT — real bug (#{ast_fails.size}): #{ast_fails.join(', ')}" unless ast_fails.empty?
+unless normal_form_fails.empty?
+  puts "  * = agreed but render round-trip unstable — render↔parse artifact, AST-space idempotent, " \
+       "benign (#{normal_form_fails.size}): #{normal_form_fails.join(", ")}"
+end
+unless ast_fails.empty?
+  puts "  AST = agreed but AST-space desugar NON-IDEMPOTENT — real bug (#{ast_fails.size}): #{ast_fails.join(", ")}"
+end
 
 unless disagreements.empty?
   puts "\nDISAGREEMENTS (triaged, artifact 06 §6):"
@@ -85,7 +88,7 @@ end
 # Coverage report (artifact 06 §5)
 missing = Desugar::RULES - covered
 puts "\ndesugaring-rule coverage: #{covered.size}/#{Desugar::RULES.size}"
-puts "  uncovered: #{missing.map { |m| ":#{m}" }.join(', ')}" unless missing.empty?
+puts "  uncovered: #{missing.map { |m| ":#{m}" }.join(", ")}" unless missing.empty?
 
 # Exit non-zero if any real disagreement (harness/parse errors are also failures).
 # AST-space non-idempotence is a real bug (unlike the benign render-only `*`).

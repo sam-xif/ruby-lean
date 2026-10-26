@@ -78,9 +78,7 @@ class Reporter:
                 )
             lines.append("")
         skipped = [
-            r
-            for r in self.results
-            if r.verdict in (Verdict.CONTROL_INVALID, Verdict.HARNESS_ERROR)
+            r for r in self.results if r.verdict in (Verdict.CONTROL_INVALID, Verdict.HARNESS_ERROR)
         ]
         if skipped:
             lines.append("## Excluded cases (with reasons — nothing is skipped silently)")

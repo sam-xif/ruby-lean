@@ -26,7 +26,7 @@ BAD=$(grep -rnE '^import +' Books/TypeSoundness/Checker/ --include='*.lean' \
       | grep -vE ':import +(Books\.TypeSoundness\.Checker\.[A-Za-z0-9_.]+|Json(\.[A-Za-z0-9_.]+)?|Lean)\s*$')
 if [[ -n "$BAD" ]]; then
   echo "FAIL: the checker imports something outside itself:"
-  echo "$BAD" | sed 's/^/  /'
+  while IFS= read -r line; do echo "  $line"; done <<<"$BAD"
   rc=1
 fi
 
@@ -34,7 +34,7 @@ fi
 BAD=$(grep -rnE '^import +(Books|Checker)\b' --include='*.lean' --exclude-dir=.lake ../ruby-lean 2>/dev/null)
 if [[ -n "$BAD" ]]; then
   echo "FAIL: the model's package imports from books/:"
-  echo "$BAD" | sed 's/^/  /'
+  while IFS= read -r line; do echo "  $line"; done <<<"$BAD"
   rc=1
 fi
 

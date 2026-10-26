@@ -22,8 +22,10 @@ gone; the stepper is back, because the trace is the semantics made visible.
 
 **Restart it after editing this file.** There is no reloader.
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -40,19 +42,24 @@ RATCHET_VALIDATE = ROOT / "books" / ".lake" / "build" / "bin" / "validate-one"
 CORPUS = ROOT / "books" / "corpus"
 TIMEOUT = 120
 LONG = 300
-STRIP_CHAIN = ["sig_strip", "visibility_strip", "freeze_strip", "require_strip",
-               "const_inline", "class_sugar_strip"]
+STRIP_CHAIN = [
+    "sig_strip",
+    "visibility_strip",
+    "freeze_strip",
+    "require_strip",
+    "const_inline",
+    "class_sugar_strip",
+]
+
 
 def find_ruby() -> str:
     if os.environ.get("RUBY"):
         return os.environ["RUBY"]
-    try:
+    with contextlib.suppress(OSError, subprocess.CalledProcessError):
         prefix = subprocess.check_output(["brew", "--prefix", "ruby"], text=True).strip()
         cand = Path(prefix) / "bin" / "ruby"
         if cand.exists():
             return str(cand)
-    except Exception:
-        pass
     return shutil.which("ruby") or "ruby"
 
 
@@ -69,7 +76,9 @@ def trace_run(source: str, cap, at: str, frm) -> dict:
     elif frm:
         argv += ["--trace-from", str(int(frm))]
     try:
-        lean = subprocess.run(argv, input=core, capture_output=True, text=True, timeout=LONG)
+        lean = subprocess.run(
+            argv, input=core, capture_output=True, text=True, timeout=LONG, check=False
+        )
     except subprocess.TimeoutExpired:
         return {"error": "timeout", "message": f"trace timed out after {LONG}s"}
     if lean.returncode != 0:
@@ -91,8 +100,14 @@ def steps_run(source: str) -> dict:
     if err:
         return err
     try:
-        lean = subprocess.run([str(RUBYCORE), "--steps"], input=core,
-                              capture_output=True, text=True, timeout=LONG)
+        lean = subprocess.run(
+            [str(RUBYCORE), "--steps"],
+            input=core,
+            capture_output=True,
+            text=True,
+            timeout=LONG,
+            check=False,
+        )
     except subprocess.TimeoutExpired:
         return {"error": "timeout", "message": f"step count timed out after {LONG}s"}
     if lean.returncode != 0:
@@ -110,16 +125,26 @@ def desugar(source: str) -> tuple[str | None, dict | None]:
     """Ruby source -> RubyCore JSON, or (None, error-dict). The first hop of
     every query on this server; exit 3 is the desugar's own fragment gate."""
     if not RUBYCORE.exists():
-        return None, {"error": "setup",
-                      "message": f"rubycore not built at {RUBYCORE} — run `make run`"}
+        return None, {
+            "error": "setup",
+            "message": f"rubycore not built at {RUBYCORE} — run `make run`",
+        }
     try:
-        des = subprocess.run([RUBY, str(EXPORT_JSON)], input=source,
-                             capture_output=True, text=True, timeout=TIMEOUT)
+        des = subprocess.run(
+            [RUBY, str(EXPORT_JSON)],
+            input=source,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+            check=False,
+        )
     except subprocess.TimeoutExpired:
         return None, {"error": "timeout", "message": "desugar timed out"}
     if des.returncode == 3:
-        return None, {"error": "desugar",
-                      "message": des.stderr.strip() or "out of desugar fragment"}
+        return None, {
+            "error": "desugar",
+            "message": des.stderr.strip() or "out of desugar fragment",
+        }
     if des.returncode != 0:
         return None, {"error": "desugar", "message": des.stderr.strip()[:500] or "desugar failed"}
     return des.stdout, None
@@ -134,14 +159,22 @@ def strip_chain(source: str) -> dict:
     for name in STRIP_CHAIN:
         script = ROOT / "difftest" / "ruby" / f"{name}.rb"
         try:
-            p = subprocess.run([RUBY, str(script)], input=text,
-                               capture_output=True, text=True, timeout=LONG)
+            p = subprocess.run(
+                [RUBY, str(script)],
+                input=text,
+                capture_output=True,
+                text=True,
+                timeout=LONG,
+                check=False,
+            )
         except subprocess.TimeoutExpired:
             return {"error": "strip", "message": f"{name} timed out", "applied": applied}
         if p.returncode != 0:
-            return {"error": "strip",
-                    "message": f"{name}: {p.stderr.strip()[:500] or p.returncode}",
-                    "applied": applied}
+            return {
+                "error": "strip",
+                "message": f"{name}: {p.stderr.strip()[:500] or p.returncode}",
+                "applied": applied,
+            }
         text, _ = p.stdout, applied.append(name)
     return {"source": text, "applied": applied}
 
@@ -149,8 +182,9 @@ def strip_chain(source: str) -> dict:
 def scrub_sigs(report: dict, rb: Path) -> dict:
     """The temp path leaks into srb's diagnostics; the file the user is looking at is the
     editor, so say so rather than naming a directory that no longer exists."""
-    report["diagnostics"] = [line.replace(str(rb), "(editor)")
-                             for line in report.get("srb_diagnostics", [])]
+    report["diagnostics"] = [
+        line.replace(str(rb), "(editor)") for line in report.get("srb_diagnostics", [])
+    ]
     report["file"] = "(editor)"
     return report
 
@@ -165,12 +199,17 @@ def ratchet_sorbet(source: str) -> dict:
     the top editor and not the stripped buffer: stripping is exactly the removal of what
     Sorbet reads, so running this downstream would be asking a different question."""
     import tempfile
+
     with tempfile.TemporaryDirectory() as td:
         rb = Path(td) / "playground.rb"
         rb.write_text(source)
         p = subprocess.run(
             [sys.executable, str(ROOT / "books/scripts/srb_sigs.py"), "--quiet", str(rb)],
-            capture_output=True, text=True, timeout=LONG)
+            capture_output=True,
+            text=True,
+            timeout=LONG,
+            check=False,
+        )
         if p.returncode != 0:
             return {"error": "sorbet", "message": p.stderr.strip()[:2000] or f"exit {p.returncode}"}
         try:
@@ -183,12 +222,17 @@ def ratchet_sorbet(source: str) -> dict:
 def ratchet_derive(source: str) -> dict:
     """Run the typed ladder's untrusted Sorbet -> strip -> desugar -> Deriv stages."""
     import tempfile
+
     with tempfile.TemporaryDirectory() as td:
         rb = Path(td) / "playground.rb"
         rb.write_text(source)
         sigs = subprocess.run(
             [sys.executable, str(ROOT / "books/scripts/srb_sigs.py"), "--quiet", str(rb)],
-            capture_output=True, text=True, timeout=LONG)
+            capture_output=True,
+            text=True,
+            timeout=LONG,
+            check=False,
+        )
         if sigs.returncode != 0:
             return {"error": "sorbet", "message": sigs.stderr.strip()[:2000]}
         stripped = strip_chain(source)
@@ -201,9 +245,12 @@ def ratchet_derive(source: str) -> dict:
         sp.write_text(sigs.stdout)
         ap.write_text(core)
         emit = subprocess.run(
-            [RUBY, str(ROOT / "books/scripts/emit_deriv.rb"),
-             "--ast", str(ap), "--sigs", str(sp)],
-            capture_output=True, text=True, timeout=LONG)
+            [RUBY, str(ROOT / "books/scripts/emit_deriv.rb"), "--ast", str(ap), "--sigs", str(sp)],
+            capture_output=True,
+            text=True,
+            timeout=LONG,
+            check=False,
+        )
         if emit.returncode != 0:
             return {"error": "derive", "message": emit.stderr.strip()[:2000]}
         try:
@@ -211,15 +258,23 @@ def ratchet_derive(source: str) -> dict:
             sig_report = json.loads(sigs.stdout)
         except ValueError as exc:
             return {"error": "derive", "message": f"unparseable pipeline output: {exc}"}
-        return {"emit": report, "deriv": report.get("deriv"), "ty": report.get("ty"),
-                "stripped": stripped["source"], "core": json.loads(core),
-                "sorbet": scrub_sigs(sig_report, rb)}
+        return {
+            "emit": report,
+            "deriv": report.get("deriv"),
+            "ty": report.get("ty"),
+            "stripped": stripped["source"],
+            "core": json.loads(core),
+            "sorbet": scrub_sigs(sig_report, rb),
+        }
 
 
 def ratchet_validate(source: str, deriv) -> dict:
     """Check the displayed Deriv with the trusted `validateD` Bool."""
     if not RATCHET_VALIDATE.exists():
-        return {"error": "setup", "message": f"validate-one not built at {RATCHET_VALIDATE} — run `make run`"}
+        return {
+            "error": "setup",
+            "message": f"validate-one not built at {RATCHET_VALIDATE} — run `make run`",
+        }
     stripped = strip_chain(source)
     if stripped.get("error"):
         return stripped
@@ -228,8 +283,14 @@ def ratchet_validate(source: str, deriv) -> dict:
         return err
     payload = {"program": json.loads(core), "deriv": deriv}
     try:
-        p = subprocess.run([str(RATCHET_VALIDATE)], input=json.dumps(payload),
-                           capture_output=True, text=True, timeout=TIMEOUT)
+        p = subprocess.run(
+            [str(RATCHET_VALIDATE)],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+            check=False,
+        )
     except subprocess.TimeoutExpired:
         return {"error": "timeout", "message": "validateD timed out"}
     if p.returncode != 0:
@@ -261,11 +322,23 @@ LIB = ROOT / "homebrew" / "vendor" / "brew" / "Library" / "Homebrew"
 # reason `certify/certify.py` copies it (E4): two lists that are equal today and
 # are allowed to stop being.
 SLICE = [
-    "version.rb", "version/parser.rb", "pkg_version.rb", "vulns/semver.rb",
-    "vulns/cvss.rb", "vulns/purl.rb", "vulns/vulnerability.rb", "vulns/identify.rb",
+    "version.rb",
+    "version/parser.rb",
+    "pkg_version.rb",
+    "vulns/semver.rb",
+    "vulns/cvss.rb",
+    "vulns/purl.rb",
+    "vulns/vulnerability.rb",
+    "vulns/identify.rb",
 ]
-STRIP_CHAIN = ["sig_strip", "visibility_strip", "freeze_strip", "require_strip",
-               "const_inline", "class_sugar_strip"]
+STRIP_CHAIN = [
+    "sig_strip",
+    "visibility_strip",
+    "freeze_strip",
+    "require_strip",
+    "const_inline",
+    "class_sugar_strip",
+]
 BUILD_SLICE = ROOT / "homebrew" / "slice-driver" / "build.py"
 # The linked slice is 2,151 lines and the model runs it in 825,259 steps; 15s is
 # the toy budget, not this one.
@@ -279,8 +352,9 @@ def model_run(source: str) -> dict:
     if err:
         return err
     try:
-        lean = subprocess.run([str(RUBYCORE)], input=core,
-                              capture_output=True, text=True, timeout=LONG)
+        lean = subprocess.run(
+            [str(RUBYCORE)], input=core, capture_output=True, text=True, timeout=LONG, check=False
+        )
     except subprocess.TimeoutExpired:
         return {"error": "timeout", "message": f"model timed out after {LONG}s"}
     if lean.returncode == 3:
@@ -296,8 +370,9 @@ def model_run(source: str) -> dict:
 def cruby_run(source: str) -> dict:
     """`run_ruby` with the slice's budget rather than the toy's."""
     try:
-        p = subprocess.run([RUBY], input=source, capture_output=True,
-                           text=True, timeout=LONG)
+        p = subprocess.run(
+            [RUBY], input=source, capture_output=True, text=True, timeout=LONG, check=False
+        )
     except subprocess.TimeoutExpired:
         return {"error": "timeout", "message": f"ruby timed out after {LONG}s"}
     return {"stdout": p.stdout, "stderr": p.stderr, "returncode": p.returncode}
@@ -330,10 +405,16 @@ def ratchet_corpus() -> dict:
             entry = json.loads((CORPUS / f"{stem}.meta.json").read_text())
         except ValueError:
             continue
-        out.append({"file": stem, "id": entry.get("id"), "tier": entry.get("tier"),
-                    "description": entry.get("description"),
-                    "expect_validate": entry.get("expect_validate"),
-                    "expect_sorbet": entry.get("expect_sorbet")})
+        out.append(
+            {
+                "file": stem,
+                "id": entry.get("id"),
+                "tier": entry.get("tier"),
+                "description": entry.get("description"),
+                "expect_validate": entry.get("expect_validate"),
+                "expect_sorbet": entry.get("expect_sorbet"),
+            }
+        )
     return {"root": str(CORPUS), "entries": out}
 
 
@@ -355,20 +436,25 @@ RUBY = find_ruby()
 # which side of the seam it is talking to.
 ROUTES = {
     "/ratchet/corpus-source": lambda q: ratchet_corpus_source(q.get("file", "")),
-    "/ratchet/strip":         lambda q: strip_chain(q.get("source", "")),
-    "/ratchet/desugar":       lambda q: desugar_only(q.get("source", "")),
-    "/ratchet/sorbet":        lambda q: ratchet_sorbet(q.get("source", "")),
-    "/ratchet/derive":        lambda q: ratchet_derive(q.get("source", "")),
-    "/ratchet/validate":      lambda q: ratchet_validate(q.get("source", ""), q.get("deriv")),
-    "/ratchet/model":         lambda q: model_run(q.get("source", "")),
-    "/ratchet/trace":         lambda q: trace_run(q.get("source", ""), q.get("max", 400),
-                                                  q.get("at", ""), q.get("from", 0)),
-    "/ratchet/steps":         lambda q: steps_run(q.get("source", "")),
-    "/ratchet/cruby":         lambda q: cruby_run(q.get("source", "")),
+    "/ratchet/strip": lambda q: strip_chain(q.get("source", "")),
+    "/ratchet/desugar": lambda q: desugar_only(q.get("source", "")),
+    "/ratchet/sorbet": lambda q: ratchet_sorbet(q.get("source", "")),
+    "/ratchet/derive": lambda q: ratchet_derive(q.get("source", "")),
+    "/ratchet/validate": lambda q: ratchet_validate(q.get("source", ""), q.get("deriv")),
+    "/ratchet/model": lambda q: model_run(q.get("source", "")),
+    "/ratchet/trace": lambda q: trace_run(
+        q.get("source", ""), q.get("max", 400), q.get("at", ""), q.get("from", 0)
+    ),
+    "/ratchet/steps": lambda q: steps_run(q.get("source", "")),
+    "/ratchet/cruby": lambda q: cruby_run(q.get("source", "")),
 }
 
-STATIC = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-          ".json": "application/json", ".wasm": "application/wasm"}
+STATIC = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json",
+    ".wasm": "application/wasm",
+}
 
 
 class Handler(BaseHTTPRequestHandler):

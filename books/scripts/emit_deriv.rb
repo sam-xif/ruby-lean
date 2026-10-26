@@ -114,7 +114,7 @@ def prim_ret(recv, m, args)
     return nilable(recv["elem"])  if %w[first last].include?(m) && args.empty?
     return recv                   if m == "<<" && args == [recv["elem"]]
     return array_of(recv["elem"]["elem"]) if m == "compact" && args.empty? && recv["elem"]["tag"] == "nilable"
-    return recv                   if m == "uniq" && args.empty?
+    return recv if m == "uniq" && args.empty?
   end
 
   if t == "hashOf"
@@ -146,14 +146,14 @@ end
 
 class Emitter
   def initialize(sigs)
-    @sigs = {}                                  # [owner, name] -> {params, ret}
+    @sigs = {} # [owner, name] -> {params, ret}
     (sigs["sigs"] || []).each { |s| @sigs[[s["cls"], s["name"]]] = s }
     @dropped = {}
     (sigs["dropped"] || []).each { |d| @dropped[[d["cls"], d["name"]]] = d["why"] }
     @env = {}          # locals
     @ivars = {}        # the current self's ivars
     @cls_ivars = {}    # class name -> [[ivar, ty], ...]
-    @modules = []     # no instance allocation proposals for modules
+    @modules = [] # no instance allocation proposals for modules
     @supers = {}       # class name -> superclass name
     @self_cls = nil
     @current_method = nil
@@ -174,7 +174,8 @@ class Emitter
 
   def closure_type?(ty)
     case ty
-    when Hash then %w[closureCode suppliedCallback].include?(ty["tag"]) || ty.values.any? { |value| closure_type?(value) }
+    when Hash
+      %w[closureCode suppliedCallback].include?(ty["tag"]) || ty.values.any? { |value| closure_type?(value) }
     when Array then ty.any? { |value| closure_type?(value) }
     else false
     end
@@ -252,7 +253,7 @@ class Emitter
   def n_regexp_lit(n) = [{ "rule" => "regexpLit", "src" => n[1], "opts" => n[2] }, cls("Regexp")]
   def n_true(_n) = [{ "rule" => "truLit" }, BOOL]
   def n_false(_n) = [{ "rule" => "flsLit" }, BOOL]
-  def n_nil(_n)  = [{ "rule" => "nilLit" }, NIL_T]
+  def n_nil(_n) = [{ "rule" => "nilLit" }, NIL_T]
 
   def n_self(_n)
     raise Blocked, "`self` outside a class body" if @self_cls.nil?
@@ -296,10 +297,10 @@ class Emitter
       next unless node.is_a?(Array)
       reads += 1 if node[0] == "var" && node[1] == "local" && node[2] == name
       tests += 1 if node[0] == "send" && node[1].is_a?(Array) && node[1][0] == "const" &&
-        node[2] == "===" && node[3] == [["var", "local", name]] && node[4].nil?
-      node.each { |ch| walk.(ch) }
+                    node[2] == "===" && node[3] == [["var", "local", name]] && node[4].nil?
+      node.each { |ch| walk.call(ch) }
     end
-    walk.(@root)
+    walk.call(@root)
     @case_temps[name] = tests.positive? && tests == reads
   end
 
@@ -388,12 +389,13 @@ class Emitter
   def narrow_is_a_ivar(n)
     c = n[1]
     return nil unless c[0] == "send" && c[1].is_a?(Array) && c[1][0] == "var" && c[1][1] == "ivar" &&
-      c[2] == "is_a?" && c[3].length == 1 && c[3][0][0] == "const" && c[4].nil? && n[3]
+                      c[2] == "is_a?" && c[3].length == 1 && c[3][0][0] == "const" && c[4].nil? && n[3]
     x = c[1][2]
     t = @ivars[x]
     return nil unless t
     cn = c[3][0][1]
-    before_iv, before = @ivars, @env.dup
+    before_iv = @ivars
+    before = @env.dup
     arms = [[n[2], true], [n[3], false]].map do |body, yes|
       @ivars = before_iv.merge(x => is_a_refine(cn, t, yes))
       @env = before.dup
@@ -414,7 +416,9 @@ class Emitter
   # value is widened to the join (InitJudge.widenL/widenR) so both arms leave one spine.
   def init_if_widen(n)
     return nil unless @current_method == "initialize" && n[3]
-    c, a, b = n[1], n[2], n[3]
+    c = n[1]
+    a = n[2]
+    b = n[3]
     return nil unless c[0] == "var" && c[1] == "local" && @env.key?(c[2])
     return nil unless [a, b].all? { |s| s[0] == "vasgn" && s[1] == "ivar" } && a[2] == b[2]
     dc, = go(c)
@@ -427,7 +431,7 @@ class Emitter
       { "rule" => "ivarAsgn", "name" => a[2],
         "value" => { "rule" => "initWiden", "left" => left, "other" => other, "value" => d } }
     end
-    [{ "rule" => "if", "cond" => dc, "then" => arm.(true, t2, d1), "else" => arm.(false, t1, d2),
+    [{ "rule" => "if", "cond" => dc, "then" => arm.call(true, t2, d1), "else" => arm.call(false, t1, d2),
        "join" => j }, j]
   end
 
@@ -440,7 +444,7 @@ class Emitter
   def narrow_case_eq(n)
     c = n[1]
     return nil unless c[0] == "send" && c[1].is_a?(Array) && c[1][0] == "const" && c[2] == "===" &&
-      c[3].length == 1 && c[3][0][0] == "var" && c[3][0][1] == "local" && c[4].nil? && n[3]
+                      c[3].length == 1 && c[3][0][0] == "var" && c[3][0][1] == "local" && c[4].nil? && n[3]
     t = c[3][0][2]
     a = @env[t]
     return nil unless a
@@ -459,7 +463,7 @@ class Emitter
     end
     rest = ->(e) { e.reject { |k, _| k == x || k == t } }
     raise Blocked, "the two branches of an `if` leave different local types" if
-      rest.(arms[0][2]) != rest.(arms[1][2])
+      rest.call(arms[0][2]) != rest.call(arms[1][2])
     @env = arms[0][2].merge(x => join(arms[0][2][x], arms[1][2][x]),
                             t => join(arms[0][2][t], arms[1][2][t]))
     j = join(arms[0][1], arms[1][1])
@@ -470,7 +474,7 @@ class Emitter
   def narrow_is_a(n)
     c = n[1]
     return nil unless c[0] == "send" && c[1].is_a?(Array) && c[1][0] == "var" && c[1][1] == "local" &&
-      c[2] == "is_a?" && c[3].length == 1 && c[3][0][0] == "const" && c[4].nil? && n[3]
+                      c[2] == "is_a?" && c[3].length == 1 && c[3][0][0] == "const" && c[4].nil? && n[3]
     x = c[1][2]
     t = @env[x]
     return nil unless t
@@ -545,7 +549,7 @@ class Emitter
   def narrow_nil_query(n)
     c = n[1]
     return nil unless c[0] == "send" && c[1].is_a?(Array) && c[1][0] == "var" &&
-      c[1][1] == "local" && c[2] == "nil?" && c[3] == [] && c[4].nil?
+                      c[1][1] == "local" && c[2] == "nil?" && c[3] == [] && c[4].nil?
     x = c[1][2]
     if @env[x] == NIL_T
       dt, tt = go(n[2])
@@ -574,29 +578,31 @@ class Emitter
   def narrow_and(n)
     c = n[1]
     return nil unless n[3] && c[0] == "seq" && c.length == 3
-    asg, inner = c[1], c[2]
+    asg = c[1]
+    inner = c[2]
     return nil unless asg[0] == "vasgn" && asg[1] == "local" && asg[3][0] == "var" && asg[3][1] == "local"
-    t, x = asg[2], asg[3][2]
+    t = asg[2]
+    x = asg[3][2]
     return nil unless t.start_with?("__dt_") && x != t && inner[0] == "if" &&
-      inner[1] == ["var", "local", t] && inner[3] == ["var", "local", t]
+                      inner[1] == ["var", "local", t] && inner[3] == ["var", "local", t]
     xt = @env[x]
     return nil unless xt && xt["tag"] == "nilable" && FALSE_FREE.include?(xt["elem"]["tag"])
     base = @env.to_h { |k, ty| [k, ty["tag"] == "sameAs" && ty["name"] == t ? ty["elem"] : ty] }
     both = ->(r) { base.merge(x => r, t => { "tag" => "sameAs", "name" => x, "elem" => r }) }
-    @env = both.(xt["elem"])
+    @env = both.call(xt["elem"])
     dc, = go(inner[2])
     cond_env = @env
     dt, tt = go(n[2])
     then_env = @env
-    nil_env = both.(NIL_T)
+    nil_env = both.call(NIL_T)
     @env = cond_env.merge(x => join(cond_env[x], NIL_T), t => join(cond_env[t], nil_env[t]))
     raise Blocked, "the condition of `&&` changes other local types" if
-      cond_env.reject { |k, _| [x, t].include?(k) } != nil_env.reject { |k, _| [x, t].include?(k) }
+      cond_env.except(x, t) != nil_env.except(x, t)
     de, te = go(n[3])
     else_env = @env
     rest = ->(e) { e.reject { |k, _| k == x || k == t } }
     raise Blocked, "the two branches of an `if` leave different local types" if
-      rest.(then_env) != rest.(else_env)
+      rest.call(then_env) != rest.call(else_env)
     @env = then_env.merge(x => join(then_env[x], else_env[x]), t => join(then_env[t], else_env[t]))
     j = join(tt, te)
     [{ "rule" => "ifAndVar", "cond" => dc, "then" => dt, "else" => de, "join" => j }, j]
@@ -617,7 +623,7 @@ class Emitter
 
   def n_if(n)
     narrowed = narrow_and(n) || narrow_truthy(n) || narrow_nil_query(n) || narrow_nil_var(n) || narrow_is_a(n) ||
-      narrow_is_a_ivar(n) || narrow_case_eq(n) || init_if_widen(n)
+               narrow_is_a_ivar(n) || narrow_case_eq(n) || init_if_widen(n)
     return narrowed if narrowed
     dc, = go(n[1])
     # Both branches are typed in the incoming environment's *copy*: this emitter
@@ -666,7 +672,7 @@ class Emitter
     vts = []
     n[1].each do |pair|
       # Exported pairs are [key_ast, value_ast], not tagged nodes.
-      unless pair.is_a?(Array) && pair.length == 2 && pair.all? { |e| e.is_a?(Array) }
+      unless pair.is_a?(Array) && pair.length == 2 && pair.all?(Array)
         raise Blocked, "hash entry '#{pair}' is outside the fragment"
       end
 
@@ -702,7 +708,7 @@ class Emitter
     end
     rest = ->(e) { e.reject { |k, _| k == x } }
     raise Blocked, "the arms of a union receiver leave different local types" if
-      rest.(arms[0][2]) != rest.(arms[1][2])
+      rest.call(arms[0][2]) != rest.call(arms[1][2])
     @env = arms[0][2].merge(x => join(arms[0][2][x], arms[1][2][x]))
     j = join(arms[0][1], arms[1][1])
     [{ "rule" => "sendUnion", "left" => arms[0][0], "right" => arms[1][0], "join" => j }, j]
@@ -716,9 +722,7 @@ class Emitter
        @env[recv[2]].is_a?(Hash) && @env[recv[2]]["tag"] == "union"
       return send_union(n)
     end
-    if recv.nil? && n[4] && @callback_sigs.key?(m)
-      return callback_send(m, args, n[4])
-    end
+    return callback_send(m, args, n[4]) if recv.nil? && n[4] && @callback_sigs.key?(m)
     if recv.nil? && %w[lambda proc].include?(m) && args.empty? && n[4]
       block = n[4]
       unless block[0] == "block" && block[1].all? { |p| p[0] == "preq" } && [4, 5].include?(block.length)
@@ -728,8 +732,8 @@ class Emitter
       # Emitter-only code descriptor. The checker reconstructs its own closure type
       # from the source and rechecks this body at the call's live local environment.
       return [{ "rule" => "closureLiteral" }, { "tag" => "closureCode", "body" => block[-1],
-        "params" => block[1].map { |p| p[1] }, "lambda" => m == "lambda",
-        "locals" => block[2] + (block.length == 5 ? block[3] : []) }]
+                                                "params" => block[1].map { |p| p[1] }, "lambda" => m == "lambda",
+                                                "locals" => block[2] + (block.length == 5 ? block[3] : []) }]
     end
     return array_block(m, recv, args, n[4]) if recv && %w[each map collect].include?(m) && n[4]
     raise Blocked, "a block argument is outside the fragment" unless n[4].nil?
@@ -762,11 +766,11 @@ class Emitter
       @env = returned
       raise Blocked, "closure-valued call results are outside the fragment" if closure_type?(ret)
       if tr["lambda"] && m == "call" && recv[0] == "var" && recv[1] == "local" &&
-          args.empty? && tr["locals"].empty?
+         args.empty? && tr["locals"].empty?
         return [{ "rule" => "closureCall", "body" => body, "ret" => ret }, ret]
       end
       return [{ "rule" => "requiredClosureCall", "recv" => dr, "args" => dargs,
-        "body" => body, "ret" => ret }, ret]
+                "body" => body, "ret" => ret }, ret]
     end
     tr = as_inst(tr)
     dargs, targs = go_all(args)
@@ -776,7 +780,7 @@ class Emitter
                 "recvTy" => tr, "retTy" => ret }, ret]
     end
     if tr["tag"] == "clsOf"
-      sig = sig_for("<Class:#{tr['name']}>", m)
+      sig = sig_for("<Class:#{tr["name"]}>", m)
       check_inferred_args(sig, targs)
       dargs = fit_params(dargs, targs, sig)
       result = as_inst(sig["ret"])
@@ -796,7 +800,7 @@ class Emitter
 
   def array_block(method, recv, args, block)
     unless args.empty? && block[0] == "block" && [4, 5].include?(block.length) &&
-        block[1].length == 1 && block[1][0][0] == "preq"
+           block[1].length == 1 && block[1][0][0] == "preq"
       raise Blocked, "#{method} requires one positional block parameter and no arguments"
     end
     dr, tr = go(recv)
@@ -919,13 +923,15 @@ class Emitter
   def n_defs(n)
     raise Blocked, "singleton receiver other than self" unless n[1] == ["self"]
 
-    outer_singleton, outer_ivars = @singleton, @ivars
+    outer_singleton = @singleton
+    outer_ivars = @ivars
     @singleton = true
     # Constructor fields belong to instances, never to the class object's self.
     @cls_ivars[@self_cls] = @ivars.to_a unless @modules.include?(@self_cls)
     @ivars = {}
     result = n_def(["def", n[2], n[3], n[4]])
-    @singleton, @ivars = outer_singleton, outer_ivars
+    @singleton = outer_singleton
+    @ivars = outer_ivars
     result
   end
 
@@ -978,9 +984,7 @@ class Emitter
       { "name" => p[1], "ty" => as_inst(sig["params"][i]["ty"]) }
     end
 
-    if @self_cls.nil? && !@singleton && contains_yield?(body)
-      return callback_definition(name, sps, sig["ret"], body)
-    end
+    return callback_definition(name, sps, sig["ret"], body) if @self_cls.nil? && !@singleton && contains_yield?(body)
 
     outer_env = @env
     outer_method = @current_method
@@ -1011,12 +1015,10 @@ class Emitter
   end
 
   def subclass_union?(t, declared, nested = false)
-    if declared["tag"] == "nilable" && t["tag"] == "nilable"
-      return subclass_union?(t["elem"], declared["elem"], true)
-    end
+    return subclass_union?(t["elem"], declared["elem"], true) if declared["tag"] == "nilable" && t["tag"] == "nilable"
     return false unless declared["tag"] == "cls" && @cls_ivars.key?(declared["name"]) &&
-      (t["tag"] == "union" || (nested && t["tag"] == "inst"))
-    members = lambda { |u| u["tag"] == "union" ? members.call(u["l"]) + members.call(u["r"]) : [u] }
+                        (t["tag"] == "union" || (nested && t["tag"] == "inst"))
+    members = ->(u) { u["tag"] == "union" ? members.call(u["l"]) + members.call(u["r"]) : [u] }
     members.call(t).all? { |x| x["tag"] == "inst" && class_chain(x["name"]).include?(declared["name"]) }
   end
 
@@ -1137,9 +1139,7 @@ class Emitter
         trial.instance_variable_set(field, value.dup) if value.is_a?(Hash) || value.is_a?(Array)
       end
       trial.instance_variable_set(:@env, params.to_h { |p| [p["name"], p["ty"]] })
-      if declared_block
-        trial.instance_variable_get(:@env)[declared_block["name"]] = { "tag" => "suppliedCallback" }
-      end
+      trial.instance_variable_get(:@env)[declared_block["name"]] = { "tag" => "suppliedCallback" } if declared_block
       trial.instance_variable_set(:@current_method, name)
       trial.instance_variable_set(:@inferring, true)
       trial.instance_variable_set(:@yield_signature, [declared_block&.fetch("args"), block_ret])
@@ -1170,7 +1170,7 @@ class Emitter
   def callback_send(name, args, block)
     sig = @callback_sigs.fetch(name)
     unless args.empty? && block[0] == "block" && [4, 5].include?(block.length) &&
-        block[1].all? { |p| p[0] == "preq" } && block[1].length == sig["args"].length
+           block[1].all? { |p| p[0] == "preq" } && block[1].length == sig["args"].length
       raise Blocked, "#{name}: callback call requires matching positional block parameters and no method arguments"
     end
     caller = @env.dup
@@ -1251,12 +1251,19 @@ class Emitter
   end
 
   def n_module(n)
-    name, body = n[1], n[2]
+    name = n[1]
+    body = n[2]
     @modules << name
-    outer_cls, outer_ivars, outer_env = @self_cls, @ivars, @env
-    @self_cls, @ivars, @env = name, {}, {}
+    outer_cls = @self_cls
+    outer_ivars = @ivars
+    outer_env = @env
+    @self_cls = name
+    @ivars = {}
+    @env = {}
     dbody, body_ty = go(body)
-    @self_cls, @ivars, @env = outer_cls, outer_ivars, outer_env
+    @self_cls = outer_cls
+    @ivars = outer_ivars
+    @env = outer_env
     [{ "rule" => "moduleDecl", "name" => name, "body" => dbody }, body_ty]
   end
 

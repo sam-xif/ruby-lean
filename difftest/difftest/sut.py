@@ -110,6 +110,7 @@ class DesugarRoundtripSUT:
             text=True,
             timeout=self.runner.timeout,
             env=env,
+            check=False,
         )
         if proc.returncode == 3:
             return Unsupported(f"out of desugar fragment: {proc.stderr.strip()}")
@@ -155,7 +156,11 @@ class LeanSUT:
     ):
         root = Path(__file__).resolve().parents[2]
         self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar" / "lib"
-        self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.lean_bin = (
+            Path(lean_bin)
+            if lean_bin
+            else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
+        )
         self.runner = runner or CRubyRunner()
 
     def run(self, source: str) -> Observation | Unsupported:
@@ -165,6 +170,7 @@ class LeanSUT:
             capture_output=True,
             text=True,
             timeout=self.runner.timeout,
+            check=False,
         )
         if proc.returncode == 3:
             return Unsupported(f"out of desugar fragment: {proc.stderr.strip()}")
@@ -179,13 +185,16 @@ class LeanSUT:
                 capture_output=True,
                 text=True,
                 timeout=self.runner.timeout,
+                check=False,
             )
         except subprocess.TimeoutExpired:
             return Observation(stdout="", result_repr=None, exception=None, timed_out=True)
         if lean.returncode == 3:
             return Unsupported(f"out of Lean fragment: {lean.stderr.strip()[:300]}")
         if lean.returncode != 0:
-            return Unsupported(f"MODEL-BUG: rubycore exit {lean.returncode}: {lean.stderr.strip()[:300]}")
+            return Unsupported(
+                f"MODEL-BUG: rubycore exit {lean.returncode}: {lean.stderr.strip()[:300]}"
+            )
         import json as _json
 
         try:
@@ -234,8 +243,7 @@ class SigStripSUT:
         return self.runner.run(stripped)
 
 
-def make_sut(kind: str, inject_bug: bool = False,
-             timeout: float | None = None) -> SystemUnderTest:
+def make_sut(kind: str, inject_bug: bool = False, timeout: float | None = None) -> SystemUnderTest:
     """`timeout` applies to the **SUT**, not just the control.
 
     Until N47 it did not exist: every SUT built its own default `CRubyRunner`,

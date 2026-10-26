@@ -71,11 +71,13 @@ def _thresholds(mix: dict[str, float]) -> list[tuple[str, int]]:
 
 
 @st.composite
-def _mixed_draws(draw, mix: dict[str, float], corpus_cases: dict[str, list[TestCase]],
-                 gen_strategies: dict):
+def _mixed_draws(
+    draw, mix: dict[str, float], corpus_cases: dict[str, list[TestCase]], gen_strategies: dict
+):
     """Draw (arm, payload): for a *generative* arm (a key of `gen_strategies`, e.g.
     "tier1"/"tier1.5") the payload is a freshly-generated tier-1 AST; for a corpus
     arm (tier0/tier3) it is a sampled TestCase."""
+
     def draw_arm(name):
         if name in gen_strategies:
             return name, draw(gen_strategies[name]())
@@ -129,7 +131,7 @@ def _file_regression(
         "sut": minimal.sut_obs.to_json() if minimal.sut_obs else None,
         "note": (
             "Minimized by hypothesis. Re-run with "
-            "`difftest run --tier regressions`; flip `status` to \"fixed\" once it "
+            '`difftest run --tier regressions`; flip `status` to "fixed" once it '
             "agrees, which that tier will insist on."
         ),
     }
@@ -180,15 +182,19 @@ def run_generative_campaign(
                 id=f"{arm}-{i:05d}" if pure else f"mix-{i:05d}",
                 source=render_program(payload),
                 tier=1,
-                provenance={"generator": "hypothesis", "arm": arm, "seed": seed,
-                            "phase": phase},
+                provenance={"generator": "hypothesis", "arm": arm, "seed": seed, "phase": phase},
             )
         else:
             case = dataclasses.replace(
                 payload,
                 id=f"mix-{i:05d}",
-                provenance={**payload.provenance, "arm": arm, "corpus_id": payload.id,
-                            "seed": seed, "phase": phase},
+                provenance={
+                    **payload.provenance,
+                    "arm": arm,
+                    "corpus_id": payload.id,
+                    "seed": seed,
+                    "phase": phase,
+                },
             )
         result = run_case(case, control, sut)
         reporter.record(result)
@@ -222,9 +228,15 @@ def run_generative_campaign(
         if minimal is None:
             raise
 
-    extra: dict = {"campaign": {"mix": mix, "requested_examples": n, "seed": seed,
-                                "arm_counts": arm_counts,
-                                "stopped_early_on_disagreement": minimal is not None}}
+    extra: dict = {
+        "campaign": {
+            "mix": mix,
+            "requested_examples": n,
+            "seed": seed,
+            "arm_counts": arm_counts,
+            "stopped_early_on_disagreement": minimal is not None,
+        }
+    }
     if minimal is not None:
         minimal.minimized = True
         reporter.record(minimal)

@@ -11,22 +11,23 @@ from __future__ import annotations
 from hypothesis import strategies as st
 
 from . import ast as A
-from .env import *  # noqa: F403
+from .classes import *
+from .classes import _class_def, _module_def, _reopen
+from .env import *
 from .env import ClassInfo, Env, ModuleInfo, Sig  # noqa: F401
-from .exprs import *  # noqa: F403
+from .exprs import *
 from .exprs import _block_call, _expr, _method_param_spec  # noqa: F401
-from .stmts import *  # noqa: F403
-from .stmts import _stmt_seq  # noqa: F401
-from .classes import *  # noqa: F403
-from .classes import _class_def, _module_def, _reopen  # noqa: F401
 from .slice_heads import (
     coerce_probe,
     comparable_probe,
+    range_probe,
     regex_interp_probe,
     regex_probe,
-    range_probe,
     regex_scope_probe,
 )
+from .stmts import *
+from .stmts import _stmt_seq
+
 
 @st.composite
 def programs(draw) -> A.Program:
@@ -53,7 +54,10 @@ def programs(draw) -> A.Program:
         if flavor == "varied":
             params, sig, bound = draw(_method_param_spec(2))
             body_env = Env(
-                locals=bound, methods=env.methods, in_method=True, sigs=env.sigs,
+                locals=bound,
+                methods=env.methods,
+                in_method=True,
+                sigs=env.sigs,
                 const_asgn_ok=False,
             )
             body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
@@ -68,8 +72,12 @@ def programs(draw) -> A.Program:
         # invoked with a block (via `_block_call`) — never a blockless LocalJumpError
         yields = flavor == "yielder" and arity >= 1
         body_env = Env(
-            locals=params, methods=env.methods, in_method=True,
-            can_yield=1 if yields else None, sigs=env.sigs, const_asgn_ok=False,
+            locals=params,
+            methods=env.methods,
+            in_method=True,
+            can_yield=1 if yields else None,
+            sigs=env.sigs,
+            const_asgn_ok=False,
         )
         body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
         # make the return value depend on the params when there are any

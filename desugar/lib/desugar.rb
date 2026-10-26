@@ -33,13 +33,13 @@ class Desugar
     @gensym = 0
     @coverage = []
     @inject_bug = inject_bug
-    @fn_depth = 0        # >0 while inside a def body (gates top-level `return`)
+    @fn_depth = 0 # >0 while inside a def body (gates top-level `return`)
   end
 
   # Convenience: parse source, desugar the whole program, then linearize (hoist
   # unconditional jumps out of operand position) so the result is renderable.
-  def self.program(src, **opts)
-    d = new(**opts)
+  def self.program(src, **)
+    d = new(**)
     result = Prism.parse(src)
     raise Unsupported, "parse error" unless result.success?
 
@@ -125,7 +125,7 @@ class Desugar
     when :undef_node              then desugar_undef(n)
     when :alias_method_node       then desugar_alias(n.new_name, n.old_name)
     when :alias_global_variable_node then desugar_alias(n.new_name, n.old_name)
-    when :for_node                then desugar_for(n)
+    when :for_node then desugar_for(n)
     when :regular_expression_node, :interpolated_regular_expression_node then desugar_regex(n)
     when :interpolated_symbol_node then desugar_isym(n)
     when :index_operator_write_node then desugar_index_write(n, :op)
@@ -139,7 +139,7 @@ class Desugar
     # Ruby 3.1 hash/keyword shorthand `{x:}` / `foo(x:)`. Prism has already resolved the
     # omitted value to the node it stands for (a local read or a self-call), so the
     # desugaring is `x: x` with that resolution — pure sugar.
-    when :implicit_node           then fire(:implicit); node(n.value)
+    when :implicit_node then fire(:implicit); node(n.value)
     when :numbered_reference_read_node then fire(:var); [:var, :gvar, "$#{n.number}"]
     when :back_reference_read_node     then fire(:var); [:var, :gvar, n.name.to_s]
     # Out of scope (documented, self-describing gate reasons):
@@ -195,9 +195,7 @@ class Desugar
 
   def call(n)
     name = n.name.to_s
-    if name == "eval"
-      raise Unsupported, "eval of string (out of scope, Semantics 00 §6)"
-    end
+    raise Unsupported, "eval of string (out of scope, Semantics 00 §6)" if name == "eval"
     if EVAL_STRINGISH.include?(name) && n.arguments&.arguments&.first&.type == :string_node
       raise Unsupported, "#{name} of string (out of scope, Semantics 00 §6)"
     end
@@ -271,7 +269,7 @@ class Desugar
       kwargs_node(a)
     when :forwarding_arguments_node
       fire(:"fwd-arg")
-      [:fwd]                       # `...` — forward the enclosing method's forwarded args
+      [:fwd] # `...` — forward the enclosing method's forwarded args
     else
       node(a)
     end
@@ -472,7 +470,7 @@ class Desugar
   def alias_name(nm)
     case nm.type
     when :symbol_node                 then nm.unescaped
-    when :global_variable_read_node   then nm.name.to_s   # carries the $ sigil
+    when :global_variable_read_node   then nm.name.to_s # carries the $ sigil
     else raise Unsupported, "alias name :#{nm.type}"
     end
   end
@@ -531,8 +529,8 @@ class Desugar
     end
     if p.rest
       case p.rest.type
-      when :rest_parameter_node then params << [:prest, p.rest.name&.to_s]  # nil = anonymous `*`
-      when :implicit_rest_node  then params << [:prest, nil]  # `{ |a,| }` — discard tail (≡ `*`)
+      when :rest_parameter_node then params << [:prest, p.rest.name&.to_s] # nil = anonymous `*`
+      when :implicit_rest_node  then params << [:prest, nil] # `{ |a,| }` — discard tail (≡ `*`)
       else raise Unsupported, "rest param :#{p.rest.type}"
       end
     end
@@ -559,7 +557,7 @@ class Desugar
     if p.block
       raise Unsupported, "block param :#{p.block.type}" unless p.block.type == :block_parameter_node
       fire(:"block-capture")
-      params << [:pblock, p.block.name&.to_s]          # nil name = anonymous `&`
+      params << [:pblock, p.block.name&.to_s] # nil name = anonymous `&`
     end
     params
   end
@@ -567,7 +565,7 @@ class Desugar
   def req_param(r)
     case r.type
     when :required_parameter_node then [:preq, r.name.to_s]
-    when :multi_target_node       then destr_param(r)   # `|(a, b)|` destructuring
+    when :multi_target_node       then destr_param(r) # `|(a, b)|` destructuring
     else raise Unsupported, "non-simple param :#{r.type}"
     end
   end
@@ -665,7 +663,7 @@ class Desugar
     rescues = []
     rc = n.rescue_clause
     while rc
-      excs = rc.exceptions.map { |e| arg_node(e) }   # `rescue *classes` — splat allowed
+      excs = rc.exceptions.map { |e| arg_node(e) } # `rescue *classes` — splat allowed
       ref = rc.reference ? massign_target(rc.reference) : nil
       rescues << [excs, ref, stmts(rc.statements)]
       rc = rc.subsequent
@@ -772,13 +770,11 @@ class Desugar
     if rest
       # `a, = x` uses an implicit_rest_node (a nameless rest that discards) — treat like an
       # anonymous `*` (assigns nothing). A real `*rest` is a splat_node.
-      unless %i[splat_node implicit_rest_node].include?(rest.type)
-        raise Unsupported, "massign rest :#{rest.type}"
-      end
+      raise Unsupported, "massign rest :#{rest.type}" unless %i[splat_node implicit_rest_node].include?(rest.type)
       rl = fresh
       len_minus = sub(sub([:send, tv, "length", [], nil], [:int, ln]), [:int, rn])
       stmts << [:vasgn, :local, rl, [:send, [:array, [len_minus, [:int, 0]]], "max", [], nil]]
-      if rest.type == :splat_node && rest.expression   # named rest; `*`/`a,=` assign nothing
+      if rest.type == :splat_node && rest.expression # named rest; `*`/`a,=` assign nothing
         slice = [:send, tv, "[]", [[:int, ln], [:var, :local, rl]], nil]
         assign_target(rest.expression, [:send, slice, "to_a", [], nil], stmts) # nil-slice -> []
       end
@@ -973,8 +969,8 @@ class Desugar
     t = fresh
     check = [:send, [:const, "String"], "===", [[:var, :local, t]], nil]
     [:seq, [:vasgn, :local, t, e],
-           [:if, check, [:var, :local, t],
-                        [:send, [:var, :local, t], "__as_string", [], nil]]]
+     [:if, check, [:var, :local, t],
+      [:send, [:var, :local, t], "__as_string", [], nil]]]
   end
 
   # Shared string-interpolation concatenation for interpolated strings, symbols, and regex

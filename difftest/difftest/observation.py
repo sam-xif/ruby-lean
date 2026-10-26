@@ -41,7 +41,7 @@ class Observation:
     exception: tuple[str, str] | None  # (class name, message) or None
     timed_out: bool = False
 
-    def normalized(self) -> "Observation":
+    def normalized(self) -> Observation:
         counter: dict[str, str] = {}
 
         def norm(s: str) -> str:
@@ -73,7 +73,7 @@ class Observation:
         }
 
     @classmethod
-    def from_json(cls, d: dict) -> "Observation":
+    def from_json(cls, d: dict) -> Observation:
         exc = d.get("exception")
         return cls(
             stdout=d["stdout"],

@@ -10,9 +10,13 @@ seen = {}
 visit = lambda do |mod|
   name = mod.name
   return if !name || seen.key?(name)
+  own_methods = lambda do |m|
+    (m.instance_methods(false) + m.private_instance_methods(false) + m.protected_instance_methods(false))
+      .map(&:to_s).uniq.sort
+  end
   seen[name] = [
-    (mod.instance_methods(false) + mod.private_instance_methods(false) + mod.protected_instance_methods(false)).map(&:to_s).uniq.sort,
-    (mod.singleton_class.instance_methods(false) + mod.singleton_class.private_instance_methods(false) + mod.singleton_class.protected_instance_methods(false)).map(&:to_s).uniq.sort,
+    own_methods.call(mod),
+    own_methods.call(mod.singleton_class),
     mod.constants(false).map(&:to_s).sort
   ]
   mod.constants(false).each do |n|
@@ -26,4 +30,4 @@ roots.each do |n|
   value = Object.const_get(n)
   visit.call(value) if value.is_a?(Module)
 end
-STDOUT.write(Marshal.dump([roots, seen.sort.to_h]))
+$stdout.write(Marshal.dump([roots, seen.sort.to_h]))

@@ -57,7 +57,7 @@ module Export
       # Assign stable sites while exporting the normalized tree, keeping this
       # metadata out of the render/parse normal form. Prelude and program are
       # separate compilation units, hence separate namespaces.
-      if x[0] == :rat || x[0] == :imag
+      if %i[rat imag].include?(x[0])
         site = "#{literals[0]}:#{literals[1]}"
         literals[1] += 1
         return ["rat", x[1], x[2], site] if x[0] == :rat

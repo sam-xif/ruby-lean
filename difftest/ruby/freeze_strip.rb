@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # freeze_strip — remove `.freeze` calls: make a program *more permissive*,
 # byte-for-byte, changing nothing else.
 #

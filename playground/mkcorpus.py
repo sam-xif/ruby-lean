@@ -15,6 +15,7 @@ responsible for dropping it the moment the user edits -- see `backend.js`'s
 Sorbet itself cannot run in the browser; `read_sigs.rb` supplies the signatures
 and says `"verdict": "not-checked"`.
 """
+
 from __future__ import annotations
 
 import json
@@ -50,28 +51,31 @@ def main(out: Path) -> int:
         if sigs_path.exists():
             try:
                 s = json.loads(sigs_path.read_text())
-                sorbet = {"clean": s.get("srb_clean"),
-                          "diagnostics": s.get("srb_diagnostics", [])}
+                sorbet = {"clean": s.get("srb_clean"), "diagnostics": s.get("srb_diagnostics", [])}
             except ValueError:
                 pass
         if sorbet is None:
             missing_sigs += 1
 
-        entries.append({
-            "file": stem,
-            "id": meta.get("id"),
-            "tier": meta.get("tier"),
-            "description": meta.get("description"),
-            "expect_validate": meta.get("expect_validate"),
-            "expect_sorbet": meta.get("expect_sorbet"),
-            "source": rb.read_text(),
-            "sorbet": sorbet,
-        })
+        entries.append(
+            {
+                "file": stem,
+                "id": meta.get("id"),
+                "tier": meta.get("tier"),
+                "description": meta.get("description"),
+                "expect_validate": meta.get("expect_validate"),
+                "expect_sorbet": meta.get("expect_sorbet"),
+                "source": rb.read_text(),
+                "sorbet": sorbet,
+            }
+        )
 
     out.write_text(json.dumps({"entries": entries}, separators=(",", ":")))
     kb = out.stat().st_size / 1024
-    print(f"    {out.name}  {len(entries)} rungs, {kb:.0f} KB"
-          + (f"  ({missing_sigs} with no recorded Sorbet verdict)" if missing_sigs else ""))
+    print(
+        f"    {out.name}  {len(entries)} rungs, {kb:.0f} KB"
+        + (f"  ({missing_sigs} with no recorded Sorbet verdict)" if missing_sigs else "")
+    )
     return 0
 
 

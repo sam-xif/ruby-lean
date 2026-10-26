@@ -18,9 +18,7 @@ from pathlib import Path
 from .testcase import TestCase
 
 BASE = Path(__file__).resolve().parents[1]  # ruby/difftest/
-BOOTSTRAPTEST_DIR = (
-    BASE.parent / "desugar" / "corpus" / "bootstraptest"
-)
+BOOTSTRAPTEST_DIR = BASE.parent / "desugar" / "corpus" / "bootstraptest"
 
 SORBET_DIR = BASE / "corpus" / "sorbet"
 
@@ -140,8 +138,12 @@ def load_domain_corpus(corpus: Path | None = None) -> list[TestCase]:
     if mp.exists():
         manifest = {e["id"]: e for e in json.loads(mp.read_text())}
     cases = [
-        TestCase(id=f"domain/{p.stem}", source=p.read_text(), tier=0,
-                 provenance={"suite": "domain-fuzz", **manifest.get(p.stem, {})})
+        TestCase(
+            id=f"domain/{p.stem}",
+            source=p.read_text(),
+            tier=0,
+            provenance={"suite": "domain-fuzz", **manifest.get(p.stem, {})},
+        )
         for p in sorted(corpus.glob("*.rb"))
     ]
     if not cases:
@@ -169,8 +171,12 @@ def load_advisory_corpus(corpus: Path | None = None) -> list[TestCase]:
     if mp.exists():
         manifest = {e["id"]: e for e in json.loads(mp.read_text())}
     cases = [
-        TestCase(id=f"advisory/{p.stem}", source=p.read_text(), tier=0,
-                 provenance={"suite": "advisory-fuzz", **manifest.get(p.stem, {})})
+        TestCase(
+            id=f"advisory/{p.stem}",
+            source=p.read_text(),
+            tier=0,
+            provenance={"suite": "advisory-fuzz", **manifest.get(p.stem, {})},
+        )
         for p in sorted(corpus.glob("*.rb"))
     ]
     if not cases:
@@ -267,9 +273,7 @@ def load_regressions_corpus(corpus: Path | None = None) -> list[TestCase]:
                 f"regressions case {case.id!r} has status {status!r}; "
                 f"expected one of {REGRESSION_STATUS}"
             )
-        cases.append(
-            dataclasses.replace(case, provenance={**case.provenance, "status": status})
-        )
+        cases.append(dataclasses.replace(case, provenance={**case.provenance, "status": status}))
     return cases
 
 

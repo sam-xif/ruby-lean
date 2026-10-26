@@ -38,9 +38,11 @@ def test_sorbet_location_lines_are_normalized_away():
         result_repr=None,
         exception=(
             "TypeError",
-            "Parameter 'x': Expected type Integer, got type String with value \"two\"\n"
-            "Caller: /tmp/prog.rb:19\n"
-            "Definition: /tmp/prog.rb:14 (Object#stringify)",
+            (
+                "Parameter 'x': Expected type Integer, got type String with value \"two\"\n"
+                "Caller: /tmp/prog.rb:19\n"
+                "Definition: /tmp/prog.rb:14 (Object#stringify)"
+            ),
         ),
     )
     model = Observation(

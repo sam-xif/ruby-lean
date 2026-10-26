@@ -13,8 +13,9 @@ from __future__ import annotations
 from hypothesis import strategies as st
 
 from . import ast as A
-from .env import *  # noqa: F403
+from .env import *
 from .env import Env, Sig, _callable_ok  # noqa: F401
+
 
 @st.composite
 def _literal(draw) -> A.Node:
@@ -31,7 +32,7 @@ def _literal(draw) -> A.Node:
 
 
 @st.composite
-def _gen_call(draw, env: "Env", sig: Sig, depth: int):
+def _gen_call(draw, env: Env, sig: Sig, depth: int):
     """Positional args + kwargs compatible with `sig` (never raises ArgumentError).
     Optional positionals are filled as a *prefix* (Ruby has no positional skipping);
     required keywords are always supplied; `**kwrest`/`...` may take extra names."""
@@ -140,7 +141,7 @@ def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
             kinds += ["respondto", "ivarget", "ivarset"]
     kind = draw(st.sampled_from(kinds))
 
-    sub = lambda: draw(_expr(env, depth - 1))  # noqa: E731
+    sub = lambda: draw(_expr(env, depth - 1))
 
     if kind == "lit":
         return draw(_literal())
@@ -293,7 +294,10 @@ def _block_body(draw, env: Env, depth: int, params: tuple) -> A.Block:
     # A literal block: its params bind as locals; `next`/`break` are legal here,
     # and `return` too when the block is lexically inside a method.
     body_env = replace(
-        env, locals=env.locals + _bound_of(params), in_block=True, can_yield=None,
+        env,
+        locals=env.locals + _bound_of(params),
+        in_block=True,
+        can_yield=None,
         const_asgn_ok=False,
     )
     from .stmts import _stmt_seq  # deferred: expressions and statements are mutually recursive
@@ -338,9 +342,7 @@ def _block_call(draw, env: Env, depth: int) -> A.BlockCall:
         # an array of 2-element arrays → a destructuring block param `|(da, db)|`
         # binds each pair's elements (real array destructuring, not the lenient path)
         n = draw(st.integers(0, 3))
-        recv = A.ArrayLit(
-            tuple(A.ArrayLit((draw(_literal()), draw(_literal()))) for _ in range(n))
-        )
+        recv = A.ArrayLit(tuple(A.ArrayLit((draw(_literal()), draw(_literal()))) for _ in range(n)))
         method = draw(st.sampled_from(["each", "map"]))
         destr = A.PDestr((DESTR_POOL[0], DESTR_POOL[1]))
         return A.BlockCall(recv, method, (), draw(_block_body(env, depth, (destr,))))

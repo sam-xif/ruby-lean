@@ -15,6 +15,7 @@ where the guard exists but does not cover WASI.
 None of them changes behaviour on any supported platform; every edit is inside
 a `__wasi__` branch or adds an include.
 """
+
 from __future__ import annotations
 
 import sys
@@ -26,8 +27,10 @@ def edit(path: Path, old: str, new: str, what: str) -> str:
     if new in t:
         return f"  = {path.name}: {what} (already applied)"
     if old not in t:
-        sys.exit(f"FATAL: {path}: cannot find the text to patch for: {what}\n"
-                 f"The Lean source tree is probably not v4.32.2.")
+        sys.exit(
+            f"FATAL: {path}: cannot find the text to patch for: {what}\n"
+            f"The Lean source tree is probably not v4.32.2."
+        )
     path.write_text(t.replace(old, new, 1))
     return f"  + {path.name}: {what}"
 
@@ -42,61 +45,87 @@ def main(src: Path) -> None:
     #    platform upstream supports builds multi-threaded, so this path is never
     #    compiled there.
     anchor = "namespace lean {\nnamespace chrono = std::chrono;\n};\n"
-    out.append(edit(rt / "thread.h", anchor, anchor + """
+    out.append(
+        edit(
+            rt / "thread.h",
+            anchor,
+            anchor
+            + """
 // [wasi] The single-threaded fallback below takes `std::adopt_lock_t`, which is
 // declared in <mutex> -- included only by the LEAN_MULTI_THREAD branch.
 #include <mutex>
-""", "include <mutex> for the single-threaded fallback"))
+""",
+            "include <mutex> for the single-threaded fallback",
+        )
+    )
 
     # 2 & 3. compact.cpp enumerates loaded shared objects to relocate closure
     #    code pointers when writing a .olean. WASI has no dynamic loading: there
     #    is one module and the list is correctly empty.
-    out.append(edit(rt / "compact.cpp",
-                    "#elif !defined(LEAN_WINDOWS)\n#include <link.h>\n#endif",
-                    "#elif !defined(LEAN_WINDOWS) && !defined(__wasi__)\n#include <link.h>\n#endif",
-                    "do not include <link.h> under WASI"))
-    out.append(edit(rt / "compact.cpp",
-                    "#else\n    // Linux: use dl_iterate_phdr\n    dl_iterate_phdr(",
-                    "#elif defined(__wasi__)\n"
-                    "    // [wasi] No dynamic loading: one module, no shared objects to enumerate.\n"
-                    "#else\n    // Linux: use dl_iterate_phdr\n    dl_iterate_phdr(",
-                    "skip dl_iterate_phdr under WASI"))
+    out.append(
+        edit(
+            rt / "compact.cpp",
+            "#elif !defined(LEAN_WINDOWS)\n#include <link.h>\n#endif",
+            "#elif !defined(LEAN_WINDOWS) && !defined(__wasi__)\n#include <link.h>\n#endif",
+            "do not include <link.h> under WASI",
+        )
+    )
+    out.append(
+        edit(
+            rt / "compact.cpp",
+            "#else\n    // Linux: use dl_iterate_phdr\n    dl_iterate_phdr(",
+            "#elif defined(__wasi__)\n"
+            "    // [wasi] No dynamic loading: one module, no shared objects to enumerate.\n"
+            "#else\n    // Linux: use dl_iterate_phdr\n    dl_iterate_phdr(",
+            "skip dl_iterate_phdr under WASI",
+        )
+    )
 
     # 4. stack_overflow.h. The guard keeps an alternate signal stack so a
     #    SIGSEGV handler can report an overflow. WASI has no signals; an
     #    overflow traps in the engine instead, which is the same outcome.
-    out.append(edit(rt / "stack_overflow.h",
-                    "#ifndef LEAN_WINDOWS\n"
-                    "    // We need a separate signal stack since we can't use the overflowed stack\n"
-                    "    stack_t m_signal_stack;\n#endif",
-                    "#if !defined(LEAN_WINDOWS) && !defined(__wasi__)\n"
-                    "    // We need a separate signal stack since we can't use the overflowed stack\n"
-                    "    stack_t m_signal_stack;\n#endif",
-                    "no alternate signal stack under WASI"))
+    out.append(
+        edit(
+            rt / "stack_overflow.h",
+            "#ifndef LEAN_WINDOWS\n"
+            "    // We need a separate signal stack since we can't use the overflowed stack\n"
+            "    stack_t m_signal_stack;\n#endif",
+            "#if !defined(LEAN_WINDOWS) && !defined(__wasi__)\n"
+            "    // We need a separate signal stack since we can't use the overflowed stack\n"
+            "    stack_t m_signal_stack;\n#endif",
+            "no alternate signal stack under WASI",
+        )
+    )
 
     # 5. memory.cpp. WASI's <sys/resource.h> declares `rusage` without
     #    `ru_maxrss`, and a wasm module cannot observe its own resident set.
-    out.append(edit(rt / "memory.cpp",
-                    "#if defined(__APPLE__)\n"
-                    "    return static_cast<size_t>(rusage.ru_maxrss);\n#else\n"
-                    "    return static_cast<size_t>(rusage.ru_maxrss) * static_cast<size_t>(1024);\n#endif",
-                    "#if defined(__wasi__)\n"
-                    "    // [wasi] No `ru_maxrss`, and no resident set to report. Unknown.\n"
-                    "    (void) rusage;\n    return 0;\n"
-                    "#elif defined(__APPLE__)\n"
-                    "    return static_cast<size_t>(rusage.ru_maxrss);\n#else\n"
-                    "    return static_cast<size_t>(rusage.ru_maxrss) * static_cast<size_t>(1024);\n#endif",
-                    "get_peak_rss reports unknown under WASI"))
+    out.append(
+        edit(
+            rt / "memory.cpp",
+            "#if defined(__APPLE__)\n"
+            "    return static_cast<size_t>(rusage.ru_maxrss);\n#else\n"
+            "    return static_cast<size_t>(rusage.ru_maxrss) * static_cast<size_t>(1024);\n#endif",
+            "#if defined(__wasi__)\n"
+            "    // [wasi] No `ru_maxrss`, and no resident set to report. Unknown.\n"
+            "    (void) rusage;\n    return 0;\n"
+            "#elif defined(__APPLE__)\n"
+            "    return static_cast<size_t>(rusage.ru_maxrss);\n#else\n"
+            "    return static_cast<size_t>(rusage.ru_maxrss) * static_cast<size_t>(1024);\n#endif",
+            "get_peak_rss reports unknown under WASI",
+        )
+    )
 
     # 6. io.cpp. `lean_io_get_random_bytes` reads /dev/urandom, which WASI has no
     #    device tree for -- and every executable hits it at startup, so this is
     #    not an edge case. WASI's libc does expose `getentropy`, which is the
     #    same syscall (`random_get`) the browser shim backs with
     #    `crypto.getRandomValues`.
-    out.append(edit(rt / "io.cpp",
-                    """    if (nbytes == 0) return io_result_mk_ok(lean_alloc_sarray(1, 0, 0));
+    out.append(
+        edit(
+            rt / "io.cpp",
+            """    if (nbytes == 0) return io_result_mk_ok(lean_alloc_sarray(1, 0, 0));
 """,
-                    """    if (nbytes == 0) return io_result_mk_ok(lean_alloc_sarray(1, 0, 0));
+            """    if (nbytes == 0) return io_result_mk_ok(lean_alloc_sarray(1, 0, 0));
 
 #if defined(__wasi__)
     // [wasi] No /dev/urandom. `getentropy` is WASI's `random_get`, which a
@@ -122,7 +151,9 @@ def main(src: Path) -> None:
     }
 #endif
 """,
-                    "getRandomBytes via getentropy under WASI"))
+            "getRandomBytes via getentropy under WASI",
+        )
+    )
 
     # 7. object.cpp -- an upstream 32-bit bug, and the only one of these seven
     #    that is a *defect* rather than a porting accommodation.
@@ -141,11 +172,15 @@ def main(src: Path) -> None:
     #    Symptom before this fix: `"x-1".split("-")` returned `["x", "1\0\0\0"]`,
     #    and without `-DNDEBUG` it tripped `assert(i < lean_ctor_num_objs(o))`.
     #    The `nil` of a list is a list, not a boxed `UInt32`.
-    out.append(edit(rt / "object.cpp",
-                    "    obj_res  r = lean_box_uint32(0);",
-                    "    // [wasi] `nil`, not a boxed UInt32 -- see patch 7 in patch-runtime.py.\n"
-                    "    obj_res  r = lean_box(0);",
-                    "string_to_list_core terminates its list with lean_box(0)"))
+    out.append(
+        edit(
+            rt / "object.cpp",
+            "    obj_res  r = lean_box_uint32(0);",
+            "    // [wasi] `nil`, not a boxed UInt32 -- see patch 7 in patch-runtime.py.\n"
+            "    obj_res  r = lean_box(0);",
+            "string_to_list_core terminates its list with lean_box(0)",
+        )
+    )
 
     print("\n".join(out))
 

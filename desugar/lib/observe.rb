@@ -6,7 +6,7 @@ require "tempfile"
 
 # obs+ : run a Ruby program in a fresh CRuby subprocess and record a normalized
 # observation = (stdout, value, exc). stdout is the ordered side-effect trace
-#. Value/exc are written by a wrapper to a side file so
+# . Value/exc are written by a wrapper to a side file so
 # they don't pollute the program's own stdout.
 module Observe
   # Path to the CRuby oracle. Overridable via RUBY_ORACLE.
@@ -16,8 +16,12 @@ module Observe
   end
 
   Obs = Struct.new(:stdout, :value, :exc, :error, keyword_init: true) do
-    def ok?  = error.nil?
-    def ==(o) = o.is_a?(Obs) && stdout == o.stdout && value == o.value && exc == o.exc && error == o.error
+    def ok? = error.nil?
+
+    def ==(other)
+      other.is_a?(Obs) && stdout == other.stdout && value == other.value && exc == other.exc && error == other.error
+    end
+
     def to_h = { stdout: stdout, value: value, exc: exc, error: error }
   end
 
@@ -31,9 +35,9 @@ module Observe
   #
   # It is in the *wrapper*, so **both** sides get it and neither can be advantaged by it
   # — the same reason the difftest harness owns its stub set rather than the prelude
-  #. `Object.instance_method(:to_s)` is exactly `rb_any_to_s`: the default
+  # . `Object.instance_method(:to_s)` is exactly `rb_any_to_s`: the default
   # `Object#to_s` *is* that C function, and binding it skips every override.
-  SUPPORT = <<~'RUBY'
+  SUPPORT = <<~RUBY
     class Object
       def __as_string
         return self if String === self
@@ -44,7 +48,7 @@ module Observe
     end
   RUBY
 
-  WRAPPER = <<~'RUBY'
+  WRAPPER = <<~RUBY
     $__obs_out = ENV["OBS_OUT"]
     srand(0)
     %<support>s
@@ -110,7 +114,11 @@ module Observe
           wait.value
         end
       rescue Timeout::Error
-        Process.kill("KILL", wait.pid) rescue nil
+        begin
+          Process.kill("KILL", wait.pid)
+        rescue StandardError
+          nil
+        end
         status = :timeout
       end
     end
@@ -119,7 +127,7 @@ module Observe
 
   # --- normalization ---
 
-  ADDR = /0x[0-9a-f]+/.freeze
+  ADDR = /0x[0-9a-f]+/
 
   def normalize(str)
     return str if str.nil?

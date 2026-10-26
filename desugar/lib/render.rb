@@ -37,7 +37,7 @@ module Render
     # generated local can shadow a user identifier here.
     when :vcall then node[1]
     when :block then block_str(node)
-    when :yield then "yield(#{node[1].map { |a| core(a) }.join(', ')})"
+    when :yield then "yield(#{node[1].map { |a| core(a) }.join(", ")})"
     when :if
       _, c, t, e = node
       # omit else when absent (nil) so the text re-parses to else=nil, not else=[:nil]
@@ -72,12 +72,12 @@ module Render
     when :defs
       _, recv, name, params, body = node
       "(def (#{core(recv)}).#{name}(#{render_params(params)}); #{core(body)}; end)"
-    when :begin  then begin_str(node)
+    when :begin then begin_str(node)
     when :super
       _, args, blk = node
       argstrs = args.map { |a| core(a) }
       argstrs << blockpass_str(blk) if blk && blk[0] == :blockpass
-      base = "super(#{argstrs.join(', ')})"
+      base = "super(#{argstrs.join(", ")})"
       blk && blk[0] == :block ? "#{base} #{block_str(blk)}" : base
     when :zsuper
       blk = node[1]
@@ -87,12 +87,12 @@ module Render
       end
     when :defined then "defined?(#{core(node[1])})"
     when :redo  then "redo"
-    when :undef then "undef #{node[1].join(', ')}"
+    when :undef then "undef #{node[1].join(", ")}"
     when :alias then "alias #{node[1]} #{node[2]}"
     when :for
       _, targets, coll, body = node
-      names = targets.map { |_k, nm| nm }.join(', ')
-      names += ',' if node[4] && targets.length == 1
+      names = targets.map { |_k, nm| nm }.join(", ")
+      names += "," if node[4] && targets.length == 1
       "(for #{names} in (#{core(coll)}); #{core(body)}; end)"
     when :dowhile
       _, body, cond = node
@@ -116,18 +116,18 @@ module Render
     end
     digits = (num.abs * (factor / den)).to_s.rjust(scale + 1, "0")
     digits.insert(-scale - 1, ".") if scale > 0
-    "#{num < 0 ? '-' : ''}#{digits}r"
+    "#{"-" if num < 0}#{digits}r"
   end
 
   # (begin; body; rescue E1, E2 => e; h; ...; else; el; ensure; en; end)
   def begin_str(node)
     _, body, rescues, els, ens = node
-    s = +"(begin; #{core(body)}"
+    s = "(begin; #{core(body)}"
     rescues.each do |excs, ref, handler|
       s << "; rescue"
       # a splat exc (`rescue *classes`) renders bare (`*(x)`); others are parenthesized.
       s << " " << excs.map { |e| e[0] == :splat ? core(e) : "(#{core(e)})" }.join(", ") unless excs.empty?
-      s << " => #{ref[1]}" if ref            # ref[1] carries any sigil (@ / @@ / $)
+      s << " => #{ref[1]}" if ref # ref[1] carries any sigil (@ / @@ / $)
       s << "; #{core(handler)}"
     end
     s << "; else; #{core(els)}" if els
@@ -144,10 +144,10 @@ module Render
     argstrs << blockpass_str(blk) if blk && blk[0] == :blockpass
     base =
       if recv
-        "(#{core(recv)}).#{mname}(#{argstrs.join(', ')})"
+        "(#{core(recv)}).#{mname}(#{argstrs.join(", ")})"
       else
         # nil receiver = implicit-self call; the () keeps it a method call, not a local
-        "#{mname}(#{argstrs.join(', ')})"
+        "#{mname}(#{argstrs.join(", ")})"
       end
     blk && blk[0] == :block ? "#{base} #{block_str(blk)}" : base
   end
@@ -184,7 +184,7 @@ module Render
       "{ #{core(body)} }"
     else
       bar = render_params(params)
-      bar += "; #{locals.join(', ')}" unless locals.empty?
+      bar += "; #{locals.join(", ")}" unless locals.empty?
       "{ |#{bar}| #{core(body)} }"
     end
   end

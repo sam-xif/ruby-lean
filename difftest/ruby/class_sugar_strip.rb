@@ -57,7 +57,7 @@ visitor = Class.new(Prism::Visitor) do
   end
   define_method(:visit_call_node) do |node|
     if node.receiver.nil? && %i[attr_reader attr_writer attr_accessor].include?(node.name) &&
-       node.arguments && node.arguments.arguments.all? { |a| a.is_a?(Prism::SymbolNode) }
+       node.arguments && node.arguments.arguments.all?(Prism::SymbolNode)
       names = node.arguments.arguments.map(&:unescaped)
       defs = []
       names.each do |n|
@@ -76,7 +76,7 @@ visitor = Class.new(Prism::Visitor) do
       oldn = node.old_name.unescaped
       recv = oldn.match?(/\A[a-z_][A-Za-z0-9_]*[?!]?\z/) ? "" : "self."
 
-      target = @body_defs.last.reverse.find { |d| d.name == oldn.to_sym }
+      target = @body_defs.last.rfind { |d| d.name == oldn.to_sym }
       params = target&.parameters
       if params&.block
         warn "class_sugar_strip: alias #{newn} #{oldn} forwards to a def with a block parameter; no rung for blockpass"
@@ -87,7 +87,7 @@ visitor = Class.new(Prism::Visitor) do
                  (params.nil? ||
                   (params.optionals.empty? && params.rest.nil? && params.keywords.empty? &&
                    params.keyword_rest.nil? && params.posts.empty? &&
-                   params.requireds.all? { |p| p.is_a?(Prism::RequiredParameterNode) }))
+                   params.requireds.all?(Prism::RequiredParameterNode)))
       arglist = if explicit
                   (params&.requireds || []).map { |p| p.name.to_s }.join(", ")
                 else
@@ -118,7 +118,7 @@ visitor = Class.new(Prism::Visitor) do
       if kw_init && syms.any?
         indent = " " * node.location.start_column
         nl = "\n"
-        body = +"class #{node.name}#{nl}"
+        body = "class #{node.name}#{nl}"
         syms.each do |s2|
           body << "#{indent}  def #{s2} = @#{s2}#{nl}"
           body << "#{indent}  def #{s2}=(v)#{nl}#{indent}    @#{s2} = v#{nl}#{indent}  end#{nl}"

@@ -47,8 +47,23 @@ EVENT_KEYS = ["introduced", "fixed", "last_affected", "limit"]
 # The leaves an arbitrary `JSON.parse` can produce. Floats are kept to values
 # whose Python and Ruby literals agree exactly; there is no NaN or Infinity in
 # JSON, so excluding them is faithful rather than convenient.
-SCALARS: list[Any] = [None, True, False, 0, 1, -1, 5, 2.0, 0.5, "", "x", "1.0",
-                      "v", "0x10", "1.0.0-rc.1"]
+SCALARS: list[Any] = [
+    None,
+    True,
+    False,
+    0,
+    1,
+    -1,
+    5,
+    2.0,
+    0.5,
+    "",
+    "x",
+    "1.0",
+    "v",
+    "0x10",
+    "1.0.0-rc.1",
+]
 
 
 def _version(r: random.Random) -> str:
@@ -65,11 +80,14 @@ def _json_value(r: random.Random, depth: int = 0) -> Any:
         return r.choice(SCALARS)
     if r.random() < 0.5:
         return [_json_value(r, depth + 1) for _ in range(r.randint(0, 2))]
-    return {r.choice(["type", "events", "a", "0", ""]): _json_value(r, depth + 1)
-            for _ in range(r.randint(0, 2))}
+    return {
+        r.choice(["type", "events", "a", "0", ""]): _json_value(r, depth + 1)
+        for _ in range(r.randint(0, 2))
+    }
 
 
 # ── the skeleton ───────────────────────────────────────────────────────────
+
 
 def _events(r: random.Random) -> list[dict]:
     out: list[dict] = [{"introduced": _version(r)}]
@@ -82,8 +100,10 @@ def _events(r: random.Random) -> list[dict]:
 
 
 def _range(r: random.Random) -> dict:
-    return {"type": r.choice(RANGE_TYPES[:2] if r.random() < 0.85 else RANGE_TYPES),
-            "events": _events(r)}
+    return {
+        "type": r.choice(RANGE_TYPES[:2] if r.random() < 0.85 else RANGE_TYPES),
+        "events": _events(r),
+    }
 
 
 def _affected_entry(r: random.Random) -> dict:
@@ -103,14 +123,16 @@ def skeleton(r: random.Random) -> dict:
     if r.random() < 0.4:
         a["summary"] = "generated advisory"
     if r.random() < 0.3:
-        a["severity"] = [{"type": "CVSS_V3",
-                          "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]
+        a["severity"] = [
+            {"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}
+        ]
     if r.random() < 0.2:
         a["aliases"] = ["CVE-2024-0001"]
     return a
 
 
 # ── mutation: walk to a node, then break it the way JSON breaks ────────────
+
 
 def _paths(node: Any, prefix: tuple = ()) -> list[tuple]:
     out = [prefix]
@@ -185,6 +207,7 @@ def mutate(r: random.Random, adv: dict, k: int) -> tuple[dict, list[str]]:
 
 # ── the six witnesses of `nontrivial-target.md` §3, as the seed corpus ─────
 
+
 def _pkg() -> dict:
     return {"ecosystem": ECOSYSTEM, "name": NAME}
 
@@ -196,33 +219,44 @@ def _eco(events: list[dict]) -> list[dict]:
 WITNESSES: list[tuple[str, dict, list[str]]] = [
     # (label, advisory, versions) — §3.2a ranks these; the first two are
     # schema-conformant and so the most realistic.
-    ("w1-version-v",
-     {"id": "GHSA-w1", "affected": _eco([{"introduced": "1.0"}, {"fixed": "2.0"}])},
-     ["v", "", "1.5"]),
-    ("w2-event-blank-fixed",
-     {"id": "GHSA-w2", "affected": _eco([{"introduced": "1.0"}, {"fixed": ""}])},
-     ["1.5"]),
-    ("w3-event-introduced-v",
-     {"id": "GHSA-w3", "affected": _eco([{"introduced": "v"}])},
-     ["1.5"]),
-    ("w4-ranges-integer",
-     {"id": "GHSA-w4", "affected": [{"package": _pkg(), "ranges": [1]}]},
-     ["1.5"]),
-    ("w5-affected-nested-array",
-     {"id": "GHSA-w5", "affected": [[1, 2]]},
-     ["1.5"]),
-    ("w6-range-is-object",
-     {"id": "GHSA-w6",
-      "affected": [{"package": _pkg(),
-                    "ranges": {"type": "ECOSYSTEM",
-                               "events": [{"introduced": "1.0"}]}}]},
-     ["1.5"]),
+    (
+        "w1-version-v",
+        {"id": "GHSA-w1", "affected": _eco([{"introduced": "1.0"}, {"fixed": "2.0"}])},
+        ["v", "", "1.5"],
+    ),
+    (
+        "w2-event-blank-fixed",
+        {"id": "GHSA-w2", "affected": _eco([{"introduced": "1.0"}, {"fixed": ""}])},
+        ["1.5"],
+    ),
+    ("w3-event-introduced-v", {"id": "GHSA-w3", "affected": _eco([{"introduced": "v"}])}, ["1.5"]),
+    (
+        "w4-ranges-integer",
+        {"id": "GHSA-w4", "affected": [{"package": _pkg(), "ranges": [1]}]},
+        ["1.5"],
+    ),
+    ("w5-affected-nested-array", {"id": "GHSA-w5", "affected": [[1, 2]]}, ["1.5"]),
+    (
+        "w6-range-is-object",
+        {
+            "id": "GHSA-w6",
+            "affected": [
+                {
+                    "package": _pkg(),
+                    "ranges": {"type": "ECOSYSTEM", "events": [{"introduced": "1.0"}]},
+                }
+            ],
+        },
+        ["1.5"],
+    ),
     # the two out-of-family outcomes §5.4 names, kept so a change to either is
     # visible rather than silent
     ("x1-no-id", {}, ["1.5"]),
-    ("x2-silent-verdict",
-     {"id": "GHSA-x2", "affected": [{"package": _pkg(), "ranges": ["x"]}]},
-     ["1.5"]),
+    (
+        "x2-silent-verdict",
+        {"id": "GHSA-x2", "affected": [{"package": _pkg(), "ranges": ["x"]}]},
+        ["1.5"],
+    ),
 ]
 
 
@@ -231,21 +265,28 @@ def cases(n: int, seed: int, versions_per: int = 8) -> list[dict]:
     shape that gates costs only its own rows — a gate refuses the *whole*
     program, and this corpus is expected to find gates (§3.3)."""
     r = random.Random(seed)
-    out = [{"id": f"witness-{lbl}", "advisory": adv, "versions": vs,
-            "mutations": ["(seed witness)"]}
-           for lbl, adv, vs in WITNESSES]
+    out = [
+        {"id": f"witness-{lbl}", "advisory": adv, "versions": vs, "mutations": ["(seed witness)"]}
+        for lbl, adv, vs in WITNESSES
+    ]
     remaining = max(0, n - sum(len(c["versions"]) for c in out))
     for i in range(remaining // versions_per):
         base = skeleton(r)
         k = r.choice([0, 0, 1, 1, 1, 2, 2, 3])
         adv, log = mutate(r, base, k) if k else (base, [])
-        out.append({"id": f"gen-{seed}-{i:04d}", "advisory": adv,
-                    "versions": [_version(r) for _ in range(versions_per)],
-                    "mutations": log or ["(unmutated)"]})
+        out.append(
+            {
+                "id": f"gen-{seed}-{i:04d}",
+                "advisory": adv,
+                "versions": [_version(r) for _ in range(versions_per)],
+                "mutations": log or ["(unmutated)"],
+            }
+        )
     return out
 
 
 # ── Ruby literal rendering ─────────────────────────────────────────────────
+
 
 def to_ruby(v: Any) -> str:
     if v is None:
@@ -265,14 +306,18 @@ def to_ruby(v: Any) -> str:
     if isinstance(v, list):
         return "[" + ", ".join(to_ruby(x) for x in v) + "]"
     if isinstance(v, dict):
-        return "{" + ", ".join(f"{_dq(str(k))} => {to_ruby(x)}"
-                               for k, x in v.items()) + "}"
+        return "{" + ", ".join(f"{_dq(str(k))} => {to_ruby(x)}" for k, x in v.items()) + "}"
     raise TypeError(f"not a JSON value: {v!r}")
 
 
 def _dq(s: str) -> str:
     """A Ruby double-quoted literal. `#` is escaped too, or a generated string
     containing `#{` would interpolate (the same trap `version_gen` has)."""
-    out = (s.replace("\\", "\\\\").replace('"', '\\"').replace("#", "\\#")
-            .replace("\n", "\\n").replace("\t", "\\t"))
+    out = (
+        s.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("#", "\\#")
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+    )
     return '"' + out + '"'

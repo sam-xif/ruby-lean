@@ -13,10 +13,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from hypothesis import strategies as st
-
-from . import ast as A
-
 LOCAL_POOL = ("a", "b", "c", "d")
 LOOP_POOL = ("i", "j")
 FOR_POOL = ("fi", "fj")  # `for` loop vars — leak to the enclosing scope
@@ -77,6 +73,7 @@ def _callable_ok(callee: str, current: str) -> bool:
         return True  # a sink body doesn't reach here in practice
     return kr < cr
 
+
 # disjoint pools for varied top-level-method params (see Sig / _method_param_spec)
 OPT_POOL = ("o1", "o2")  # optional positional param names
 REST_POOL = ("r1",)  # *rest param name
@@ -133,7 +130,7 @@ class Env:
     # defined modules (mixed into classes via include/prepend)
     modules: tuple[ModuleInfo, ...] = ()
     # arity to forward when the current override body may call `super`, else None
-    can_super: "int | None" = None
+    can_super: int | None = None
     # locals known to hold an instance: (local_name, class_name). Kept out of
     # `locals` on purpose — they are only ever used as method-call receivers.
     instances: tuple[tuple[str, str], ...] = ()
@@ -151,7 +148,7 @@ class Env:
     # them without a block → no LocalJumpError): (name, arg_arity, yield_arity)
     yielders: tuple[tuple[str, int, int], ...] = ()
     # yield arity of the enclosing method body, or None if it may not `yield`
-    can_yield: "int | None" = None
+    can_yield: int | None = None
     in_block: bool = False  # inside a block body → `next`/`break` are legal
     in_method: bool = False  # inside a method body → `return` is legal
     # constant assignment (`X =`, `A::X =`) is a syntax error inside any *block*
@@ -163,31 +160,31 @@ class Env:
     # every call site (incl. method bodies) generates a compatible call.
     sigs: tuple[tuple[str, Sig], ...] = ()
 
-    def sig_for(self, name: str) -> "Sig | None":
+    def sig_for(self, name: str) -> Sig | None:
         return next((s for (n, s) in self.sigs if n == name), None)
 
-    def with_sig(self, name: str, sig: Sig) -> "Env":
+    def with_sig(self, name: str, sig: Sig) -> Env:
         return replace(self, sigs=self.sigs + ((name, sig),))
 
-    def with_local(self, name: str) -> "Env":
+    def with_local(self, name: str) -> Env:
         return self if name in self.locals else replace(self, locals=self.locals + (name,))
 
-    def with_frozen(self, name: str) -> "Env":
+    def with_frozen(self, name: str) -> Env:
         return replace(self.with_local(name), frozen=self.frozen + (name,))
 
-    def with_method(self, name: str, arity: int) -> "Env":
+    def with_method(self, name: str, arity: int) -> Env:
         return replace(self, methods=self.methods + ((name, arity),))
 
-    def with_class(self, ci: ClassInfo) -> "Env":
+    def with_class(self, ci: ClassInfo) -> Env:
         return replace(self, classes=self.classes + (ci,))
 
-    def with_module(self, mi: ModuleInfo) -> "Env":
+    def with_module(self, mi: ModuleInfo) -> Env:
         return replace(self, modules=self.modules + (mi,))
 
-    def update_class(self, name: str, new_ci: ClassInfo) -> "Env":
+    def update_class(self, name: str, new_ci: ClassInfo) -> Env:
         return replace(self, classes=tuple(new_ci if c.name == name else c for c in self.classes))
 
-    def with_indexable(self, name: str, kind: str) -> "Env":
+    def with_indexable(self, name: str, kind: str) -> Env:
         # readable (in locals) but frozen (never reassigned to a scalar), so the
         # index-assign target always still holds a container
         e = self.with_frozen(name)
@@ -204,18 +201,18 @@ class Env:
                 out.append((n, c, ci.attr_writers))
         return tuple(out)
 
-    def with_instance(self, name: str, class_name: str) -> "Env":
+    def with_instance(self, name: str, class_name: str) -> Env:
         insts = tuple((n, c) for (n, c) in self.instances if n != name) + ((name, class_name),)
         return replace(self, instances=insts)
 
-    def with_proc(self, name: str, arity: int, strict: bool) -> "Env":
+    def with_proc(self, name: str, arity: int, strict: bool) -> Env:
         ps = tuple(p for p in self.procs if p[0] != name) + ((name, arity, strict),)
         return replace(self, procs=ps)
 
-    def with_yielder(self, name: str, arg_arity: int, yield_arity: int) -> "Env":
+    def with_yielder(self, name: str, arg_arity: int, yield_arity: int) -> Env:
         return replace(self, yielders=self.yielders + ((name, arg_arity, yield_arity),))
 
-    def class_info(self, name: str) -> "ClassInfo | None":
+    def class_info(self, name: str) -> ClassInfo | None:
         return next((ci for ci in self.classes if ci.name == name), None)
 
     @property
@@ -242,4 +239,8 @@ class Env:
     @property
     def mm_instances(self) -> tuple[tuple[str, str], ...]:
         """Instances whose class defines method_missing (a missing send routes there)."""
-        return tuple((n, c) for (n, c) in self.instances if (self.class_info(c) or ClassInfo(c, 0, ())).has_mm)
+        return tuple(
+            (n, c)
+            for (n, c) in self.instances
+            if (self.class_info(c) or ClassInfo(c, 0, ())).has_mm
+        )

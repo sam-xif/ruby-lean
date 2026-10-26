@@ -99,7 +99,8 @@ cp "$PKG/../books/scripts/emit_deriv.rb" "$PKG/../books/scripts/read_sigs.rb" "$
 # gem: that is on the default load path, so `require` finds it with no
 # RubyGems activation and no gemspec to keep in sync.
 SR_LIB="$(gem which sorbet-runtime 2>/dev/null | xargs -r dirname || true)"
-STDLIB_VER="$(basename "$(ls -d "$STAGE"/usr/local/lib/ruby/[0-9]*.[0-9]*.[0-9]* | head -1)")"
+STDLIB_DIRS=("$STAGE"/usr/local/lib/ruby/[0-9]*.[0-9]*.[0-9]*)
+STDLIB_VER="$(basename "${STDLIB_DIRS[0]}")"
 if [ -n "$SR_LIB" ] && [ -d "$SR_LIB" ]; then
   mkdir -p "$STAGE/usr/local/lib/ruby/site_ruby/$STDLIB_VER"
   cp -R "$SR_LIB"/* "$STAGE/usr/local/lib/ruby/site_ruby/$STDLIB_VER/"

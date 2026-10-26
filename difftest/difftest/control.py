@@ -129,13 +129,12 @@ class CRubyRunner:
             capture_output=True,
             text=True,
             timeout=self.timeout,
+            check=False,
         )
         return None if proc.returncode == 0 else proc.stderr.strip()
 
     def run(self, source: str) -> Observation:
-        wrapped = _WRAPPER.format(
-            program=source, sentinel=json.dumps(SENTINEL), support=_SUPPORT
-        )
+        wrapped = _WRAPPER.format(program=source, sentinel=json.dumps(SENTINEL), support=_SUPPORT)
         with tempfile.NamedTemporaryFile("w", suffix=".rb", delete=False) as f:
             f.write(wrapped)
             path = f.name
@@ -152,6 +151,7 @@ class CRubyRunner:
                         timeout=self.timeout,
                         cwd=cwd,
                         env={**os.environ, "RUBY_HASH_SEED": "0"},
+                        check=False,
                     )
             except subprocess.TimeoutExpired:
                 return Observation(stdout="", result_repr=None, exception=None, timed_out=True)
@@ -195,7 +195,10 @@ class CRubyRunner:
         # disagreement (same class as `timeout` above; termination-by-construction
         # in tier 1 covers loops but not mutual recursion).
         if a.exception and a.exception[0] == "SystemStackError":
-            return None, "SystemStackError (non-terminating recursion; pre-overflow stdout is stack-depth-dependent, not a stable observable)"
+            return (
+                None,
+                "SystemStackError (non-terminating recursion; pre-overflow stdout is stack-depth-dependent, not a stable observable)",
+            )
         b = self.run(source)
         if a.normalized() != b.normalized():
             return None, "nondeterministic (two control runs differ)"

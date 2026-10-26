@@ -4,18 +4,15 @@ Kept to a small example count — each check is a CRuby subprocess.
 """
 
 import pytest
-from hypothesis import HealthCheck, given, settings
-
 from difftest.control import CRubyRunner
 from difftest.tiers.tier1.render import render_program
 from difftest.tiers.tier1.strategies import programs
+from hypothesis import HealthCheck, given, settings
 
 runner = CRubyRunner(timeout=10.0)
 
 
-@settings(
-    max_examples=25, deadline=None, database=None, suppress_health_check=list(HealthCheck)
-)
+@settings(max_examples=25, deadline=None, database=None, suppress_health_check=list(HealthCheck))
 @given(programs())
 def test_generated_programs_parse(prog):
     src = render_program(prog)
@@ -23,9 +20,7 @@ def test_generated_programs_parse(prog):
     assert err is None, f"generated program does not parse:\n{src}\n{err}"
 
 
-@settings(
-    max_examples=10, deadline=None, database=None, suppress_health_check=list(HealthCheck)
-)
+@settings(max_examples=10, deadline=None, database=None, suppress_health_check=list(HealthCheck))
 @given(programs())
 def test_generated_programs_deterministic(prog):
     src = render_program(prog)
@@ -78,9 +73,7 @@ def test_inheritance_super_smoke():
     c1 = A.ClassDef(
         "C1", "C0", (), (), (), (A.MethodDef("im0", (), (A.BinOp("+", A.Super(()), A.IntLit(1)),)),)
     )
-    prog = A.Program(
-        (c0, c1, A.Puts((A.MethodCall(A.New("C1", (A.IntLit(10),)), "im0", ()),)))
-    )
+    prog = A.Program((c0, c1, A.Puts((A.MethodCall(A.New("C1", (A.IntLit(10),)), "im0", ()),))))
     assert runner.run(render_program(prog)).stdout == "11\n"
 
 
@@ -88,9 +81,7 @@ def test_metaprogramming_writer_smoke():
     from difftest.tiers.tier1 import ast as A
 
     # attr_accessor :x ; o = C0.new(5); o.x = 9; puts(o.send(:x))  →  9
-    c0 = A.ClassDef(
-        "C0", None, (), ("@x",), (), (), (A.AttrDecl("accessor", ("x",)),)
-    )
+    c0 = A.ClassDef("C0", None, (), ("@x",), (), (), (A.AttrDecl("accessor", ("x",)),))
     prog = A.Program(
         (
             c0,
@@ -114,9 +105,7 @@ def test_varied_params_smoke():
         A.PKwRest("o9"),
     )
     body = (
-        A.ArrayLit(
-            (A.LocalRead("x"), A.LocalRead("o1"), A.LocalRead("k1"), A.LocalRead("o9"))
-        ),
+        A.ArrayLit((A.LocalRead("x"), A.LocalRead("o1"), A.LocalRead("k1"), A.LocalRead("o9"))),
     )
     call = A.Call("m0", (A.IntLit(1),), (("k1", A.IntLit(2)), ("extra", A.IntLit(9))))
     out = A.Puts((A.StrInterp((call,)),))
@@ -147,7 +136,9 @@ def test_destructuring_block_smoke():
     block = A.Block(
         (A.PDestr(("da", "db")),), (A.BinOp("+", A.LocalRead("da"), A.LocalRead("db")),)
     )
-    recv = A.ArrayLit((A.ArrayLit((A.IntLit(1), A.IntLit(2))), A.ArrayLit((A.IntLit(3), A.IntLit(4)))))
+    recv = A.ArrayLit(
+        (A.ArrayLit((A.IntLit(1), A.IntLit(2))), A.ArrayLit((A.IntLit(3), A.IntLit(4))))
+    )
     prog = A.Program((A.Puts((A.StrInterp((A.BlockCall(recv, "map", (), block),)),)),))
     assert runner.run(render_program(prog)).stdout == "[3, 7]\n"
 
@@ -202,7 +193,8 @@ def test_method_missing_smoke():
     # class C0; def method_missing(name, *args); "mm-#{name}"; end; end
     # puts(C0.new.ghost0(1, 2))  →  mm-ghost0
     mm = A.MethodDef(
-        "method_missing", ("name", A.PRest("args")),
+        "method_missing",
+        ("name", A.PRest("args")),
         (A.StrInterp(("mm-", A.LocalRead("name"))),),
     )
     c0 = A.ClassDef("C0", None, (), (), (), (mm,))
@@ -216,8 +208,7 @@ def test_eigenclass_smoke():
     # class C0; class << self; def esm0; 42; end; end; end ; puts(C0.esm0)  →  42
     eigen = A.EigenClass((A.MethodDef("esm0", (), (A.IntLit(42),)),))
     c0 = A.ClassDef("C0", None, (), (), (), (), (eigen,))
-    prog = A.Program((c0, A.Puts((A.MethodCall(A.ConstRead("C0"), "esm0", ()),)))
-    )
+    prog = A.Program((c0, A.Puts((A.MethodCall(A.ConstRead("C0"), "esm0", ()),))))
     assert runner.run(render_program(prog)).stdout == "42\n"
 
 
