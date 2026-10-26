@@ -233,14 +233,14 @@ end
 
 # --------------------------------------------------------------------------
 
-def main
-  src = $stdin.read
+# The signatures of `src`, in `srb_sigs.py`'s shape, and the parse errors (empty
+# when it parses).
+def read_sigs(src)
   result = Prism.parse(src)
   unless result.success?
-    warn(result.errors.map { |e| "#{e.location.start_line}: #{e.message}" }.join("\n"))
-    puts JSON.generate({ "version" => 1, "file" => "(stdin)", "sigs" => [], "dropped" => [],
-                         "reader" => "prism", "sorbet" => nil, "verdict" => "parse-error" })
-    return 1
+    errors = result.errors.map { |e| "#{e.location.start_line}: #{e.message}" }
+    return [{ "version" => 1, "file" => "(stdin)", "sigs" => [], "dropped" => [],
+              "reader" => "prism", "sorbet" => nil, "verdict" => "parse-error" }, errors]
   end
 
   entries = []
@@ -288,12 +288,18 @@ def main
     sigs << common.merge("params" => params, "ret" => ret)
   end
 
-  puts JSON.generate({
+  [{
     "version" => 1, "file" => "(stdin)", "sigs" => sigs, "dropped" => dropped,
     # Sorbet did not run. Said out loud so a caller cannot read silence as approval.
     "reader" => "prism", "sorbet" => nil, "verdict" => "not-checked"
-  })
-  0
+  }, []]
+end
+
+def main
+  sigs, errors = read_sigs($stdin.read)
+  warn(errors.join("\n")) unless errors.empty?
+  puts JSON.generate(sigs)
+  errors.empty? ? 0 : 1
 end
 
 exit(main) if $PROGRAM_NAME == __FILE__
