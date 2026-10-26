@@ -1363,6 +1363,23 @@ end
 
 # --------------------------------------------------------------------------
 
+# The derivation for a program (`export-json`'s output) under its signatures
+# (`read_sigs.rb`'s), or the reason there is none.
+def emit(ast, sigs)
+  em = Emitter.new(sigs)
+  begin
+    deriv, ty = em.go(ast["ast"])
+    raise Blocked, "closure-valued program results are outside the fragment" if em.closure_type?(ty)
+    deriv = { "rule" => "flow", "body" => deriv } if em.uses_flow
+  rescue Blocked => e
+    return { "status" => "blocked", "why" => e.message }
+  rescue SystemStackError
+    # The Python original caught RecursionError here; same measurement.
+    return { "status" => "blocked", "why" => "AST too deep" }
+  end
+  { "status" => "ok", "ty" => ty, "deriv" => deriv }
+end
+
 def main(argv)
   if argv.include?("--ast")
     ast = JSON.parse(File.read(argv[argv.index("--ast") + 1]))
@@ -1373,20 +1390,7 @@ def main(argv)
     sigs = input["sigs"] || { "sigs" => [], "dropped" => [] }
   end
 
-  em = Emitter.new(sigs)
-  begin
-    deriv, ty = em.go(ast["ast"])
-    raise Blocked, "closure-valued program results are outside the fragment" if em.closure_type?(ty)
-    deriv = { "rule" => "flow", "body" => deriv } if em.uses_flow
-  rescue Blocked => e
-    puts JSON.generate({ "status" => "blocked", "why" => e.message })
-    return 0
-  rescue SystemStackError
-    # The Python original caught RecursionError here; same measurement.
-    puts JSON.generate({ "status" => "blocked", "why" => "AST too deep" })
-    return 0
-  end
-  puts JSON.generate({ "status" => "ok", "ty" => ty, "deriv" => deriv })
+  puts JSON.generate(emit(ast, sigs))
   0
 end
 

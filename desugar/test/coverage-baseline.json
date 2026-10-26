@@ -1,0 +1,13 @@
+{
+  "line": 97.73,
+  "branch": 88.91,
+  "files": [
+    "desugar/lib/desugar.rb",
+    "desugar/lib/export.rb",
+    "desugar/lib/linearize.rb",
+    "desugar/lib/observe.rb",
+    "desugar/lib/render.rb",
+    "desugar/lib/roundtrip.rb",
+    "desugar/lib/rubycore.rb"
+  ]
+}

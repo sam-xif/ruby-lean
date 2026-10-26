@@ -8,7 +8,7 @@
 #   proofs        the model builds; every proof book builds, the checker included; the
 #                 axiom audits; the soundness check over the corpus; the comparator
 #   conformance   the model against CRuby, and the differential tester's own tests
-#   front-end     the desugarer against CRuby
+#   front-end     the desugarer against CRuby; the desugarer's and the emitter's unit tests
 #   lint          formatting and lint over the Python, the Ruby tooling, the shell scripts
 #                 and the workflows
 #   docs          the documentation site builds with no broken links
@@ -156,6 +156,8 @@ jobs:
           key: ruby-src-${{ hashFiles('Makefile') }}
 
       - run: make deps
+      - run: make desugar-unit
+      - run: make emitter-unit
       - run: make desugar-test
       - run: make desugar-coverage
 

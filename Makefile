@@ -43,8 +43,8 @@ BOOTSTRAP := desugar/corpus/bootstraptest
 
 .PHONY: help all check prereqs ci-sync deps lean lean-exes desugar difftest run \
         books metatheory soundness comparator lint format \
-        gen gen-check desugar-test desugar-coverage difftest-test conformance feature-loading \
-        book-checks \
+        gen gen-check desugar-test desugar-coverage desugar-unit emitter-unit difftest-test \
+        conformance feature-loading book-checks \
         wasm playground playground-serve docs docs-serve clean distclean
 
 help: ## List the targets
@@ -58,8 +58,8 @@ all: lean desugar difftest run ## Build the model, the checker, the desugarer an
 # mean the same thing. Nothing here is optional and nothing is skipped.
 
 CHECKS := prereqs ci-sync lint gen-check lean books metatheory soundness comparator \
-          desugar-test desugar-coverage difftest-test conformance feature-loading \
-          book-checks docs
+          desugar-unit emitter-unit desugar-test desugar-coverage difftest-test conformance \
+          feature-loading book-checks docs
 
 check: $(CHECKS) ## Everything: build, every proof, the model against CRuby, the docs
 	@echo
@@ -222,6 +222,27 @@ desugar-test: deps $(BOOTSTRAP) | $(STAMP) ## Round-trip every program in desuga
 desugar-coverage: deps $(BOOTSTRAP) ## How much of bootstraptest the desugarer supports; fails below desugar/coverage-baseline.json
 	$(RUBY) desugar/bin/coverage
 
+# ── Unit tests ───────────────────────────────────────────────────────────────
+# Each suite measures line and branch coverage of the code it tests, and fails
+# if either falls below the suite's coverage-baseline.json (scripts/check-coverage.py).
+# SEED=0 fixes the order the tests run in, so that a run is repeatable.
+
+RUN_MINITEST = bundle exec ruby -e 'Dir.glob(ARGV.shift).sort.each { |f| require File.expand_path(f) }'
+
+desugar-unit: deps | $(STAMP) ## The desugarer's unit tests (desugar/test/); fails below their coverage baseline
+	@rm -rf $(STAMP)/coverage/desugar
+	SEED=0 $(RUN_MINITEST) 'desugar/test/test_*.rb'
+	python3 scripts/check-coverage.py desugar
+
+emitter-unit: deps | $(STAMP) ## The derivation emitter's and signature reader's unit tests; fails below their coverage baseline
+	@rm -rf $(STAMP)/coverage/emitter
+	SEED=0 $(RUN_MINITEST) 'books/scripts/test/test_*.rb'
+	python3 scripts/check-coverage.py emitter
+
+run: lean-exes desugar ## Build what bin/ruby-lean and bin/ruby-lean-check need; with FILE=prog.rb, also run it
+	@if [ -n "$(FILE)" ]; then bin/ruby-lean $(FILE); \
+	else echo "  ready: bin/ruby-lean prog.rb, bin/ruby-lean-check prog.rb"; fi
+
 # ── Differential testing ─────────────────────────────────────────────────────
 
 difftest: $(STAMP)/uv lean-exes desugar ## The difftest environment; then: (cd difftest && uv run difftest --help)
@@ -232,8 +253,11 @@ $(STAMP)/uv: difftest/pyproject.toml difftest/uv.lock | $(STAMP)
 
 # Some of these tests need Sorbet and the model's executable and are marked to
 # skip without them. Under make both are present, so a skip is a failure.
-difftest-test: $(STAMP)/uv deps lean-exes ## difftest's own unit tests
-	cd difftest && DIFFTEST_NO_SKIPS=1 $(UV) run pytest -q
+difftest-test: $(STAMP)/uv deps lean-exes ## difftest's own unit tests; fails below their coverage baseline
+	@rm -f $(STAMP)/coverage/difftest.json
+	cd difftest && DIFFTEST_NO_SKIPS=1 $(UV) run pytest -q \
+	  --cov=difftest --cov-branch --cov-report=term --cov-report=json:../$(STAMP)/coverage/difftest.json
+	python3 scripts/check-coverage.py difftest
 
 $(BOOTSTRAP):
 	@if [ ! -d "$(RUBY_SRC)/bootstraptest" ]; then \
