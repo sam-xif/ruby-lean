@@ -14,6 +14,11 @@ Other modes, none of which runs the program to an observation:
   --fragment     whether the program is in the typed fragment
   --sigs         the Sorbet signatures the program declares
   --lean-term    the program as a Lean term of type `RubyCore.Expr`
+
+A numeric flag whose value is missing or malformed (`--fuel abc`) is a harness
+error (exit 1 on stderr), never a silent fallback to the default: a caller that
+mistypes a limit must not receive a plausible-looking run with different
+settings.
 -/
 import RubyCore.Obs
 import RubyCore.Sorbet.Fragment
@@ -26,7 +31,35 @@ open RubyCore
 def fuelDefault : Nat := 5_000_000
 def traceStepsDefault : Nat := 3000
 
+/-- Flags whose value must be a natural number. `--trace-at` deliberately takes
+    an arbitrary string, and `--trace`'s step count is optional, so neither is
+    listed here. -/
+def numericFlags : List String := ["--fuel", "--trace-from"]
+
+/-- The first numeric flag whose value is missing or malformed, as a message
+    naming it. `--trace` consumes a following token only when it parses as a
+    number; a non-flag token there is a malformed step count, not a value for
+    another flag. -/
+def badNumericArg? : List String → Option String
+  | [] => none
+  | [a] =>
+    if numericFlags.contains a then some s!"{a} expects a number"
+    else none
+  | a :: b :: rest =>
+    if numericFlags.contains a then
+      if b.toNat?.isSome then badNumericArg? (b :: rest)
+      else some s!"{a} expects a number, got '{b}'"
+    else if a == "--trace" then
+      if b.toNat?.isSome then badNumericArg? (b :: rest)
+      else if b.startsWith "-" then badNumericArg? (b :: rest)
+      else some s!"--trace expects a step count, got '{b}'"
+    else if a == "--trace-at" then badNumericArg? rest
+    else badNumericArg? (b :: rest)
+
 def main (args : List String) : IO UInt32 := do
+  if let some msg := badNumericArg? args then
+    IO.eprintln s!"rubycore: {msg}; refusing to run the program"
+    return 1
   let stdin ← IO.getStdin
   let input ← stdin.readToEnd
   let fuel := ((args.dropWhile (· != "--fuel"))[1]?.bind String.toNat?).getD fuelDefault

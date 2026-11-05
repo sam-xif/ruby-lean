@@ -70,6 +70,9 @@ lacks produces this message, not a wrong answer.
 | `--fragment` | Say whether the program is in the typed fragment, without running it |
 | `--sigs` | Print the Sorbet signatures the program declares, without running it |
 
+A numeric option needs a number: `--fuel abc` and `--trace-from abc` are
+errors, not a silent fall back to the default.
+
 ## Exit status
 
 | Status | Meaning |
