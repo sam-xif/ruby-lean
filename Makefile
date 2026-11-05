@@ -103,11 +103,13 @@ $(STAMP)/bundle: Gemfile Gemfile.lock | $(STAMP)
 	@touch $@
 
 # ── Generated Lean sources ───────────────────────────────────────────────────
-# Committed, so a checkout builds without Ruby; regenerated here so they cannot
-# drift from their inputs. Only Prelude.lean is a make dependency of the Lean
+# Committed, so a checkout builds without Ruby. The build regenerates them when
+# their inputs are newer, but it never rewrites a committed file: if the output
+# differs, it reports STALE and fails, and `make gen` is the command that
+# records the new source. Only Prelude.lean is a make dependency of the Lean
 # build: it is the one whose input (the desugarer) changes in ordinary work. The
 # CRuby name and Unicode tables follow the oracle's version, so they regenerate
-# only on an explicit `make gen`; `make gen-check` catches all four.
+# only on an explicit `make gen`; `make gen-check` checks all four.
 
 GENERATED    := $(PKG)/RubyCore/Generated
 PRELUDE_LEAN := $(GENERATED)/Prelude.lean
@@ -122,7 +124,8 @@ PRELUDE_SRC  := $(PKG)/scripts/gen_prelude.rb $(PKG)/prelude/prelude.rb \
 # rebuild it.
 $(PRELUDE_JSON): $(PRELUDE_SRC)
 	cd $(PKG) && $(RUBY) scripts/gen_prelude.rb > RubyCore/Generated/PreludeJson.lean.tmp
-	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
+	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else \
+	  echo "  STALE  $@  (run: make gen)"; rm -f $@.tmp; exit 1; fi
 
 # Build the generator first and run the binary, so that nothing Lake prints
 # while building can end up in the generated file.
@@ -130,7 +133,8 @@ GENPRELUDE := $(LAKE) build --log-level=error genprelude >&2 && .lake/build/bin/
 
 $(PRELUDE_LEAN): $(PRELUDE_JSON) $(PKG)/GenPrelude.lean $(PKG)/RubyCore/Syntax.lean
 	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp
-	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
+	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else \
+	  echo "  STALE  $@  (run: make gen)"; rm -f $@.tmp; exit 1; fi
 
 # The state the prelude boot leaves behind, as terms (BootedHeap.lean). Unlike
 # the files above this is a build artifact: it is not committed, because its
