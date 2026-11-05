@@ -204,7 +204,12 @@ def ratchet_sorbet(source: str) -> dict:
         rb = Path(td) / "playground.rb"
         rb.write_text(source)
         p = subprocess.run(
-            [sys.executable, str(ROOT / "books/Books/TypeSoundness/scripts/srb_sigs.py"), "--quiet", str(rb)],
+            [
+                sys.executable,
+                str(ROOT / "books/Books/TypeSoundness/scripts/srb_sigs.py"),
+                "--quiet",
+                str(rb),
+            ],
             capture_output=True,
             text=True,
             timeout=LONG,
@@ -227,7 +232,12 @@ def ratchet_derive(source: str) -> dict:
         rb = Path(td) / "playground.rb"
         rb.write_text(source)
         sigs = subprocess.run(
-            [sys.executable, str(ROOT / "books/Books/TypeSoundness/scripts/srb_sigs.py"), "--quiet", str(rb)],
+            [
+                sys.executable,
+                str(ROOT / "books/Books/TypeSoundness/scripts/srb_sigs.py"),
+                "--quiet",
+                str(rb),
+            ],
             capture_output=True,
             text=True,
             timeout=LONG,
@@ -245,7 +255,14 @@ def ratchet_derive(source: str) -> dict:
         sp.write_text(sigs.stdout)
         ap.write_text(core)
         emit = subprocess.run(
-            [RUBY, str(ROOT / "books/Books/TypeSoundness/scripts/emit_deriv.rb"), "--ast", str(ap), "--sigs", str(sp)],
+            [
+                RUBY,
+                str(ROOT / "books/Books/TypeSoundness/scripts/emit_deriv.rb"),
+                "--ast",
+                str(ap),
+                "--sigs",
+                str(sp),
+            ],
             capture_output=True,
             text=True,
             timeout=LONG,
