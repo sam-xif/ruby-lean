@@ -29,7 +29,7 @@ end
 # Transitions before the one that finishes the program; the model's own count
 # includes that last one.
 costs = {
-  "slow_power.rb" => ->(n) { 24 * n + 65 },
+  "slow_power.rb" => ->(n) { (24 * n) + 65 },
   "fast_power.rb" => ->(n) { 51 + fast_loop_cost(n) }
 }
 
@@ -51,10 +51,10 @@ costs.each do |file, cost|
 
       cases += 1
       next if cruby == "#{power}\n#{power}\n" && lean["result_repr"] == power.to_s &&
-              lean["stdout"] == "#{power}\n" && lean["exception"].nil? && steps == cost.(n) + 1
+              lean["stdout"] == "#{power}\n" && lean["exception"].nil? && steps == cost.call(n) + 1
 
       failures += 1
-      warn "MISMATCH #{file} b=#{b} n=#{n}: theorem #{power} in #{cost.(n) + 1} steps, " \
+      warn "MISMATCH #{file} b=#{b} n=#{n}: theorem #{power} in #{cost.call(n) + 1} steps, " \
            "CRuby #{cruby.inspect}, model #{out.chomp} in #{steps.inspect} steps"
     end
   end
