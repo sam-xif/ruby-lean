@@ -63,8 +63,11 @@ never optional.
    suite's `coverage-baseline.json` are compared on every run. Update one only
    with the command the check prints, in the same commit as the change that
    moved it, and never to hide a regression.
-6. **Regenerate, do not edit, generated files** (`ruby-lean/RubyCore/Generated/`,
-   `books/Books/TypeSoundness/Checker/Audit/`): `make gen`.
+6. **Regenerate, do not edit, generated files**, and do not commit them:
+   everything in `ruby-lean/RubyCore/Generated/`, and the modules
+   `books/scripts/generate_audited_checker.py --list` names in
+   `books/Books/TypeSoundness/Checker/Audit/` (the rest of that directory is
+   hand-written). `make gen` writes them.
 7. **Fix a lint finding; do not suppress it.** No `noqa`, `rubocop:disable`,
    `shellcheck disable` or test skip. New code in `desugar/`, `books/scripts/`
    or `difftest/` comes with unit tests, or its suite's coverage falls.
