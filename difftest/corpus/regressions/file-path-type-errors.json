@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro (issue #57)",
+  "arm": "hand",
+  "case_id": "file-path-type-errors",
+  "note": "File.basename/dirname/extname/join coerced a non-String path with `to_s`, answering where CRuby raises TypeError. They now raise the same TypeError and message (including the nil/true/false spellings); objects with to_path/to_str gate instead of guessing. Compared with CRuby 4.0.5."
+}
