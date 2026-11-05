@@ -298,12 +298,12 @@ def inspectFuel : Nat → Heap → Value → Except String String
              | none => "nil")
         return "#<MatchData " ++ esc whole ++
           (if parts.isEmpty then "" else " " ++ String.intercalate " " parts) ++ ">"
-      | .file _ | .dir _ _ =>
-        -- A VFS file/directory object never reaches `inspect` at step 1 (the
-        -- `File.*`/`Dir.*` singleton methods return String/Integer/Bool, never the
-        -- object itself), and CRuby's rendering carries the path, which the
-        -- payload deliberately does not. Gate rather than guess.
-        throw "inspect of a VFS file/directory object (issue #7 step 1)"
+      | .file _ | .dir _ _ | .io .. =>
+        -- A VFS file/directory/descriptor object never reaches `inspect` at
+        -- step 2 (the `File.*`/`Dir.*`/`IO#*` methods return String/Integer/Bool,
+        -- never the object itself), and CRuby's rendering carries the path, which
+        -- the payload deliberately does not. Gate rather than guess.
+        throw "inspect of a VFS file/directory/descriptor object (issue #7 step 2)"
       | .none | .rng _ | .generator _ | .yielder .. =>
         let cname := className h (h.get o).klass
         let ivars := (h.get o).ivars.reverse
@@ -352,8 +352,8 @@ def toSFuel : Nat → Heap → Value → Except String String
         if (h.get o).binary && hasHighByte whole then
           throw "MatchData#to_s over a byte-string subject with a byte ≥ 0x80"
         else return whole
-      | .file _ | .dir _ _ =>
-        throw "to_s of a VFS file/directory object (issue #7 step 1)"
+      | .file _ | .dir _ _ | .io .. =>
+        throw "to_s of a VFS file/directory/descriptor object (issue #7 step 2)"
       | .none | .rng _ =>
         let cname := className h (h.get o).klass
         return s!"#<{cname}:{fakeAddr o}>"
