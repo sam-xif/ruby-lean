@@ -11,7 +11,9 @@ versions file by file and fails if any of these moved the wrong way:
   recorded results   difftest/coverage-baseline.json, desugar/coverage-baseline.json,
                      books/corpus/accepted.txt, and each unit-test suite's
                      coverage-baseline.json: no number may fall, and no accepted
-                     program or measured file may disappear
+                     program or measured file may disappear. A file the change
+                     moves is followed to its new name, as git's rename
+                     detection finds it
   the checks         the targets `make check` runs; the theorems whose axioms are
                      audited (`#print axioms`); the theorems the comparator
                      re-checks, and the axioms it permits
@@ -62,9 +64,34 @@ class Tree:
         else:
             self.files = git("ls-tree", "-r", "--name-only", ref).splitlines()
         self._present = set(self.files)
+        # Files this version has under another name than the base: base path -> path here.
+        self.renames: dict[str, str] = {}
 
     def name(self) -> str:
         return self.ref or "the working tree"
+
+    def follow(self, path: str) -> str:
+        """Where the base's `path` is in this version: itself, or where it was moved.
+
+        A file git pairs with its new copy is followed directly. A small file whose
+        content also changed (a baseline listing paths that moved with it) can be
+        too unlike its old self for git to pair; it is followed when the other
+        files of its directory all moved to one new directory and it is there."""
+        if path in self.renames:
+            return self.renames[path]
+        if path in self._present:
+            return path
+        parent, _, name = path.rpartition("/")
+        moved_to = {
+            new.rpartition("/")[0]
+            for old, new in self.renames.items()
+            if old.rpartition("/")[0] == parent
+        }
+        if len(moved_to) == 1:
+            candidate = f"{moved_to.pop()}/{name}"
+            if candidate in self._present:
+                return candidate
+        return path
 
     def exists(self, path: str) -> bool:
         return path in self._present
@@ -105,6 +132,33 @@ class Tree:
             if any(fnmatch.fnmatch(f, g) for g in globs)
             and not any(fnmatch.fnmatch(f, g) for g in NOT_CODE)
         ]
+
+
+def find_renames(base: Tree, head: Tree) -> dict[str, str]:
+    """The files `head` moved, base path -> head path, as git's rename detection finds
+    them. A moved file is compared with its new copy, not reported as removed. For
+    the working tree only tracked files are seen; `git add` a moved file first."""
+    args = ["diff", "--find-renames", "--name-status", "-z", base.ref or "HEAD"]
+    if head.ref is not None:
+        args.append(head.ref)
+    fields = git(*args).split("\0")
+    renames = {}
+    i = 0
+    while i < len(fields) - 1:
+        status = fields[i]
+        if status.startswith("R"):
+            renames[fields[i + 1]] = fields[i + 2]
+            i += 3
+        elif status.startswith("C"):
+            i += 3
+        else:
+            i += 2
+    return renames
+
+
+def label(head: Tree, path: str) -> str:
+    moved = head.follow(path)
+    return path if moved == path else f"{path} (now {moved})"
 
 
 def git(*args: str) -> str:
@@ -154,11 +208,12 @@ COVERAGE_BASELINES = [
 
 def check_numbers(base: Tree, head: Tree, r: Report) -> None:
     for path, keys in NUMBERS.items():
-        old, new = load_json(base, path), load_json(head, path)
+        old, new = load_json(base, path), load_json(head, head.follow(path))
         if old is None:
             continue
+        what = label(head, path)
         if new is None:
-            r.fail(path, "removed")
+            r.fail(what, "removed")
             continue
         bad = []
         for key, direction in keys.items():
@@ -172,38 +227,44 @@ def check_numbers(base: Tree, head: Tree, r: Report) -> None:
                 bad.append(f"{key} rose from {old[key]} to {new[key]}")
             elif direction == "same" and new[key] != old[key]:
                 bad.append(f"{key} changed from {old[key]} to {new[key]}")
-        r.fail(path, "; ".join(bad)) if bad else r.ok(path)
+        r.fail(what, "; ".join(bad)) if bad else r.ok(what)
 
 
 def check_coverage(base: Tree, head: Tree, r: Report) -> None:
     for path in COVERAGE_BASELINES:
-        old, new = load_json(base, path), load_json(head, path)
+        old, new = load_json(base, path), load_json(head, head.follow(path))
         if old is None:
             continue
+        what = label(head, path)
         if new is None:
-            r.fail(path, "removed")
+            r.fail(what, "removed")
             continue
         bad = [
             f"{key} coverage fell from {old[key]}% to {new.get(key)}%"
             for key in ("line", "branch")
             if new.get(key, 0) < old[key]
         ]
-        dropped = [f for f in old["files"] if head.exists(f) and f not in new.get("files", [])]
+        dropped = [
+            f
+            for f in old["files"]
+            if head.exists(head.follow(f)) and head.follow(f) not in new.get("files", [])
+        ]
         if dropped:
             bad.append("no longer measured: " + ", ".join(dropped))
-        r.fail(path, "; ".join(bad)) if bad else r.ok(path)
+        r.fail(what, "; ".join(bad)) if bad else r.ok(what)
 
 
 def check_accepted(base: Tree, head: Tree, r: Report) -> None:
     path = "books/corpus/accepted.txt"
-    old, new = base.read(path), head.read(path)
+    old, new = base.read(path), head.read(head.follow(path))
     if old is None:
         return
+    what = label(head, path)
     lost = sorted(set(old.split()) - set((new or "").split()))
     if lost:
-        r.fail(path, "no longer accepted: " + ", ".join(lost))
+        r.fail(what, "no longer accepted: " + ", ".join(lost))
     else:
-        r.ok(path)
+        r.ok(what)
 
 
 # ── The checks themselves ────────────────────────────────────────────────────
@@ -236,7 +297,7 @@ def check_definitions(base: Tree, head: Tree, r: Report) -> None:
     what = "the theorems whose axioms are audited (#print axioms)"
     r.fail(what, "no longer audited: " + ", ".join(lost)) if lost else r.ok(what)
 
-    old, new = load_json(base, COMPARATOR), load_json(head, COMPARATOR)
+    old, new = load_json(base, COMPARATOR), load_json(head, head.follow(COMPARATOR))
     if old is not None:
         new = new or {}
         bad = []
@@ -331,6 +392,7 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
 
     base, head = Tree(args.base), Tree(args.head)
+    head.renames = find_renames(base, head)
     r = Report()
     check_numbers(base, head, r)
     check_coverage(base, head, r)
