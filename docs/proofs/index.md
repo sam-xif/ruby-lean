@@ -7,7 +7,7 @@ Every proof is in `books/`, a Lake package that uses the model as a library. The
 |---|---|
 | [Type soundness](type-soundness.md) | A program the checker accepts never ends in an uncaught `NoMethodError`, `ArgumentError` or `TypeError` when the model runs it |
 | [Metatheory](metatheory.md) | Facts about the model itself: a relational definition of a step agrees with the executable one, and a general type-safety principle that needs no type system |
-| [FastPower](../guides/prove-a-program.md) | One Ruby program, exponentiation by squaring, computes `b ** n` for every `b` and `n` |
+| [FastPower](../guides/prove-a-program.md) | Two Ruby programs, a simple loop and exponentiation by squaring, both compute `b ** n` for every `b` and `n`, and the second takes fewer steps for every `n` from 6 up |
 
 `books/Books/Lib/` is not a book. It is the machinery for proving things about
 a single program.
@@ -62,7 +62,7 @@ This does not trust the elaborator or anything a source file could do at
 elaboration time. To review what the theorem claims, you read
 `Challenge.lean`, not the proof.
 
-The script's header (`books/scripts/run-comparator.sh`) documents two things
+The script's header (`books/Books/TypeSoundness/scripts/run-comparator.sh`) documents two things
 that are not stock: a three-line patch to the replay tool, reported upstream as
 [lean4#15529](https://github.com/leanprover/lean4/issues/15529), and the fact
 that the comparator's sandbox is real only on Linux.
@@ -76,7 +76,7 @@ showing why a hypothesis is needed.
 * `books/Books/TypeSoundness/Checker/Controls/` and
   `books/Books/TypeSoundness/Controls/` are
   built with everything else, and a control that stops holding fails the build.
-* 46 programs in `books/corpus/` are marked as ones the checker must reject, for
+* 46 programs in `books/Books/TypeSoundness/corpus/` are marked as ones the checker must reject, for
   example `1 + true`. `make soundness` fails if one is accepted.
 * `bootOkB = true`, a hypothesis of the soundness theorem, is evaluated by the
   build. It says the machine the core library boots into satisfies the

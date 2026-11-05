@@ -12,11 +12,13 @@
 # What `make check` runs, and the scripts behind it
 /Makefile                                       @sam-xif
 /scripts/                                       @sam-xif
-/books/scripts/check-*.sh                       @sam-xif
-/books/scripts/run-comparator.sh                @sam-xif
-/books/scripts/check_pipeline.py                @sam-xif
-/books/scripts/generate_audited_checker.py      @sam-xif
-/books/scripts/probes/                          @sam-xif
+/books/Books/TypeSoundness/scripts/check-*.sh   @sam-xif
+/books/Books/TypeSoundness/scripts/run-comparator.sh @sam-xif
+/books/Books/TypeSoundness/scripts/check_pipeline.py @sam-xif
+/books/Books/TypeSoundness/scripts/generate_audited_checker.py @sam-xif
+/books/Books/TypeSoundness/Probes/              @sam-xif
+/books/Books/Metatheory/scripts/                @sam-xif
+/books/Books/Metatheory/Probes/                 @sam-xif
 /desugar/bin/run                                @sam-xif
 /desugar/bin/coverage                           @sam-xif
 /ruby-lean/scripts/check-feature-loading.py     @sam-xif
@@ -29,7 +31,7 @@
 /.rubocop.yml                                   @sam-xif
 /.shellcheckrc                                  @sam-xif
 /desugar/test/test_helper.rb                    @sam-xif
-/books/scripts/test/test_helper.rb              @sam-xif
+/books/Books/TypeSoundness/scripts/test/test_helper.rb @sam-xif
 /difftest/tests/conftest.py                     @sam-xif
 /difftest/pyproject.toml                        @sam-xif
 

@@ -7,7 +7,7 @@ defaultTargets = ["FastPower", "Metatheory", "TypeSoundness", "corpus-report", "
 # so its build is shared.
 #
 #   Books/Lib/            machinery for proving things about one Ruby program
-#   Books/FastPower/      a Ruby program proved correct
+#   Books/FastPower/      two Ruby programs proved to meet one specification, and compared
 #   Books/Metatheory/     facts about the model itself
 #   Books/TypeSoundness/  the type checker (Checker/) and its soundness theorem
 #
@@ -20,7 +20,8 @@ path = "../ruby-lean"
 # them: every file under `Books/` compiles. All libraries root at `Books`, so
 # that an `import Books.…` resolves whichever library asked for it.
 
-# A Ruby program proved correct, with the machinery it is written in.
+# Two Ruby programs proved to meet one specification, with the machinery the
+# proofs are written in.
 [[lean_lib]]
 name = "FastPower"
 srcDir = "."
@@ -48,7 +49,7 @@ globs = ["Books.TypeSoundness.+"]
 # proof, and which corpus programs the real `validateD` accepts.
 [[lean_exe]]
 name = "corpus-report"
-root = "CorpusReport"
+root = "Books.TypeSoundness.Report.Main"
 
 # The type checker as an executable: reads one program and one derivation as
 # JSON and prints `validateD`'s verdict. `bin/ruby-lean-check` and the

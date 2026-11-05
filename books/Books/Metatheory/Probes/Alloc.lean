@@ -34,7 +34,7 @@ if it ever is not, the fragment has silently stopped typing real objects rather
 than pathological ones. `typeAgree_alloc` is the proof that the relativization
 achieved what it was for; this is the check that it cost nothing.
 
-    lake env lean --run scripts/probes/alloc_probe.lean      # exit 0 iff no OOB id has a type
+    lake env lean --run Books/Metatheory/Probes/Alloc.lean      # exit 0 iff no OOB id has a type
 -/
 
 open RubyCore RubyCore.Types RubyCore.Proof.Static
