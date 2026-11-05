@@ -26,7 +26,8 @@ namespace Prelude
 def initOnBooted (prog : Expr) : Except String Machine := do
   let featurePrograms ← features
   return { Machine.initOn Booted.heap prog with
-    globals := Booted.globals, numericLiterals := Booted.numericLiterals, featurePrograms }
+    globals := Booted.globals, numericLiterals := Booted.numericLiterals, featurePrograms,
+    requireBodies := VfsFixture.requireBodies }
 
 end Prelude
 end RubyCore
