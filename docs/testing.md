@@ -46,8 +46,11 @@ ran, how many agree and how many are unsupported. The numbers may only improve:
 `scripts/check-conformance.sh` fails the build if agreement falls or the
 unsupported count rises, and disagreement must be zero. The number of programs
 must match exactly, because the corpus is fixed: it is extracted from CRuby's
-source at a pinned tag. When a change improves the numbers, record the new ones
-in the same change:
+source at a pinned tag. `make conformance` checks that count before it replays
+anything, with `scripts/check-conformance.sh --check-corpus`, so a harvest or
+gating change that moves it fails in seconds instead of after the run. When a
+change improves the numbers, the run annotates the pull request and its step
+summary; record the new ones in the same change:
 
 ```sh
 make conformance
