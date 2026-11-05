@@ -80,22 +80,19 @@ def test_no_unsoundness_witness_is_in_the_fragment(tmp_path):
     ever slips in, any theorem stated over it would be false — so this is the
     regression guard that matters most.
 
-    Exclusion has two halves since D10 (`RubyCore/Sorbet/Fragment.lean`): the
-    syntactic fragment refuses removal, dynamic dispatch and unchecked sigs,
-    but *admits* a method redefinition — `define_method` over a declared name
-    is exactly what the sig wrapper itself does — with an obligation left to
-    the checker. So a witness that works by redefinition
-    (`escape-hatches/002.rb`) is in the fragment. It is the one named
-    exception here; every other witness must still be outside, and a new
-    witness landing in the fragment fails this test.
+    Exclusion is syntactic (`RubyCore/Sorbet/Fragment.lean`): the fragment
+    refuses removal, dynamic dispatch, unchecked sigs, and a D10 redefinition
+    that displaces a `sig`-annotated name through a literal
+    `define_method`/`define_singleton_method`. There is no pinned exception: a
+    witness that works by redefinition (`escape-hatches/002.rb`) is excluded
+    like every other witness, so a new one landing in the fragment fails here.
     """
     from difftest.sorbet_check import run_check
 
     summary = run_check(load_sorbet_corpus(), tmp_path)
     witnesses = set(summary["unsoundness_witnesses"])
     assert witnesses, "corpus lost its witnesses; the guard is now vacuous"
-    by_redefinition = {"escape-hatches/002.rb"}
-    assert witnesses & set(summary["in_fragment"]) <= by_redefinition
+    assert witnesses & set(summary["in_fragment"]) == set()
 
 
 @requires_toolchain
@@ -122,6 +119,14 @@ def test_fragment_checker_classifies_the_hatches():
     for source, expected in [
         ("T.unsafe(nil).foo\n", "T.unsafe"),
         ("def g(x)\n  x\nend\n", "g"),
+        (
+            (
+                "class C\n  extend T::Sig\n"
+                "  sig { params(x: Integer).returns(String) }\ndef f(x)\n    x.to_s\n  end\n"
+                "  define_method(:f) { |x| x.no_such_method }\nend\n"
+            ),
+            "define_method :f",
+        ),
     ]:
         r = fc.check('# typed: true\nrequire "sorbet-runtime"\n' + source)
         assert r is not None
