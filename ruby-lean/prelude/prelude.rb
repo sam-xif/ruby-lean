@@ -2081,8 +2081,36 @@ end
 class File
   SEPARATOR = "/"
 
+  # CRuby's `FilePathStringValue`: a String is used as is, and an object with
+  # `to_path`/`to_str` is accepted. Converting such an object is not modeled, so
+  # it gates rather than guessing; every other value raises the TypeError
+  # `rb_get_path` raises, with CRuby's message.
+  def self.__path_arg(value, method)
+    return value if value.is_a?(String)
+    if value.respond_to?(:to_path) || value.respond_to?(:to_str)
+      return __unsupported__("File." + method + ": path-like " + value.class.to_s + " is not modeled")
+    end
+    raise TypeError, "no implicit conversion of " + __path_type_name(value) + " into String"
+  end
+
+  def self.__path_type_name(value)
+    return "nil" if value.nil?
+    return "true" if value == true
+    return "false" if value == false
+    value.class.to_s
+  end
+
+  # `File.join` accepts arrays (flattening them recursively) and objects with
+  # `to_path`/`to_str`; neither is modeled, so both gate rather than being
+  # rejected as a non-String part would be.
+  def self.__join_arg(value)
+    return value if value.is_a?(String)
+    return __unsupported__("File.join: array parts are not modeled") if value.is_a?(Array)
+    __path_arg(value, "join")
+  end
+
   def self.basename(path, suffix = nil)
-    s = path.to_s
+    s = __path_arg(path, "basename")
     parts = s.split("/")
     base = parts.empty? ? (s.empty? ? "" : "/") : parts[parts.length - 1]
     return base if suffix.nil?
@@ -2100,7 +2128,7 @@ class File
   end
 
   def self.extname(path)
-    b = basename(path)
+    b = basename(__path_arg(path, "extname"))
     i = b.length - 1
     while i > 0
       return b[i, b.length - i] if b[i] == "."
@@ -2110,7 +2138,7 @@ class File
   end
 
   def self.dirname(path)
-    s = path.to_s
+    s = __path_arg(path, "dirname")
     i = s.length - 1
     while i >= 0
       if s[i] == "/"
@@ -2123,7 +2151,7 @@ class File
   end
 
   def self.join(*parts)
-    parts.map { |x| x.to_s }.join("/")
+    parts.map { |x| __join_arg(x) }.join("/")
   end
 
   def self.method_missing(name, *args, **kw, &blk)
