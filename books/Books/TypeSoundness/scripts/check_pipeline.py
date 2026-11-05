@@ -18,7 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from build_corpus import BOOKS, EXPORT, ROOT, TOOLS, strip
+from build_corpus import BOOKS, EXPORT, TOOLS, strip
 
 
 def run_json(command, data=None):

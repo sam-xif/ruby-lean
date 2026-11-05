@@ -137,8 +137,8 @@ fi
 # 6. The report is the result; always show it.
 REPORT_ARGS=("$CORPUS_OUT")
 [[ "$VERBOSE" == 0 ]] && REPORT_ARGS+=(--quiet)
-if [[ "$RECORD" == 1 ]]; then REPORT_ARGS+=(--record $CORPUS/accepted.txt)
-else REPORT_ARGS+=(--accepted $CORPUS/accepted.txt); fi
+if [[ "$RECORD" == 1 ]]; then REPORT_ARGS+=(--record "$CORPUS/accepted.txt")
+else REPORT_ARGS+=(--accepted "$CORPUS/accepted.txt"); fi
 if ! ./.lake/build/bin/corpus-report "${REPORT_ARGS[@]}"; then
   echo "SOUNDNESS CHECK FAILED -- the corpus report" >&2; exit 1
 fi
