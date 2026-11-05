@@ -279,6 +279,7 @@ CONFORMANCE_OUT := $(CURDIR)/$(STAMP)/conformance
 DIFFTEST_RUN    := cd difftest && $(UV) run difftest
 
 conformance: difftest $(BOOTSTRAP) ## The model against CRuby: bootstraptest, past regressions, adversarial programs
+	scripts/check-conformance.sh --check-corpus
 	@rm -rf $(CONFORMANCE_OUT)
 	$(DIFFTEST_RUN) run --tier 0 --sut lean --out $(CONFORMANCE_OUT)
 	scripts/check-conformance.sh $(CONFORMANCE_OUT)
