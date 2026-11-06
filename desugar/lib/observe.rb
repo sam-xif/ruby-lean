@@ -3,6 +3,7 @@
 require "open3"
 require "json"
 require "tempfile"
+require "tmpdir"
 
 # obs+ : run a Ruby program in a fresh CRuby subprocess and record a normalized
 # observation = (stdout, value, exc). stdout is the ordered side-effect trace
@@ -50,8 +51,10 @@ module Observe
 
   WRAPPER = <<~RUBY
     $__obs_out = ENV["OBS_OUT"]
+    require "json"
     srand(0)
     %<support>s
+    def __safe_inspect(v); v.inspect; rescue Exception; "<uninspectable>"; end
     __exc = nil
     __val =
       begin
@@ -60,8 +63,6 @@ module Observe
         __exc = e
         nil
       end
-    require "json"
-    def __safe_inspect(v); v.inspect; rescue Exception; "<uninspectable>"; end
     File.write($__obs_out, JSON.generate(
       "value" => (__exc ? nil : __safe_inspect(__val)),
       "exc"   => (__exc ? [__exc.class.name, __exc.message.to_s] : nil)
@@ -78,34 +79,40 @@ module Observe
       prog_f.write(wrapper)
       prog_f.flush
       Tempfile.create(["dt_obs", ".json"]) do |obs_f|
-        out, err, status = capture(prog_f.path, obs_f.path, timeout)
-        return Obs.new(error: "timeout") if status == :timeout
+        # Each program gets a fresh working directory. bootstraptest programs
+        # create, read and remove files; without isolation their effects leak
+        # into the repo and into the next program's observation.
+        Dir.mktmpdir("dt-cwd-") do |cwd|
+          out, err, status = capture(prog_f.path, obs_f.path, timeout, cwd)
+          return Obs.new(error: "timeout") if status == :timeout
 
-        meta =
-          begin
-            raw = File.read(obs_f.path)
-            raw.empty? ? nil : JSON.parse(raw)
-          rescue StandardError
-            nil
+          meta =
+            begin
+              raw = File.read(obs_f.path)
+              raw.empty? ? nil : JSON.parse(raw)
+            rescue StandardError
+              nil
+            end
+
+          # No meta written => the wrapper itself failed to load/parse (e.g. a program
+          # that broke the begin/end inlining). Treat as a harness-level error.
+          if meta.nil?
+            return Obs.new(error: "no-observation", stdout: normalize(out),
+                           exc: (err.empty? ? nil : ["<child-stderr>", normalize(err)[0, 200]]))
           end
 
-        # No meta written => the wrapper itself failed to load/parse (e.g. a program
-        # that broke the begin/end inlining). Treat as a harness-level error.
-        if meta.nil?
-          return Obs.new(error: "no-observation", stdout: normalize(out),
-                         exc: (err.empty? ? nil : ["<child-stderr>", normalize(err)[0, 200]]))
+          Obs.new(stdout: normalize(out), value: normalize_s(meta["value"]), exc: normalize_exc(meta["exc"]))
         end
-
-        Obs.new(stdout: normalize(out), value: normalize_s(meta["value"]), exc: normalize_exc(meta["exc"]))
       end
     end
   end
 
-  def capture(prog_path, obs_path, timeout)
+  def capture(prog_path, obs_path, timeout, cwd)
     out = +""
     err = +""
     status = nil
-    Open3.popen3({ "OBS_OUT" => obs_path }, ORACLE, "--disable-gems", prog_path) do |stdin, stdout, stderr, wait|
+    Open3.popen3({ "OBS_OUT" => obs_path }, ORACLE, "--disable-gems", prog_path,
+                 chdir: cwd) do |stdin, stdout, stderr, wait|
       stdin.close
       begin
         Timeout.timeout(timeout) do

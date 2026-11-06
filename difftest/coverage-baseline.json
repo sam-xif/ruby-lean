@@ -1,8 +1,8 @@
 {
   "corpus": "bootstraptest",
-  "ran": 1287,
-  "agree": 1087,
-  "sut_unsupported": 194,
+  "ran": 1299,
+  "agree": 1090,
+  "sut_unsupported": 203,
   "not_compared": 6,
   "disagree": 0
 }
