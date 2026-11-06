@@ -2083,6 +2083,10 @@ class File
 
   def self.basename(path, suffix = nil)
     s = path.to_s
+    raise ArgumentError, "path name contains null byte" if s.include?("\0")
+    if !suffix.nil? && suffix.is_a?(String) && suffix.include?("\0")
+      raise ArgumentError, "string contains null byte"
+    end
     parts = s.split("/")
     base = parts.empty? ? (s.empty? ? "" : "/") : parts[parts.length - 1]
     return base if suffix.nil?
@@ -2111,6 +2115,7 @@ class File
 
   def self.dirname(path)
     s = path.to_s
+    raise ArgumentError, "path name contains null byte" if s.include?("\0")
     i = s.length - 1
     while i >= 0
       if s[i] == "/"
@@ -2123,7 +2128,11 @@ class File
   end
 
   def self.join(*parts)
-    parts.map { |x| x.to_s }.join("/")
+    parts.map do |x|
+      s = x.to_s
+      raise ArgumentError, "string contains null byte" if s.include?("\0")
+      s
+    end.join("/")
   end
 
   def self.method_missing(name, *args, **kw, &blk)

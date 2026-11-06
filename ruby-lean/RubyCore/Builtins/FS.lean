@@ -12,7 +12,8 @@ the fixture tree that lives in the heap. An unmodeled operation is a named
 
 `File.write` mutates inode bytes in place; `flush` is a no-op because descriptor
 writes update the inode on write (the documented step-2 simplification, and the
-only descriptor behavior step 1 needs).
+only descriptor behavior step 1 needs). A path containing a null byte is
+rejected with the `ArgumentError` CRuby raises, before any lookup.
 -/
 
 namespace RubyCore
@@ -26,6 +27,10 @@ def pathArg? (m : Machine) : Value → Option String
     | _ => none
   | _ => none
 
+/-- CRuby refuses a path argument that contains a null byte before touching the
+    filesystem, answering `ArgumentError: path name contains null byte`. -/
+def pathHasNullByte (s : String) : Bool := s.toList.contains (Char.ofNat 0)
+
 /-- A `File.*` / `Dir.*` / `IO.*` singleton operation. `recv` is the class
     object; `args` are the Ruby arguments. -/
 def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
@@ -36,13 +41,16 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
     | [p] =>
       match pathArg? m p with
       | some path =>
-        match VFS.lookup h path with
-        | some o =>
-          match (h.get o).payload with
-          | .file bytes => okStr m bytes
-          | .dir _ _ => .unsupported "File.read: is a directory (Errno::EISDIR gated at step 1)"
-          | _ => .unsupported "File.read: not a regular file"
-        | none => .unsupported "File.read: no such file (Errno::ENOENT gated at step 1)"
+        if pathHasNullByte path then
+          .err Boot.argumentErrorId "path name contains null byte" m
+        else
+          match VFS.lookup h path with
+          | some o =>
+            match (h.get o).payload with
+            | .file bytes => okStr m bytes
+            | .dir _ _ => .unsupported "File.read: is a directory (Errno::EISDIR gated at step 1)"
+            | _ => .unsupported "File.read: not a regular file"
+          | none => .unsupported "File.read: no such file (Errno::ENOENT gated at step 1)"
       | none => .unsupported "File.read: path argument is not a String"
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
   | "File#write" | "IO#write" =>
@@ -50,27 +58,36 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
     | [p, data] =>
       match pathArg? m p, pathArg? m data with
       | some path, some bytes =>
-        match VFS.lookup h path with
-        | some o =>
-          match (h.get o).payload with
-          | .file _ =>
-            let h' := h.set o { h.get o with payload := .file bytes }
-            .ok (.int (Int.ofNat bytes.length)) { m with heap := h' }
-          | .dir _ _ => .unsupported "File.write: is a directory (Errno::EISDIR gated at step 1)"
-          | _ => .unsupported "File.write: not a regular file"
-        | none => .unsupported "File.write: no such file (Errno::ENOENT gated at step 1)"
+        if pathHasNullByte path then
+          .err Boot.argumentErrorId "path name contains null byte" m
+        else
+          match VFS.lookup h path with
+          | some o =>
+            match (h.get o).payload with
+            | .file _ =>
+              let h' := h.set o { h.get o with payload := .file bytes }
+              .ok (.int (Int.ofNat bytes.length)) { m with heap := h' }
+            | .dir _ _ => .unsupported "File.write: is a directory (Errno::EISDIR gated at step 1)"
+            | _ => .unsupported "File.write: not a regular file"
+          | none => .unsupported "File.write: no such file (Errno::ENOENT gated at step 1)"
       | _, _ => .unsupported "File.write: path or data argument is not a String"
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
   | "File#exist?" | "Dir#exist?" =>
     match args with
     | [p] => (match pathArg? m p with
-      | some path => .ok (.bool (VFS.lookup h path).isSome) m
+      | some path =>
+        if pathHasNullByte path then
+          .err Boot.argumentErrorId "path name contains null byte" m
+        else .ok (.bool (VFS.lookup h path).isSome) m
       | none => .unsupported s!"{bid}: path argument is not a String")
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
   | "File#file?" =>
     match args with
     | [p] => (match pathArg? m p with
-      | some path => match VFS.lookup h path with
+      | some path =>
+        if pathHasNullByte path then
+          .err Boot.argumentErrorId "path name contains null byte" m
+        else match VFS.lookup h path with
         | some o => .ok (.bool (match (h.get o).payload with | .file _ => true | _ => false)) m
         | none => .ok (.bool false) m
       | none => .unsupported s!"{bid}: path argument is not a String")
@@ -78,7 +95,10 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
   | "File#directory?" =>
     match args with
     | [p] => (match pathArg? m p with
-      | some path => match VFS.lookup h path with
+      | some path =>
+        if pathHasNullByte path then
+          .err Boot.argumentErrorId "path name contains null byte" m
+        else match VFS.lookup h path with
         | some o => .ok (.bool (match (h.get o).payload with | .dir _ _ => true | _ => false)) m
         | none => .ok (.bool false) m
       | none => .unsupported s!"{bid}: path argument is not a String")
@@ -86,7 +106,10 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
   | "File#size" =>
     match args with
     | [p] => (match pathArg? m p with
-      | some path => match VFS.lookup h path with
+      | some path =>
+        if pathHasNullByte path then
+          .err Boot.argumentErrorId "path name contains null byte" m
+        else match VFS.lookup h path with
         | some o => match (h.get o).payload with
           | .file bytes => .ok (.int (Int.ofNat bytes.length)) m
           | .dir _ _ => .unsupported "File.size: is a directory (Errno::EISDIR gated at step 1)"
