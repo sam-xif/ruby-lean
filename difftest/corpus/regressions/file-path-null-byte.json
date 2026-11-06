@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "Null-byte path guard (2026-11-06)",
+  "note": "File/Dir path arguments containing a null byte answered a value or `false` where CRuby raises ArgumentError: `path name contains null byte` for a path, and `string contains null byte` for File.join and File.basename's suffix. They now raise the same ArgumentError. Compared with CRuby 4.0.5."
+}
