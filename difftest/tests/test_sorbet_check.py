@@ -4,18 +4,11 @@ import pytest
 from difftest.sorbet import FragmentChecker, sorbet_runtime_available, srb_path
 from difftest.sorbet_check import CELLS, classify, runtime_kind
 from difftest.sources import load_sorbet_corpus
+from marks import requires_rubycore
 
 requires_toolchain = pytest.mark.skipif(
     srb_path() is None or not sorbet_runtime_available(),
     reason="Sorbet toolchain not installed",
-)
-
-# `FragmentChecker` shells out to the Lean-built `rubycore` binary, which the
-# fast `difftest` CI job does not build (`lean-gate` owns that build). Skip
-# rather than fail with FileNotFoundError when the model is not built.
-requires_rubycore = pytest.mark.skipif(
-    not FragmentChecker().lean_bin.exists(),
-    reason="Lean rubycore binary not built",
 )
 
 
@@ -109,7 +102,6 @@ def test_theorem_scope_is_fragment_intersect_accepted(tmp_path):
 
 @requires_rubycore
 def test_fragment_checker_classifies_the_hatches():
-    from difftest.sorbet import FragmentChecker
 
     fc = FragmentChecker()
     clean = fc.check(

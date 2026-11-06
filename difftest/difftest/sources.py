@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 
 from .testcase import TestCase
+from .vfs import fixture_tree
 
 BASE = Path(__file__).resolve().parents[1]  # ruby/difftest/
 BOOTSTRAPTEST_DIR = BASE.parent / "desugar" / "corpus" / "bootstraptest"
@@ -68,6 +69,8 @@ def load_corpus_cases(corpus: Path, default_tier: int = -1) -> list[TestCase]:
     for path in sorted(corpus.rglob("*.rb")):
         meta_path = path.with_suffix(".json")
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        if "vfs" in meta:
+            fixture_tree(meta["vfs"])
         cases.append(
             TestCase(
                 id=str(path.relative_to(corpus)),
@@ -77,6 +80,18 @@ def load_corpus_cases(corpus: Path, default_tier: int = -1) -> list[TestCase]:
             )
         )
     return cases
+
+
+VFS_DIR = BASE / "corpus" / "vfs"
+
+
+def load_vfs_corpus(corpus: Path | None = None) -> list[TestCase]:
+    """The advisory VFS corpus (issue #43): hand-written programs over the
+    symbolic filesystem, each declaring the fixture it needs in its sidecar.
+    It is deliberately outside tier 0, so it cannot move the semantics
+    watermark while the VFS surface is still growing."""
+    corpus = Path(corpus) if corpus else VFS_DIR
+    return load_corpus_cases(corpus, default_tier=3)
 
 
 SLICE_DIR = BASE / "corpus" / "homebrew-slice"

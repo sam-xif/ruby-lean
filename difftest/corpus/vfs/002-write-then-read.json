@@ -1,0 +1,5 @@
+{
+  "vfs": "step1",
+  "expect": "agree",
+  "description": "File.write replaces the bytes of an existing file in place; read and size see the new contents. Each control run starts from the fixture."
+}
