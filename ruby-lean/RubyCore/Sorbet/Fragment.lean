@@ -40,7 +40,7 @@ soundness statement needs, and it ruled out **every `sig` in the corpus**:
 validating wrapper — `alias_method` the original aside, `define_method` a
 closure over the displaced entry, two `instance_variable_get`/`set` for the
 pending sig — so a fragment that excluded those four could not type a single
-annotated method. `prelude/prelude.rb`'s `T.__wrap` says so in as many words:
+annotated method. the prelude's `T.__wrap` says so in as many words:
 *"This IS the heap mutation of §C.2 — a method-table entry replaced by a
 checking one."*
 

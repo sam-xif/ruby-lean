@@ -9,7 +9,7 @@
 # difftest/, Bundler for the Ruby gems, and shell scripts for the browser build.
 # This file names the targets and tracks the edges between those tools:
 #
-#   prelude/*.rb ──gen_prelude.rb──▶ PreludeJson.lean ──genprelude──▶ Prelude.lean ──lake──▶ rubycore
+#   prelude/core/*.rb ──gen_prelude.rb──▶ PreludeJson.lean ──genprelude──▶ Prelude.lean ──lake──▶ rubycore
 #   rubycore, validate-one ──wasm/build.sh──▶ *.wasm ──▶ playground/dist
 #
 # Written for GNU Make 3.81, which is what macOS ships.
@@ -112,7 +112,8 @@ $(STAMP)/bundle: Gemfile Gemfile.lock | $(STAMP)
 GENERATED    := $(PKG)/RubyCore/Generated
 PRELUDE_LEAN := $(GENERATED)/Prelude.lean
 PRELUDE_JSON := $(GENERATED)/PreludeJson.lean
-PRELUDE_SRC  := $(PKG)/scripts/gen_prelude.rb $(PKG)/prelude/prelude.rb \
+PRELUDE_SRC  := $(PKG)/scripts/gen_prelude.rb \
+                $(wildcard $(PKG)/prelude/core/*.rb) \
                 $(wildcard $(PKG)/prelude/features/*.rb) $(wildcard desugar/lib/*.rb)
 
 # Two steps. Ruby desugars the prelude to JSON (PreludeJson.lean); then a Lean

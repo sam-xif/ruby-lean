@@ -1022,7 +1022,7 @@ def baseDecls : Decls := { consts := baseConsts, rows :=
      -- `declaresName` is name-global, so every row added here refuses `def <name>`
      -- program-wide — and `def zero?` appears in **0** of the 1,227 bootstraptest
      -- programs. And resolution: `ResolvesAt` requires `fromPrelude = false`, while
-     -- `abs` is defined **twice** in `prelude/prelude.rb`, so its row would be
+     -- `abs` is defined **twice** in the prelude, so its row would be
      -- unwitnessable at the prelude-booted heap even though it is fine at the boot
      -- one. Check both before adding a row, not just the first.
      ("zero?", { params := [], ret := .bool })])] }

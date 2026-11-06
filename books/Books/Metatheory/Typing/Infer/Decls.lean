@@ -1982,8 +1982,8 @@ def TableOk (h : Heap) : Prop :=
 
     It is excludable because the prelude installs the hook **lazily**: the
     `Object.define_singleton_method(:method_added)` in `T.__toplevel_sig`
-    (`prelude/prelude.rb:1187`) runs only when a toplevel `sig` is evaluated. A
-    sig-free program therefore never has one, and `lookup` simply misses [V —
+    (`prelude/features/sorbet-runtime.rb:427`) runs only when a toplevel `sig`
+    is evaluated. A sig-free program therefore never has one, and `lookup` simply misses [V —
     `rfl` on the boot heap, and measured over all 105 ids at the prelude-booted one].
 
     **Quantified over class objects as receivers, and the indexing is the content.**
