@@ -145,8 +145,7 @@ Core boot is split by topic under `ruby-lean/prelude/core/`. The list in
 `ruby-lean/scripts/gen_prelude.rb` is the load order: the generator concatenates
 the files, desugars the result and writes `RubyCore/Generated/PreludeJson.lean`,
 so a later file may reopen a class an earlier one defined.
-[`ruby-lean/prelude/README.md`](../ruby-lean/prelude/README.md) maps the files and
-states the authoring rules.
+`ruby-lean/prelude/README.md` maps the files and states the authoring rules.
 
 * Put a method in the file for its class or protocol, next to the other methods
   of that class.
