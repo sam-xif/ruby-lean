@@ -36,13 +36,15 @@ FileUtils.mkdir_p(out_dir)
 ASSERTS = %w[assert_equal assert_normal_exit assert_finish assert_not_equal].freeze
 # out-of-fragment / non-deterministic markers to skip (artifact 06 §4, `RubyCore/README.md` 00 §6).
 #
-# Filesystem interactions are not supported yet, and a program that touches the
-# filesystem is not hermetic: it mutates the CWD/`$LOAD_PATH` its observation
-# wrapper runs in, so it cannot be round-tripped faithfully (it surfaces as a
-# `harness_error`, e.g. `test_load_002.rb`). Gate the whole family out until
-# filesystem support lands — see the tracking issue.
+# The observation wrapper runs every program in a fresh working directory, so a
+# program that creates or removes files is hermetic. Filesystem entry points are
+# therefore harvested like any other method call. Two exclusions remain:
+# loading source or shared libraries depends on files outside the program
+# (`require`, `require_relative`), and `Dir.mkdir` is a real class method the
+# model does not gate yet (issue #31), so it is a wrong answer rather than a
+# named Unsupported.
 SKIP = /\b(Thread|Ractor|Fiber|ObjectSpace|GC|Process|fork|Mutex|require|require_relative|__FILE__|
-          rand|Time|Signal|trap|at_exit|ENV|sleep|load|Dir|File|FileUtils|FileTest|IO|Pathname|Tempfile)\b/x
+          rand|Time|Signal|trap|at_exit|ENV|sleep|Dir\.mkdir)\b/x
 
 # Extract a string literal argument's content, if it is a plain string literal.
 def string_lit(node)

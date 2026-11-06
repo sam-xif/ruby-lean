@@ -59,4 +59,34 @@ class TestRoundtrip < Minitest::Test
   def test_observe_stops_a_program_that_runs_too_long
     assert_equal "timeout", Observe.run("sleep 5", timeout: 1).error
   end
+
+  def test_observe_runs_each_program_in_a_fresh_working_directory
+    here = Dir.pwd
+    first = Observe.run("Dir.pwd").value
+    second = Observe.run("Dir.pwd").value
+    refute_equal here.inspect, first
+    refute_equal first, second
+  end
+
+  def test_observe_isolates_files_written_by_the_program
+    assert_equal '"x"', Observe.run('File.write("probe", "x"); File.read("probe")').value
+    assert_equal "false", Observe.run('File.exist?("probe")').value
+    refute File.exist?(File.expand_path("probe", Dir.pwd))
+  end
+
+  def test_observe_survives_a_program_that_replaces_load_path
+    assert_equal "[]", Observe.run("$LOAD_PATH.replace([]); $LOAD_PATH").value
+  end
+
+  def test_observe_reports_a_program_that_exits_before_the_observation
+    obs = Observe.run("exit!")
+    assert_equal "no-observation", obs.error
+    assert_nil obs.exc
+  end
+
+  def test_observe_reports_why_the_observation_is_missing
+    obs = Observe.run('STDERR.puts "boom"; exit! 1')
+    assert_equal "no-observation", obs.error
+    assert_equal ["<child-stderr>", "boom\n"], obs.exc
+  end
 end
