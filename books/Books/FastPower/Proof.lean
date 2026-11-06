@@ -75,15 +75,19 @@ def entry (b n : Int) : Machine := (stepN 61 (start (program b n))).getD default
     `@base` and `@steps`. The id is read off the booted program, so adding a
     bootstrap class or a fixture object cannot leave it stale. -/
 def powerObjId : Nat :=
-  ((entry 0 0).heap.objs.findIdx? fun o =>
-    o.ivars.any (fun p => p.1 == "@base") &&
+  let h := (entry 0 0).heap
+  (h.objs.findIdx? fun o =>
+    (match (h.get o.klass).payload with | .cls c => c.name == "Power" | _ => false) &&
+      o.ivars.any (fun p => p.1 == "@base") &&
       o.ivars.any (fun p => p.1 == "@steps")).getD 0
 
 /- Fail the build, naming `powerObjId`, if the search no longer finds the
    instance; without this its `getD 0` would silently substitute object 0. -/
 #guard
-  let o := (entry 0 0).heap.objs.getD powerObjId default
-  o.ivars.any (fun p => p.1 == "@base") && o.ivars.any (fun p => p.1 == "@steps")
+  let h := (entry 0 0).heap
+  let o := h.objs.getD powerObjId default
+  (match (h.get o.klass).payload with | .cls c => c.name == "Power" | _ => false) &&
+    o.ivars.any (fun p => p.1 == "@base") && o.ivars.any (fun p => p.1 == "@steps")
 
 /-- The machine at the loop test when the loop's variables hold these values.
     Everything the loop does not touch is taken from `entry`; what it does
