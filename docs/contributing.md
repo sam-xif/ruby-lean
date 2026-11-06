@@ -98,7 +98,8 @@ the owner's review.
 
 ## Generated files
 
-`ruby-lean/RubyCore/Generated/` and `books/Books/TypeSoundness/Checker/Audit/` are written by
+`ruby-lean/RubyCore/Generated/`, `books/Books/TypeSoundness/Checker/Audit/` and
+`books/Books/TypeSoundness/Checker/Static/NativeInstanceNames.lean` are written by
 scripts and committed. `make gen` regenerates them and `make gen-check` fails if
 one is stale. After editing `ruby-lean/prelude/prelude.rb`, a file under
 `ruby-lean/prelude/features/`, or a checker source under

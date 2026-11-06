@@ -11,6 +11,13 @@ open RubyCore Checker
 private theorem instance_covered : crubyMethodNames.all
     (fun p => p.2.all nativeInstanceNames.contains) = true := by decide +kernel
 
+/-- The other direction: the checker's list holds no name the model does not define.
+`instance_covered` catches an undercount at build time; this catches an overcount,
+which would otherwise narrow the fragment silently. Both are generated from one oracle
+snapshot (`scripts/gen_cruby_names.rb`), so `make gen` keeps them equal. -/
+private theorem instance_complete : nativeInstanceNames.all
+    (fun n => crubyMethodNames.any (fun p => p.2.contains n)) = true := by decide +kernel
+
 theorem nativeInstanceFreeB_sound {name : String} (h : nativeInstanceFreeB name = true) :
     ∀ cn, crubyClassDefines cn name = false := by
   have hn : nativeInstanceNames.contains name = false := by
