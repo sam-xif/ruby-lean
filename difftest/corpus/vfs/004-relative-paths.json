@@ -1,0 +1,5 @@
+{
+  "vfs": "step1",
+  "expect": "agree",
+  "description": "Relative paths are outside the step-1 fragment; the predicates answer false exactly as CRuby does from its fresh scratch cwd."
+}
