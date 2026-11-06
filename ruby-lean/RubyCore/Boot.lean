@@ -1,7 +1,7 @@
 /-
 Booting the core library.
 
-Much of Ruby's core library is written in Ruby here too: `prelude/prelude.rb`
+Much of Ruby's core library is written in Ruby here too: `prelude/core/`
 defines `Enumerable`, `Comparable` and many other methods. Boot has two
 phases. The first runs the prelude (the term `Prelude.program`) on the initial
 heap with `preludeMode := true`, so that the methods it defines are marked as

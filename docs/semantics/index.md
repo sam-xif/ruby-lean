@@ -92,9 +92,11 @@ evaluation order:
 ## The prelude
 
 Much of Ruby's core library is written in Ruby. The model does the same:
-`ruby-lean/prelude/prelude.rb` defines `Enumerable`, `Comparable`,
-`Range#each`, `Integer#times` and about a hundred other methods in Ruby, and the
-model runs that file to build the heap every program starts on. Only what cannot
+`ruby-lean/prelude/core/` defines `Enumerable`, `Comparable`,
+`Range#each`, `Integer#times` and about a hundred other methods in Ruby. The
+generator concatenates those files in the order listed in
+`ruby-lean/scripts/gen_prelude.rb`, and the model runs the result to build the
+heap every program starts on. Only what cannot
 be written in Ruby, such as integer addition or string concatenation, is a
 native builtin in `Builtins/`.
 

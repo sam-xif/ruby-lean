@@ -90,8 +90,8 @@ def SorbetSafeFrom (m₀ : Machine) : Prop :=
 
     Note the starting configuration: the **prelude-booted** heap, not
     `Machine.init program`. This is not a technicality. Sig enforcement lives in
-    the `T` shim, which is part of the prelude (`prelude/prelude.rb`), so a
-    statement over `Machine.init` would be about a program running with no core
+    the `T` shim, which is part of the prelude
+    (`prelude/features/sorbet-runtime.rb`), so a statement over `Machine.init` would be about a program running with no core
     library and no `T` at all — under which every Sorbet program raises
     `NameError` and the theorem says nothing about Sorbet. Anything proved here
     must be proved about the machine the interpreter really starts from.

@@ -5,8 +5,9 @@ How the rules on the previous pages became the Lean definitions in
 
 ## `require`
 
-Core boot evaluates `prelude/prelude.rb`; optional
-feature bodies remain decoded programs until `require`. A modeled require enters
+Core boot evaluates `prelude/core/*.rb` in the order listed by
+`ruby-lean/scripts/gen_prelude.rb`; optional feature bodies remain decoded
+programs until `require`. A modeled require enters
 a fresh top-level frame with `self = main`, `defmod = Object`, empty lexical
 nesting and Object as its constant fallback. The caller's locals and namespace do
 not become the feature's.

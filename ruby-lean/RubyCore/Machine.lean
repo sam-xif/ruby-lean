@@ -493,7 +493,7 @@ structure Machine where
   currentExc : Option Value := none
   missingReason : MissingReason := .ordinary
   /-- True only while the **prelude** (the core library written in RubyCore,
-      `prelude/prelude.rb`) is being loaded: methods defined in this phase are
+      `prelude/core/`) is being loaded: methods defined in this phase are
       marked `fromPrelude`. -/
   preludeMode : Bool := false
   featurePrograms : List (String × Expr) := []
@@ -694,7 +694,7 @@ def emit (m : Machine) (s : String) : Machine :=
 
 /-- Initial machine for a program running on an already-booted heap `heap`
     (fresh frames/kont/stack; stdout and `$!` reset). Used for the two-phase
-    prelude boot: phase 1 runs `prelude/prelude.rb` from H₀, phase 2 runs the
+    prelude boot: phase 1 runs `prelude/core/` from H₀, phase 2 runs the
     program on the resulting heap. `init` is `initOn Boot.initHeap`. -/
 def initOn (heap : Heap) (program : Expr) : Machine :=
   let top : Frame :=

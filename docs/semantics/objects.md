@@ -40,7 +40,7 @@ GC in the model). A class object additionally carries:
 and `origin`. `origin = builtin` marks a method whose behavior is a primitive rule
 rather than a RubyCore body (`Builtins.lean`, keyed `"Owner#name"` and registered
 in H₀'s method tables so that shadowing is uniform). Everything else in the core
-library is written *in Ruby* — see `ruby-lean/prelude/prelude.rb` and
+library is written *in Ruby* — see `ruby-lean/prelude/core/` and
 `ruby-lean/prelude/features/`. Method and closure origin follows model library code
 through calls; it is separate from the boot-only flag that suppresses callbacks.
 Classes opened by library code retain a canonical namespace tag for the generated

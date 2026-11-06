@@ -100,7 +100,7 @@ the owner's review.
 
 `ruby-lean/RubyCore/Generated/` and `books/Books/TypeSoundness/Checker/Audit/` are written by
 scripts and committed. `make gen` regenerates them and `make gen-check` fails if
-one is stale. After editing `ruby-lean/prelude/prelude.rb`, a file under
+one is stale. After editing a file under `ruby-lean/prelude/core/`,
 `ruby-lean/prelude/features/`, or a checker source under
 `books/Books/TypeSoundness/Checker/Check/`, run `make gen`.
 
@@ -120,8 +120,9 @@ the boot.
 2. **Decide where it goes.**
     * *Syntax that can be expressed with existing core forms* is a rewrite in
       `desugar/lib/desugar.rb`. Prefer this: it adds nothing to the model.
-    * *A library method that can be written in Ruby* goes in
-      `ruby-lean/prelude/prelude.rb`.
+    * *A library method that can be written in Ruby* goes in the matching
+      topic file under `ruby-lean/prelude/core/`; see
+      [Adding to the prelude](#adding-to-the-prelude).
     * *A primitive* is a builtin in `ruby-lean/RubyCore/Builtins/`.
     * *A new core form* needs a node in `desugar/lib/rubycore.rb` and
       `ruby-lean/RubyCore/Syntax.lean` (the two lists mirror each other) and a
@@ -137,6 +138,25 @@ the boot.
 When the model cannot do something faithfully, make it decline with a reason.
 Never approximate: a wrong answer is a disagreement with CRuby, and a declined
 program is not.
+
+## Adding to the prelude
+
+Core boot is split by topic under `ruby-lean/prelude/core/`. The list in
+`ruby-lean/scripts/gen_prelude.rb` is the load order: the generator concatenates
+the files, desugars the result and writes `RubyCore/Generated/PreludeJson.lean`,
+so a later file may reopen a class an earlier one defined.
+[`ruby-lean/prelude/README.md`](../ruby-lean/prelude/README.md) maps the files and
+states the authoring rules.
+
+* Put a method in the file for its class or protocol, next to the other methods
+  of that class.
+* A whole optional library belongs in `ruby-lean/prelude/features/`; features
+  execute on `require`, not at boot.
+* A new core topic file goes into `CORE` in `gen_prelude.rb` at the position the
+  load order needs, and into `PRELUDE_SRC` in the `Makefile`.
+* Run `make gen`, then `make conformance` (and `make books` if the model or the
+  generated prelude changed). `make gen-check` must report every generated file
+  fresh.
 
 ## Adding a typing rule
 
