@@ -91,7 +91,7 @@ theorem old_site_not_preserved :
   intro site
   have he := site.constants "Next"
   have hmiss : instanceConstResolve (FreshClassActual.heap m "Next" 46) 45 "Next" = none := rfl
-  have hglobal : constLookup (FreshClassActual.heap m "Next" 46) "Next" = some (.ref 48) := rfl
+  have hglobal : constLookup (FreshClassActual.heap m "Next" 46) "Next" = some (.ref (Boot.mainId + 3)) := rfl
   rw [hmiss, hglobal] at he
   cases he
 
