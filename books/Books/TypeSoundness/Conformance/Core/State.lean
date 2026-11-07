@@ -498,9 +498,16 @@ def coreClsNames : List String :=
    "IOError", "FrozenError", "NotImplementedError"]
 
 /-- The boot metaclasses of Integer and String: `Integer === x` and `String === x` dispatch
-from here, where Module#=== is installed (checked at boot by `coreDataB`). -/
-def intMetaId : ObjId := 76
-def strMetaId : ObjId := 85
+from here, where Module#=== is installed (checked at boot by `coreDataB`).
+
+These are ids in the **prelude-booted** heap (`Prelude.boot`), not `H₀`'s: phase 1
+realizes the `File`/`Dir`/`IO` singleton eigenclasses (issue #7 step 1) and the
+exception eigenclasses, so the ids depend on the whole boot. They are re-pinned by
+hand whenever a bootstrap class or a boot-time eigenclass is added, and `#guard
+bootOkB` catches a stale value. Deriving them from the heap instead of pinning
+them is tracked as follow-up debt. -/
+def intMetaId : ObjId := 87
+def strMetaId : ObjId := 96
 
 /-- **The core classes are what they are.**
 

@@ -3,7 +3,7 @@ The semantic boot gate checks this data against the actual prelude heap. -/
 namespace Checker
 
 def bootGlobalConsts : List String :=
-  ["T", "Struct", "Encoding", "File", "URI", "Pathname", "JSON", "Forwardable",
+  ["T", "Struct", "Encoding", "File", "IO", "Dir", "URI", "Pathname", "JSON", "Forwardable",
    "Enumerable", "Comparable", "BasicObject", "Object", "Module", "Class", "NilClass",
    "TrueClass", "FalseClass", "Integer", "Float", "String", "Symbol", "Array", "Hash",
    "Exception", "StandardError", "RuntimeError", "ArgumentError", "TypeError", "NameError",

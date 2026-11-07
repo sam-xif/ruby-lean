@@ -110,6 +110,8 @@ def nativeReprOwner (h : Heap) (name : String) : Value → String
     | .mdata .. => "MatchData"
     | .enumerator _ => if name == "to_s" then "Object" else "Enumerator"
     | .chain _ => if name == "to_s" then "Object" else "Enumerator::Chain"
+    | .file _ => "File"
+    | .dir _ => "Dir"
 
 def reprUnchanged (h : Heap) (sens : List String) (value : Value) : Bool :=
   sens.all fun name =>

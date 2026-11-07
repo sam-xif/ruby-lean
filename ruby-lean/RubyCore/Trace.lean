@@ -43,6 +43,8 @@ partial def valBrief (h : Heap) : Nat → Value → String
     | .chain _ => "#<Enumerator::Chain>"
     | .generator _ => "#<Enumerator::Generator>"
     | .yielder .. => "#<Enumerator::Yielder>"
+    | .file b => s!"#<File ({b.length} bytes)>"
+    | .dir es => s!"#<Dir ({es.length} entries)>"
 
 /-- One-line head label for the expression about to be evaluated. -/
 def exprBrief : Expr → String

@@ -1,4 +1,5 @@
 import RubyCore.Builtins.Regex
+import RubyCore.Builtins.FS
 import RubyCore.Generated.CRubyNames
 
 /-!
@@ -253,7 +254,7 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         if names.length != args.length then .unsupported "constant visibility: name conversion" else
         setConstantVisibility m recv o (bid == "Module#private_constant") names
     | _ => .unsupported "private_constant on a non-module"
-  | _ => runRegex bid recv args m
+  | _ => runFS bid recv args m
 
 end Builtins
 

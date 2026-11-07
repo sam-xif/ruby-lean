@@ -240,6 +240,19 @@ inductive Payload where
       offsets throughout, matching Ruby. -/
   | mdata (subject : String) (caps : Array (Option (Nat × Nat)))
       (names : List (String × Nat))
+  /-- A **regular file** in the virtual filesystem (issue #7, step 1). `bytes`
+      are the file's contents; a non-UTF-8 file reproduces CRuby's `inspect`
+      through the same `binary` tag a String uses, or gates under the L118 net.
+      Files are ordinary heap objects so `frozen`, `dup`, `inspect` and `is_a?`
+      apply to them for free (artifact 01). Descriptors arrive in step 2; at
+      step 1 the payload is pure data. -/
+  | file (bytes : String)
+  /-- A **directory** in the virtual filesystem (issue #7, step 1). `entries`
+      maps a child's basename to its `ObjId`, in the boot-sorted order CRuby's
+      `Dir.entries` reports, so relative-path resolution and directory listing
+      have one definition. A directory and a file are distinguished by payload,
+      never by a string convention. -/
+  | dir (entries : List (String × ObjId))
 deriving Inhabited
 
 /-- A Hash's default for missing keys: `Hash.new(v)` stores a static value `val v`;
@@ -370,10 +383,21 @@ def complexId : ObjId := 40
 def enumeratorId : ObjId := 41
 def generatorId : ObjId := 42
 def yielderId : ObjId := 43
+/-- `IO` — base class of file-like objects (issue #7 step 1). Registered so the
+    lookup trichotomy stays accurate: a class that exists but whose descriptors
+    are unmodeled must *gate* on the operation, not answer `NoMethodError`.
+    (`File < IO`; descriptors themselves land in step 2.) -/
+def ioId : ObjId := 44
+/-- `File < IO` (issue #7 step 1) — where `File.read/write/exist?/file?/
+    directory?/size` are installed. -/
+def fileId : ObjId := 45
+/-- `Dir` (issue #7 step 1) — the directory-listing class. `Dir.entries` is
+    step 3; the class exists now so `Dir` in program text resolves to it. -/
+def dirId : ObjId := 46
 /-- Toplevel self (`main`), an ordinary Object instance. **Must stay last**:
     `initHeap` allocates every `classTable` entry densely and then `main`, so
     `mainId = classTable.length`. Adding a bootstrap class means bumping this. -/
-def mainId : ObjId := 44
+def mainId : ObjId := 47
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -420,8 +444,38 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (complexId, "Complex", some numericId),
   (enumeratorId, "Enumerator", some objectId),
   (generatorId, "Enumerator::Generator", some objectId),
-  (yielderId, "Enumerator::Yielder", some objectId)
+  (yielderId, "Enumerator::Yielder", some objectId),
+  (ioId, "IO", some objectId),
+  (fileId, "File", some ioId),
+  (dirId, "Dir", some objectId)
 ]
+
+/-! ### The virtual filesystem fixture (issue #7 step 1)
+
+The symbolic filesystem is **initial heap data H₀′**, not ambient OS state: a
+small directory tree allocated at boot, exactly like the metaclass knot. The
+interpreter never reaches outside the pure machine to read a file — it walks
+this tree. Whether the tree would instead come from a directory snapshot is a
+boot parameter (issue #7), not a runtime effect.
+
+The fixture is allocated **after** main and the two realized eigenclasses, so
+every fixed id (`classTable`, `mainId`) is unmoved. Its base is derived from the
+class count rather than pinned: `classTable.length` classes, then `main`, then
+the two eigenclasses of `BasicObject`/`Object` that `initHeap` realizes. A new
+bootstrap class therefore shifts the fixture ids automatically and keeps
+`resolve` pointing at the tree `initHeap` actually built. -/
+def vfsBase : ObjId := classTable.length + 3
+/-- `/tmp/readme.txt` — a regular file. -/
+def vfsReadmeId : ObjId := vfsBase
+/-- `/tmp/vfsdata/nums.txt` — a regular file in a subdirectory. -/
+def vfsNumsId : ObjId := vfsBase + 1
+/-- `/tmp/vfsdata` — a directory. -/
+def vfsDataId : ObjId := vfsBase + 2
+/-- `/tmp` — a directory under the root. A real, writable absolute path, so a
+    differential harness can materialize the identical tree for CRuby. -/
+def vfsTmpId : ObjId := vfsBase + 3
+/-- `/` — the fixture root. Absolute paths resolve from here. -/
+def vfsRootId : ObjId := vfsBase + 4
 
 /-- Builtin method table: class id → method names given by primitive rules.
     Builtin bid = "ClassName#name". Registered into each class's `methods`
@@ -504,7 +558,10 @@ def builtinMethods : List (ObjId × List String) := [
               "to_s", "names", "==", "eql?", "hash"]),
   (matchDataId, ["[]", "captures", "named_captures", "names", "begin", "end",
                  "pre_match", "post_match", "to_a", "size", "length", "to_s",
-                 "inspect", "values_at"])
+                 "inspect", "values_at"]),
+  (ioId, ["read", "write", "closed?", "close", "flush", "each_line", "gets"]),
+  (fileId, ["read", "write", "exist?", "file?", "directory?", "size", "open"]),
+  (dirId, ["exist?", "entries", "children", "mkdir"])
 ]
 
 def mkClassObj (name : String) (sup : Option ObjId) : Object :=
@@ -611,8 +668,25 @@ def initHeap : Heap :=
     { klass := classId,
       payload := .cls { superclass := some eB,
                         name := "", attached := some objectId, isModule := false } }).2
-  hE.set objectId { hE.get objectId with eigen := some eO }
+  let hE := hE.set objectId { hE.get objectId with eigen := some eO }
+  -- The VFS fixture, allocated in the order `vfsReadmeId`, `vfsNumsId`,
+  -- `vfsDataId`, `vfsTmpId`, `vfsRootId` name, children before parents.
+  let hV := (hE.alloc { klass := fileId, payload := .file "hello\n" }).2
+  let hV := (hV.alloc { klass := fileId, payload := .file "1\n2\n3\n" }).2
+  let hV := (hV.alloc
+    { klass := dirId, payload := .dir [("nums.txt", vfsNumsId)] }).2
+  let hV := (hV.alloc
+    { klass := dirId,
+      payload := .dir [("readme.txt", vfsReadmeId), ("vfsdata", vfsDataId)] }).2
+  (hV.alloc
+    { klass := dirId, payload := .dir [("tmp", vfsTmpId)] }).2
 
+/- Drift guard: `vfsBase` is derived from `classTable.length`, so a new bootstrap
+   class shifts the fixture ids automatically. The one remaining way to break
+   resolution is to reorder the fixture allocations above without updating the
+   `vfs*Id` names; `resolve` would then walk the wrong object. The differential
+   fixtures exercise each path, so that shows up as a disagreement rather than
+   silently. -/
 end Boot
 
 /-! ## Pure object-model operations (Semantics 01 §4, 02 §1–2) -/
@@ -634,6 +708,50 @@ def classOf (h : Heap) : Value → ObjId
 def realClassOf (h : Heap) : Value → ObjId
   | .ref o => (h.get o).klass
   | v => classOf h v
+
+/-! ## Virtual filesystem (issue #7 step 1)
+
+One definition of path resolution, walked from a `cwd`. At step 1 the `cwd` is
+fixed at the fixture root, so only absolute paths are resolved; relative paths
+and `Dir.chdir` arrive with the per-execution `cwd` (issue #7 open question 2).
+The walk splits on `/`, ignores empty components and `.`, and treats `..` by the
+stored tree — so `.`/`..`/trailing slashes have exactly one rule.
+
+Resolution is pure and total: it returns `Option ObjId`, and the builtins turn a
+missing path into a named `Unsupported` (an unimplemented operation is never a
+guessed answer or a fake `Errno`). -/
+
+namespace VFS
+
+/-- Normalize an absolute path into its non-empty, non-`.` components. `..`
+    is kept and resolved during the walk (there is no textual collapse, so a
+    symlink-free tree resolves it exactly). -/
+def components (s : String) : List String :=
+  (s.splitOn "/").filter (fun c => c != "" && c != ".")
+
+/-- Resolve `comps` from directory `dir`. A `dir` payload is the only thing that
+    can hold children; anything else stops the walk (`none`). -/
+def walk (h : Heap) (dir : ObjId) : List String → Option ObjId
+  | [] => some dir
+  | c :: rest =>
+    match (h.get dir).payload with
+    | .dir entries =>
+      if c == ".." then walk h dir rest
+      else match entries.find? (fun p => p.1 == c) with
+        | some (_, child) => walk h child rest
+        | none => none
+    | _ => none
+
+/-- Resolve an absolute path from the fixture root. A path that is not absolute
+    (`""` or not starting with `/`) resolves to `none`: relative paths are not
+    in the step-1 fragment. -/
+def resolve (h : Heap) (path : String) : Option ObjId :=
+  if path.startsWith "/" then walk h Boot.vfsRootId (components path) else none
+
+/-- The `ObjId` a path names, if it exists. -/
+def lookup (h : Heap) (path : String) : Option ObjId := resolve h path
+
+end VFS
 
 /-- A module's own ancestor list: itself, then its `include`d modules
     (most-recent first), recursively.
