@@ -2018,6 +2018,12 @@ end
 # `method_missing` and gates by name, the same guard `File` and `URI` use, so
 # `Pathname#exist?` refuses rather than answering.
 #
+# `Pathname#empty?` is the one exception: CRuby asks the filesystem whether the
+# file is empty, not whether the path String is empty. Model the file and
+# missing-path cases over the step-1 VFS builtins; directory emptiness needs a
+# directory listing the model does not have here, so gate it by name rather than
+# approximating.
+#
 # `Pathname#stem`, which `Version.detect` also calls, is deliberately **not**
 # here: it is Homebrew's own extension (`extend/pathname.rb:187`), not Ruby's, so
 # putting it in the prelude would make the model answer something the control —
@@ -2052,7 +2058,11 @@ class Pathname
 
   def sub(*args, &blk) = Pathname.new(@path.sub(*args, &blk))
 
-  def empty? = @path.empty?
+  def empty?
+    return false unless File.exist?(@path)
+    return __unsupported__("Pathname#empty? on a directory (directory emptiness is not modelled)") if File.directory?(@path)
+    File.size(@path).zero?
+  end
 
   def method_missing(name, *args, **kw, &blk)
     __unsupported__("Pathname#" + name.to_s + " (only the pure path operations are modeled)")
