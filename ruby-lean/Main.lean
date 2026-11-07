@@ -14,6 +14,14 @@ Other modes, none of which runs the program to an observation:
   --fragment     whether the program is in the typed fragment
   --sigs         the Sorbet signatures the program declares
   --lean-term    the program as a Lean term of type `RubyCore.Expr`
+  --preload-json run with `require "json"` preloaded (difftest's control)
+
+Every argument is validated before stdin is read. An unrecognized flag, a value
+flag without its value, or a numeric flag with a malformed value is a harness
+error (exit 1 on stderr), never a silent fallback: a stale caller of a removed
+flag such as `--check` must not receive a program run in place of the answer it
+asked for, and a caller that mistypes a limit must not get a plausible-looking
+run with different settings.
 -/
 import RubyCore.Obs
 import RubyCore.Sorbet.Fragment
@@ -26,7 +34,48 @@ open RubyCore
 def fuelDefault : Nat := 5_000_000
 def traceStepsDefault : Nat := 3000
 
+/-- Every flag `rubycore` recognizes. A flag absent here is a harness error, not
+    a silently ignored argument: `--check` was removed with the pre-ratchet type
+    checker, and a stale caller that still passes it must fail loudly rather than
+    get a program run in place of the verdict it expects. -/
+def knownFlags : List String :=
+  ["--fuel", "--trace", "--trace-from", "--trace-at", "--steps",
+   "--fragment", "--sigs", "--lean-term", "--preload-json"]
+
+/-- Flags whose value must be a natural number. `--trace-at` takes an arbitrary
+    string, and `--trace`'s step count is optional, so neither is listed here. -/
+def numericValueFlags : List String := ["--fuel", "--trace-from"]
+
+/-- The first malformed argument, as a message naming it. `--trace` consumes the
+    following token only when it parses as a number, so a flag after it keeps its
+    own meaning; any other non-flag token there is a malformed step count rather
+    than a value for another flag. -/
+def badArg? : List String → Option String
+  | [] => none
+  | [a] =>
+    if a == "--trace" then none
+    else if a == "--trace-at" then some "--trace-at expects a value"
+    else if numericValueFlags.contains a then some s!"{a} expects a number"
+    else if knownFlags.contains a then none
+    else some s!"unrecognized argument '{a}'"
+  | a :: b :: rest =>
+    if a == "--trace" then
+      if b.toNat?.isSome then badArg? rest
+      else if b.startsWith "-" then badArg? (b :: rest)
+      else some s!"--trace expects a step count, got '{b}'"
+    else if numericValueFlags.contains a then
+      if b.toNat?.isSome then badArg? rest
+      else some s!"{a} expects a number, got '{b}'"
+    else if a == "--trace-at" then badArg? rest
+    else if knownFlags.contains a then badArg? (b :: rest)
+    else some s!"unrecognized argument '{a}'"
+termination_by args => args.length
+decreasing_by all_goals (simp_wf <;> omega)
+
 def main (args : List String) : IO UInt32 := do
+  if let some msg := badArg? args then
+    IO.eprintln s!"rubycore: {msg}; refusing to run the program"
+    return 1
   let stdin ← IO.getStdin
   let input ← stdin.readToEnd
   let fuel := ((args.dropWhile (· != "--fuel"))[1]?.bind String.toNat?).getD fuelDefault
@@ -140,3 +189,26 @@ def main (args : List String) : IO UInt32 := do
       | .stuck msg =>
         IO.eprintln s!"MODEL STUCK (bug): {msg}"
         return 1
+
+/-! ## Argument controls
+
+These are compile-time checks: `lake build rubycore` evaluates them, so the
+vocabulary and the value rules cannot drift from the tests. -/
+#guard badArg? [] = none
+#guard badArg? ["--check"] = some "unrecognized argument '--check'"
+#guard badArg? ["--assn-program"] = some "unrecognized argument '--assn-program'"
+#guard badArg? ["--fuel"] = some "--fuel expects a number"
+#guard badArg? ["--fuel", "abc"] = some "--fuel expects a number, got 'abc'"
+#guard badArg? ["--trace-from", "10x"] = some "--trace-from expects a number, got '10x'"
+#guard badArg? ["--trace-at"] = some "--trace-at expects a value"
+#guard badArg? ["--trace", "abc"] = some "--trace expects a step count, got 'abc'"
+-- `--trace` without a count is valid and hands the next flag to the walk.
+#guard badArg? ["--trace"] = none
+#guard badArg? ["--trace", "--steps"] = none
+#guard badArg? ["--trace", "10", "--steps"] = none
+#guard badArg? ["--fuel", "10", "--trace-from", "3", "--trace-at", "x"] = none
+#guard badArg? ["--steps", "--fragment", "--sigs", "--lean-term", "--preload-json"] = none
+-- `--trace-at` takes an arbitrary string, including one that starts with '-'.
+#guard badArg? ["--trace-at", "-x"] = none
+-- A stray positional token is rejected rather than silently ignored.
+#guard badArg? ["program.json"] = some "unrecognized argument 'program.json'"
