@@ -8740,11 +8740,42 @@ def core_45 : Expr :=
        RubyCore.Expr.def'
          "empty?"
          []
-         (RubyCore.Expr.send
-           (some (RubyCore.Expr.var (RubyCore.VarKind.ivar) "@path"))
-           "empty?"
-           []
-           none),
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.send
+                   (some (RubyCore.Expr.const "File"))
+                   "exist?"
+                   [RubyCore.Expr.var (RubyCore.VarKind.ivar) "@path"]
+                   none))
+                "!"
+                []
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.fls)))
+              none,
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.const "File"))
+                "directory?"
+                [RubyCore.Expr.var (RubyCore.VarKind.ivar) "@path"]
+                none)
+              (RubyCore.Expr.ret
+                (some (RubyCore.Expr.send
+                   none
+                   "__unsupported__"
+                   [RubyCore.Expr.str
+                      "Pathname#empty? on a directory (directory emptiness is not modelled)"]
+                   none)))
+              none,
+            RubyCore.Expr.send
+              (some (RubyCore.Expr.send
+                 (some (RubyCore.Expr.const "File"))
+                 "size"
+                 [RubyCore.Expr.var (RubyCore.VarKind.ivar) "@path"]
+                 none))
+              "zero?"
+              []
+              none]),
        RubyCore.Expr.def'
          "method_missing"
          [RubyCore.Param.req "name",
