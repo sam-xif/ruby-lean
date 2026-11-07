@@ -2014,9 +2014,14 @@ end
 # `to_s`, `basename`, `dirname` and Homebrew's own `stem` — all pure string
 # operations on the path, with no filesystem access anywhere in the slice. So
 # `Pathname` is a wrapper over a String with exactly those, plus the
-# `extname`/`sub`/`==`/`inspect` that fall out; anything else routes to
-# `method_missing` and gates by name, the same guard `File` and `URI` use, so
-# `Pathname#exist?` refuses rather than answering.
+# `extname`/`sub`/`==`/`inspect` that fall out.
+#
+# Anything else is left to ordinary lookup, which draws the line the model
+# draws everywhere else (issue #29): a *real* unmodeled `Pathname` method
+# (`exist?`, `readlink`, …) is in the generated `crubyMethodNames` table and
+# gates as a named `Unsupported`; a name CRuby does not define is a genuine
+# `NoMethodError`. A blanket `method_missing` here would answer the second as
+# the first — a gate for a non-method, which is a fidelity defect.
 #
 # `Pathname#stem`, which `Version.detect` also calls, is deliberately **not**
 # here: it is Homebrew's own extension (`extend/pathname.rb:187`), not Ruby's, so
@@ -2053,14 +2058,6 @@ class Pathname
   def sub(*args, &blk) = Pathname.new(@path.sub(*args, &blk))
 
   def empty? = @path.empty?
-
-  def method_missing(name, *args, **kw, &blk)
-    __unsupported__("Pathname#" + name.to_s + " (only the pure path operations are modeled)")
-  end
-
-  def respond_to_missing?(name, include_private = false)
-    true
-  end
 end
 
 module Kernel
@@ -2071,13 +2068,20 @@ end
 
 # ─── File — the pure path operations only ───────────────────────────────────
 #
-# `File` is a filesystem class, and the slice reaches exactly one of its
-# methods: `File.basename(url)` in `vulns/identify.rb`, used to chop the last
-# component off a *URL*. That operation is pure string manipulation with no
-# effect at all, so it is modeled; everything else routes to `method_missing`
-# and gates by name. Defining the constant without that guard would turn
-# `File.read` from an honest Unsupported into a NoMethodError, which is a wrong
-# answer rather than a refusal.
+# `File` is a filesystem class (`File < IO`, a boot class), and the slice
+# reaches exactly one of its methods: `File.basename(url)` in
+# `vulns/identify.rb`, used to chop the last component off a *URL*. That
+# operation is pure string manipulation with no effect at all, so it is
+# modeled.
+#
+# Everything else is left to ordinary lookup, which draws the line the model
+# draws everywhere else (issue #29): a *real* unmodeled `File` method
+# (`mtime`, `open`, …) is in the generated `crubySingletonNames` table — and
+# the class methods `File` inherits from `IO` are found by the same shadow's
+# ancestor walk (`File < IO`) — so it gates as a named `Unsupported`; a name
+# CRuby does not define is a genuine `NoMethodError`. A blanket
+# `method_missing` here would answer the second as the first — a gate for a
+# non-method, which is a fidelity defect.
 class File
   SEPARATOR = "/"
 
@@ -2124,14 +2128,6 @@ class File
 
   def self.join(*parts)
     parts.map { |x| x.to_s }.join("/")
-  end
-
-  def self.method_missing(name, *args, **kw, &blk)
-    __unsupported__("File." + name.to_s + " (only the pure path operations are modeled)")
-  end
-
-  def self.respond_to_missing?(name, include_private = false)
-    true
   end
 end
 
