@@ -2026,8 +2026,25 @@ end
 class Pathname
   include Comparable
 
+  # CRuby's `Pathname#initialize` is `File.path(path).dup`: a String is used as
+  # is, an object with `to_path` (or, failing that, `to_str`) is converted, and
+  # anything else raises TypeError. Coercing with `to_s` answered where CRuby
+  # raises, and read a different path when `to_path` and `to_s` disagree.
   def initialize(path)
-    @path = path.to_s
+    converted = if path.is_a?(String)
+                  path
+                elsif path.respond_to?(:to_path)
+                  path.to_path
+                elsif path.respond_to?(:to_str)
+                  path.to_str
+                else
+                  raise TypeError, "Pathname.new requires a String, #to_path or #to_str"
+                end
+    unless converted.is_a?(String)
+      raise TypeError, "Pathname.new requires a String, #to_path or #to_str"
+    end
+    raise ArgumentError, "path name contains null byte" if converted.include?("\0")
+    @path = converted.dup
   end
 
   def to_s = @path
