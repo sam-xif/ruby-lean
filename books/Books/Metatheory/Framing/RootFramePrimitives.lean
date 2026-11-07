@@ -876,6 +876,16 @@ set_option maxRecDepth 400000 in
     | intro _
     | split)
 
+@[rootFrameLem] theorem defaultRecordSep_frame (K : List Kont) (m : Machine) :
+    Builtins.defaultRecordSep (pushRootK K m) = Builtins.defaultRecordSep m := by
+  unfold Builtins.defaultRecordSep
+  simp [pushRootK]
+
+@[rootFrameLem] theorem getsArgsH_frame (K : List Kont) (m : Machine) (args : List Value) :
+    Builtins.getsArgsH (pushRootK K m) args = Builtins.getsArgsH m args := by
+  unfold Builtins.getsArgsH
+  cases args <;> simp [defaultRecordSep_frame K m, pushRootK_heap]
+
 set_option maxHeartbeats 4000000 in
 set_option maxRecDepth 400000 in
 @[rootFrameLem] theorem runFS_frame (K : List Kont) (bid : String) (recv : Value)
