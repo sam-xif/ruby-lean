@@ -32,7 +32,7 @@ local instance (priority := high) valueRepr : Repr Value where
     | .nil => "RubyCore.Value.nil"
 
 deriving instance Repr for MT.State
-deriving instance Repr for MethodDef, ClassPayload, Closure, EnumSize, EnumData
+deriving instance Repr for MethodDef, ClassPayload, Closure, EnumSize, EnumData, IOMode
 deriving instance Repr for Payload, HashDefault, Object
 
 def term (name type : String) (body : Std.Format) : String :=
