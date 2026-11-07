@@ -127,6 +127,25 @@ def test_fragment_checker_classifies_the_hatches():
             ),
             "define_method :f",
         ),
+        # The explicit-Proc form installs the same name as the block form, so it
+        # must be matched too; the old single-argument pattern let this through.
+        (
+            (
+                "class C\n  extend T::Sig\n"
+                "  sig { params(x: Integer).returns(String) }\ndef f(x)\n    x.to_s\n  end\n"
+                "  define_method(:f, proc { |x| x.no_such_method })\nend\n"
+            ),
+            "define_method :f",
+        ),
+        # Same hazard on the singleton table.
+        (
+            (
+                "class C\n  extend T::Sig\n"
+                "  sig { params(x: Integer).returns(String) }\ndef self.f(x)\n    x.to_s\n  end\n"
+                "  define_singleton_method(:f, proc { |x| x.no_such_method })\nend\n"
+            ),
+            "define_singleton_method :f",
+        ),
     ]:
         r = fc.check('# typed: true\nrequire "sorbet-runtime"\n' + source)
         assert r is not None
