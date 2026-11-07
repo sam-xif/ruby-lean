@@ -29,15 +29,29 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
 
 def find_sorbet() -> str:
-    """The Sorbet binary: `$SORBET` if set, else the one inside the installed
-    `sorbet-static` gem (which RubyGems locates), else `srb` on PATH."""
-    if os.environ.get("SORBET"):
-        return os.environ["SORBET"]
+    """The Sorbet binary — the **single** definition of "where is Sorbet".
+
+    In order, the first usable one wins:
+
+    1. `$SORBET`, when it names an executable. A stale or non-executable value is
+       ignored rather than handed to `subprocess`, so a misspelled override falls
+       through instead of failing deep in the corpus stage.
+    2. The binary inside the installed `sorbet-static` gem, which RubyGems locates
+       through the active Ruby (`$RUBY`, else `ruby` on `PATH`).
+    3. `srb` on `PATH`.
+
+    `scripts/check-prereqs.sh` asks this function via `--print-sorbet` rather than
+    re-implementing it, so the two cannot drift (issue #41).
+    """
+    explicit = os.environ.get("SORBET")
+    if explicit and os.access(explicit, os.X_OK):
+        return explicit
     ruby = os.environ.get("RUBY", "ruby")
     try:
         p = subprocess.run(
@@ -54,11 +68,11 @@ def find_sorbet() -> str:
             timeout=30,
             check=False,
         )
-        if p.returncode == 0 and os.path.exists(p.stdout):
+        if p.returncode == 0 and os.access(p.stdout, os.X_OK):
             return p.stdout
     except (OSError, subprocess.SubprocessError):
         pass
-    return "srb"
+    return shutil.which("srb") or "srb"
 
 
 # --------------------------------------------------------------------------
@@ -303,11 +317,23 @@ def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("file")
+    ap = argparse.ArgumentParser(prog="srb_sigs.py", description=__doc__.splitlines()[0])
+    ap.add_argument("file", nargs="?")
     ap.add_argument("--untyped", choices=["exclude", "any"], default="exclude")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument(
+        "--print-sorbet",
+        action="store_true",
+        help="print the resolved Sorbet binary and exit (the one place that answers where Sorbet is, so check-prereqs.sh need not re-derive it)",
+    )
     args = ap.parse_args(argv)
+
+    if args.print_sorbet:
+        print(find_sorbet())
+        return 0
+
+    if not args.file:
+        ap.error("the 'file' argument is required (unless --print-sorbet)")
 
     binary = find_sorbet()
     # Two passes: the symbol table (which srb prints even for a file with type errors),
