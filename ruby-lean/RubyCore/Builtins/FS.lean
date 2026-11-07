@@ -22,11 +22,17 @@ read/write on a closed stream, or a write on a read-only descriptor, would raise
 named `Unsupported` rather than fabricating an error object.
 
 Step 5 adds line reads and positioning over those descriptors: `IO#gets` (all
-four CRuby forms, including the `gets(0) = ""` corner), `IO#pos`/`#pos=`, and
-`IO#rewind`. `IO#readline` and `IO#each_line` are not primitives — they are
-defined in the prelude over `gets`, so that the block form is ordinary Ruby
-evaluation; both forward their `*args` to `gets`, and the blockless `each_line`
-and the EOF `readline` gate on the unmodeled `Enumerator`/`EOFError`.
+four CRuby forms, including the `gets(0) = ""` corner and the global input
+record separator `$/`), `IO#pos`/`#pos=`, and `IO#rewind`. `IO#readline` and
+`IO#each_line` are not primitives — they are defined in the prelude over
+`gets`, so that the block form is ordinary Ruby evaluation; both forward their
+`*args` to `gets`, and the blockless `each_line` and the EOF `readline` gate on
+the unmodeled `Enumerator`/`EOFError`.
+
+`$/` is read at each `gets`: unset means `"\n"`, `nil` reads to EOF, and a
+String is an arbitrary separator. Paragraph mode (`$/ = ""`) and non-String,
+non-nil values gate by name rather than guessing at CRuby's separators or
+raising a `TypeError` the caller did not see.
 -/
 
 namespace RubyCore
@@ -60,6 +66,21 @@ def readLen : List Value → Option (Option Nat)
   | [.int n] => if n < 0 then none else some (some n.toNat)
   | _ => none
 
+/-- The default separator `IO#gets` uses when no separator argument is given:
+    the global input record separator `$/`. An unset `$/` is CRuby's default
+    `"\n"`; `$/ = nil` reads to EOF; a String is used verbatim. Any other value
+    is outside the fragment and gates (CRuby would raise `TypeError`, which the
+    model must never guess at).
+
+    The global is looked up directly rather than through `getGlobal`, which
+    answers `.nil` for an unset variable and would confuse "unset" with
+    "explicitly nil". -/
+def defaultRecordSep (m : Machine) : Option (Option String) :=
+  match m.globals.find? (·.1 == "$/") with
+  | none => some (some "\n")
+  | some (_, .nil) => some none
+  | some (_, v) => (strPayload? m.heap v).map some
+
 /-- Parse an `IO#gets` argument list (issue #7 step 5): an optional separator
     (`none` for `gets(nil)`, which reads to EOF) and an optional byte limit.
     The outer `Option` is `none` when the shape is outside the fragment and
@@ -67,15 +88,17 @@ def readLen : List Value → Option (Option Nat)
 
     CRuby's forms are `gets`, `gets(sep)`, `gets(limit)`, `gets(sep, limit)`
     and `gets(nil)`. The first argument is the separator when it is a String
-    or `nil`; a lone Integer is a limit. A negative limit gates. Takes the heap
-    because a String separator is a `.ref` whose payload only `strPayload?` can
-    read. -/
-def getsArgsH (h : Heap) : List Value → Option (Option String × Option Nat)
-  | [] => some (some "\n", none)
+    or `nil`; a lone Integer is a limit. With no separator argument, `gets` and
+    `gets(limit)` use the global input record separator `$/`. A negative limit
+    gates. Takes the machine because both a String separator and `$/` are
+    heap values whose payload only `strPayload?` can read. -/
+def getsArgsH (m : Machine) : List Value → Option (Option String × Option Nat)
+  | [] => (defaultRecordSep m).map fun sep => (sep, none)
   | [.nil] => some (none, none)
-  | [.int n] => if n < 0 then none else some (some "\n", some n.toNat)
+  | [.int n] =>
+    if n < 0 then none else (defaultRecordSep m).map fun sep => (sep, some n.toNat)
   | [p] =>
-    match strPayload? h p with
+    match strPayload? m.heap p with
     | some s => some (some s, none)
     | none => none
   | [.nil, .int n] =>
@@ -83,7 +106,7 @@ def getsArgsH (h : Heap) : List Value → Option (Option String × Option Nat)
     if n < 0 then none else some (none, some n.toNat)
   | [p, .int n] =>
     if n < 0 then none
-    else match strPayload? h p with
+    else match strPayload? m.heap p with
       | some s => some (some s, some n.toNat)
       | none => none
   | _ => none
@@ -292,8 +315,10 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
             | .file bytes =>
               if bytes.length < pos then
                 .unsupported "IO#gets: position past end of file"
-              else match getsArgsH h args with
+              else match getsArgsH m args with
               | none => .unsupported "IO#gets: argument shape outside step 5"
+              | some (some "", _) =>
+                .unsupported "IO#gets: paragraph mode (an empty record separator) is not modelled"
               | some (sep, limit) =>
                 match getsLine bytes pos sep limit with
                 | none => .ok .nil m
