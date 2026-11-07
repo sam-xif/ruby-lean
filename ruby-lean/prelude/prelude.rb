@@ -2088,12 +2088,20 @@ class File
     return base if suffix.nil?
     return base if suffix == base
     if suffix == ".*"
-      i = base.length - 1
-      while i > 0
-        return base[0, i] if base[i] == "."
-        i -= 1
+      # A leading run of dots does not name an extension: `".bashrc"` has none,
+      # and `".."`/`"..."` keep every dot. Scan for the last dot *after* that
+      # run, so the answer matches CRuby's `ruby_enc_find_basename`.
+      n = base.length
+      start = 0
+      start += 1 while start < n && base[start] == "."
+      e = nil
+      i = start
+      while i < n
+        e = i if base[i] == "."
+        i += 1
       end
-      base
+      return base if e.nil?
+      base[0, e]
     else
       base.end_with?(suffix) ? base[0, base.length - suffix.length] : base
     end
