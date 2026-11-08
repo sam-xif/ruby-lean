@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, Jiro",
+  "arm": "probe",
+  "case_id": "string-start-end-with-varargs",
+  "note": "String#start_with?/end_with? accept any number of prefixes, short-circuit on the first match, and answer false with no arguments. The model used a one-argument helper, so every call with two or more arguments raised ArgumentError — inside the exception family the checker claims to exclude."
+}

@@ -311,15 +311,19 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         else okStrFrom m recv s
     | _, _ => .unsupported "chomp arity"
   | "String#start_with?" =>
-    binArg m args fun b =>
-      match strPayload? h recv, strPayload? h b with
-      | some s, some t => .ok (.bool (s.startsWith t)) m
-      | _, _ => .unsupported "start_with?"
+    match strPayload? h recv with
+    | some s =>
+      match anyStrArg h (fun t => s.startsWith t) args with
+      | some b => .ok (.bool b) m
+      | none => .unsupported "start_with?"
+    | none => .unsupported "start_with?"
   | "String#end_with?" =>
-    binArg m args fun b =>
-      match strPayload? h recv, strPayload? h b with
-      | some s, some t => .ok (.bool (s.endsWith t)) m
-      | _, _ => .unsupported "end_with?"
+    match strPayload? h recv with
+    | some s =>
+      match anyStrArg h (fun t => s.endsWith t) args with
+      | some b => .ok (.bool b) m
+      | none => .unsupported "end_with?"
+    | none => .unsupported "end_with?"
   | "String#frozen?" =>
     match recv with
     | .ref o => .ok (.bool (h.get o).frozen) m
