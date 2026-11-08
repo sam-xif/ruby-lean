@@ -52,10 +52,12 @@ never from one being present and unmentioned. So:
 
   - **addition is admitted unconditionally** — `def`, `define_method`,
     `attr_*`, `include`, a fresh `alias`/`alias_method`;
-  - **a redefinition is admitted with an obligation**, discharged by the
-    checker rather than by this file: whether `alias eql? ==` conforms to the
-    declaration it displaces is not a syntactic question, so `scan` admits it
-    and `infer` answers `unknown` if it cannot show conformance;
+  - **a redefinition is admitted except for the one case this file can decide
+    syntactically**: a `define_method`/`define_singleton_method` whose literal
+    target already carries a `sig` in the same scope is refused, because nothing
+    else checks that the displaced declaration is still conformed to. A
+    redefinition through a computed name, or through `alias`/`alias_method`,
+    remains admitted: its conformance is a question about types, not syntax;
   - **removal is the exclusion** — `undef`, `undef_method`, `remove_method`;
   - **renaming a class is excluded separately**, because it breaks the *key*
     declarations hang off rather than the table (`set_temporary_name`,
@@ -110,6 +112,8 @@ def reason (v : Violation) : String :=
     "removes a method, so a declared name may stop resolving (criterion 3)"
   | "key" =>
     "renames a class, changing the key its declarations hang off (criterion 3)"
+  | "redefinition" =>
+    "displaces a sig-annotated method without checking the replacement conforms (criterion 3)"
   | "dynamic" =>
     "the call target is not statically known, so its result is untyped (criterion 2)"
   | "state" =>
@@ -140,12 +144,34 @@ def sigHeader? : Expr → Bool
   | .send (some recv) _ _ _ => sigHeader? recv
   | _ => false
 
+/-- The method names a `sig` in the current scope declares. `scan` extends this
+    as it walks a statement list and starts it afresh inside a class or module
+    body, so a literal `define_method` can be matched against the declaration it
+    would displace without guessing across scopes. -/
+structure Scope where
+  instanceNames : List String := []
+  singletonNames : List String := []
+deriving Repr, Inhabited
+
+def emptyScope : Scope := {}
+
+/-- The name a `define_method`-style call installs, when its argument is a
+    literal symbol or string. A computed name cannot be matched syntactically,
+    so it stays admitted. -/
+def literalMethodName? : List Expr → Option String
+  | [.sym s] => some s
+  | [.str s] => some s
+  | _ => none
+
 /-- **Admitted** (D10): these install a method and cannot remove one. Where the
-    installed name already has a declaration the step is a *redefinition*, whose
-    admissibility is conformance to the displaced declaration — a question about
-    types, not about syntax, so it is `infer`'s to answer and not this file's. A
-    displacing `define_method` is exactly what the sig wrapper does, so excluding
-    it here would exclude every annotated method.
+    installed name already has a declaration the step is a *redefinition*.
+    `scan` refuses the one redefinition it can see syntactically: a
+    `define_method`/`define_singleton_method` whose literal target already has
+    a `sig` in the same scope (`redefinition`). A computed target, and
+    `alias_method`/`prepend`, are still admitted: their conformance is a
+    question about types, not syntax. The sig wrapper lives in the prelude, not
+    in the scanned program, so refusing an explicit displacing `define_method`
+    does not refuse an annotated method's own wrapper.
 
     `prepend` is in this list for the same reason with the opposite default: it
     splices *above* the owner and therefore always displaces, so it is admitted
@@ -159,9 +185,8 @@ def deferredSend : List String :=
 def removalSend : List String := ["remove_method", "undef_method"]
 
 /-- Renaming a class changes the **key** its declarations hang off rather than
-    the table, and `infer` cannot name an `ObjId`
-. Incomplete by construction — see
-    the header's note on `K = Class.new`. -/
+    the table, and the checker cannot name an `ObjId`. Incomplete by
+    construction — see the header's note on `K = Class.new`. -/
 def keySend : List String := ["set_temporary_name", "const_set"]
 
 /-- Dynamic dispatch: the target is a value, so the checker cannot say which
@@ -199,6 +224,18 @@ def visibilityMod : List String :=
   ["private", "public", "protected", "private_class_method", "public_class_method",
    "module_function"]
 
+/-- The `sig`-annotated definition a statement adds to its scope, if any:
+    `(singleton?, name)`. A visibility modifier (`private def f`) counts as its
+    argument, since the two form one statement. -/
+private def declaredDef? : Expr → Option (Bool × String)
+  | .def' name _ _ => some (false, name)
+  | .defs _ name _ _ => some (true, name)
+  | .send none m [.def' name _ _] _ =>
+    if visibilityMod.contains m then some (false, name) else none
+  | .send none m [.defs _ name _ _] _ =>
+    if visibilityMod.contains m then some (true, name) else none
+  | _ => none
+
 /-- The checked-level arguments that *remove* the runtime wrapper. `:always` is
     the default and is fine. -/
 def uncheckedLevels : List String := ["never", "tests"]
@@ -228,12 +265,16 @@ mutual
     rather than a Bool: "why not" is the useful output, and it is what makes the
     corpus report actionable.
 
-    `sigPrecedes` is the one piece of context a single expression cannot supply:
-    whether the statement immediately before this one was a `sig { … }`. It is
-    threaded through the same function rather than split into a second traversal
-    so that every recursive call lands on a strictly smaller expression (the
-    alternative shape needs a same-size hop, which has no termination measure). -/
-def scan (sigPrecedes : Bool) : Expr → List Violation
+    `scope` is the set of `sig`-annotated names declared so far in the current
+    class or module body; `scanStmts` extends it as annotated definitions go by,
+    so a literal `define_method` can be matched against the declaration it would
+    displace. `sigPrecedes` is the one other piece of context a single
+    expression cannot supply: whether the statement immediately before this one
+    was a `sig { … }`. Both are threaded through the same function rather than
+    split into a second traversal so that every recursive call lands on a
+    strictly smaller expression (the alternative shape needs a same-size hop,
+    which has no termination measure). -/
+def scan (scope : Scope) (sigPrecedes : Bool) : Expr → List Violation
   | .send recv m args blk =>
     let here : List Violation :=
       if tSend? recv && m == "unsafe" then
@@ -250,6 +291,15 @@ def scan (sigPrecedes : Bool) : Expr → List Violation
         [{ kind := "table-removal", what := m }]
       else if keySend.contains m then
         [{ kind := "key", what := m }]
+      else if let some name := (if m == "define_method" then literalMethodName? args else none) then
+        if scope.instanceNames.contains name then
+          [{ kind := "redefinition", what := "define_method :" ++ name }]
+        else []
+      else if let some name :=
+          (if m == "define_singleton_method" then literalMethodName? args else none) then
+        if scope.singletonNames.contains name then
+          [{ kind := "redefinition", what := "define_singleton_method :" ++ name }]
+        else []
       else if dynamicSend.contains m then
         [{ kind := "dynamic", what := m }]
       else if stateSend.contains m then
@@ -260,9 +310,9 @@ def scan (sigPrecedes : Bool) : Expr → List Violation
     -- A visibility modifier passes `sigPrecedes` through to its argument; every
     -- other send scans arguments with `false`.
     let argVs :=
-      if recv.isNone && visibilityMod.contains m then scanListSig sigPrecedes args
-      else scanList args
-    here ++ scanOpt recv ++ argVs ++ scanOpt blk
+      if recv.isNone && visibilityMod.contains m then scanListSig scope sigPrecedes args
+      else scanList scope args
+    here ++ scanOpt scope recv ++ argVs ++ scanOpt scope blk
   | .vcall m =>
     if removalSend.contains m then [{ kind := "table-removal", what := m }]
     else if keySend.contains m then [{ kind := "key", what := m }]
@@ -277,103 +327,117 @@ def scan (sigPrecedes : Bool) : Expr → List Violation
           [{ kind := "unchecked", what := "T::" ++ name }]
         else []
       | _ => []
-    here ++ scanOpt base
-  | .cpathAsgn base _ e => scanOpt base ++ scan false e
+    here ++ scanOpt scope base
+  | .cpathAsgn base _ e => scanOpt scope base ++ scan scope false e
   | .def' name params body =>
-    (if sigPrecedes then [] else [missingSig name]) ++ scanParams params ++ scan false body
+    (if sigPrecedes then [] else [missingSig name])
+      ++ scanParams scope params ++ scan scope false body
   | .defs recv name params body =>
     (if sigPrecedes then [] else [missingSig ("self." ++ name)])
-      ++ scan false recv ++ scanParams params ++ scan false body
-  | .class' _ sup body => scanOpt sup ++ scan false body
-  | .module' _ body => scan false body
-  | .scopedClass base _ body => scanOpt base ++ scan false body
-  | .scopedModule base _ body => scanOpt base ++ scan false body
-  | .sclass obj body => scan false obj ++ scan false body
-  | .seq es => scanStmts es false
+      ++ scan scope false recv ++ scanParams scope params ++ scan scope false body
+  -- A class or module body is a fresh declaration scope.
+  | .class' _ sup body => scanOpt scope sup ++ scan emptyScope false body
+  | .module' _ body => scan emptyScope false body
+  | .scopedClass base _ body => scanOpt scope base ++ scan emptyScope false body
+  | .scopedModule base _ body => scanOpt scope base ++ scan emptyScope false body
+  | .sclass obj body => scan scope false obj ++ scan emptyScope false body
+  | .seq es => scanStmts scope es false
   -- `alias` adds when `newN` is fresh and redefines when it is not, and which of
   -- those it is depends on the heap rather than on this expression. Admitted
   -- either way (D10): the slice's three `alias eql? ==` are conforming
-  -- redefinitions, and it is `infer` that has to show it.
+  -- redefinitions.
   | .alias' _ _ => []
   | .undef names => names.map fun n => { kind := "table-removal", what := "undef " ++ n }
-  | .vasgn _ _ e => scan false e
-  | .casgn _ e => scan false e
-  | .if' c t e => scan false c ++ scan false t ++ scanOpt e
-  | .while' c body => scan false c ++ scan false body
-  | .dowhile body c => scan false body ++ scan false c
-  | .for' _ coll body _ => scan false coll ++ scan false body
-  | .block params _ body => scanParams params ++ scan false body
-  | .yield' args => scanList args
-  | .blockpass e => scanOpt e
-  | .array elems => scanList elems
-  | .hash pairs => scanPairs pairs
-  | .splat e => scanOpt e
-  | .ret e => scanOpt e
-  | .brk e => scanOpt e
-  | .nxt e => scanOpt e
+  | .vasgn _ _ e => scan scope false e
+  | .casgn _ e => scan scope false e
+  | .if' c t e => scan scope false c ++ scan scope false t ++ scanOpt scope e
+  | .while' c body => scan scope false c ++ scan scope false body
+  | .dowhile body c => scan scope false body ++ scan scope false c
+  | .for' _ coll body _ => scan scope false coll ++ scan scope false body
+  | .block params _ body => scanParams scope params ++ scan scope false body
+  | .yield' args => scanList scope args
+  | .blockpass e => scanOpt scope e
+  | .array elems => scanList scope elems
+  | .hash pairs => scanPairs scope pairs
+  | .splat e => scanOpt scope e
+  | .ret e => scanOpt scope e
+  | .brk e => scanOpt scope e
+  | .nxt e => scanOpt scope e
   | .begin' body rescues els ens =>
-    scan false body ++ scanRescues rescues ++ scanOpt els ++ scanOpt ens
-  | .super' args blk => scanList args ++ scanOpt blk
-  | .zsuper blk => scanOpt blk
-  | .defined e => scan false e
-  | .kwargs entries => scanKw entries
+    scan scope false body ++ scanRescues scope rescues ++ scanOpt scope els
+      ++ scanOpt scope ens
+  | .super' args blk => scanList scope args ++ scanOpt scope blk
+  | .zsuper blk => scanOpt scope blk
+  | .defined e => scan scope false e
+  | .kwargs entries => scanKw scope entries
   | _ => []
 
 /-- Statement-list scan: this is where "every method carries a sig" lives,
-    because it is a property of a *sequence*. -/
-def scanStmts : List Expr → Bool → List Violation
+    because it is a property of a *sequence*. It also extends the scope with
+    each `sig`-annotated definition as it goes, so a later redefinition can be
+    matched against the declaration it displaces. -/
+def scanStmts (scope : Scope) : List Expr → Bool → List Violation
   | [], _ => []
-  | e :: rest, sigPrecedes => scan sigPrecedes e ++ scanStmts rest (sigHeader? e)
+  | e :: rest, sigPrecedes =>
+    let scope' :=
+      if sigPrecedes then
+        match declaredDef? e with
+        | some (true, name) => { scope with singletonNames := name :: scope.singletonNames }
+        | some (false, name) => { scope with instanceNames := name :: scope.instanceNames }
+        | none => scope
+      else scope
+    scan scope sigPrecedes e ++ scanStmts scope' rest (sigHeader? e)
 
-def scanOpt : Option Expr → List Violation
+def scanOpt (scope : Scope) : Option Expr → List Violation
   | none => []
-  | some e => scan false e
+  | some e => scan scope false e
 
-def scanList : List Expr → List Violation
+def scanList (scope : Scope) : List Expr → List Violation
   | [] => []
-  | e :: rest => scan false e ++ scanList rest
+  | e :: rest => scan scope false e ++ scanList scope rest
 
 /-- `scanList` with the statement's `sigPrecedes` threaded into each argument —
     used only for a visibility modifier wrapping a `def`. -/
-def scanListSig (sigPrecedes : Bool) : List Expr → List Violation
+def scanListSig (scope : Scope) (sigPrecedes : Bool) : List Expr → List Violation
   | [] => []
-  | e :: rest => scan sigPrecedes e ++ scanListSig sigPrecedes rest
+  | e :: rest => scan scope sigPrecedes e ++ scanListSig scope sigPrecedes rest
 
-def scanPairs : List (Expr × Expr) → List Violation
+def scanPairs (scope : Scope) : List (Expr × Expr) → List Violation
   | [] => []
-  | (k, v) :: rest => scan false k ++ scan false v ++ scanPairs rest
+  | (k, v) :: rest => scan scope false k ++ scan scope false v ++ scanPairs scope rest
 
-def scanKw : List KwEntry → List Violation
+def scanKw (scope : Scope) : List KwEntry → List Violation
   | [] => []
-  | .pair _ v :: rest => scan false v ++ scanKw rest
-  | .dyn k v :: rest => scan false k ++ scan false v ++ scanKw rest
-  | .splat e :: rest => scan false e ++ scanKw rest
+  | .pair _ v :: rest => scan scope false v ++ scanKw scope rest
+  | .dyn k v :: rest => scan scope false k ++ scan scope false v ++ scanKw scope rest
+  | .splat e :: rest => scan scope false e ++ scanKw scope rest
 
-def scanRescues :
+def scanRescues (scope : Scope) :
     List (List Expr × Option (TargetKind × String) × Expr) → List Violation
   | [] => []
-  | (classes, _, body) :: rest => scanList classes ++ scan false body ++ scanRescues rest
+  | (classes, _, body) :: rest =>
+    scanList scope classes ++ scan scope false body ++ scanRescues scope rest
 
-def scanParams : List Param → List Violation
+def scanParams (scope : Scope) : List Param → List Violation
   | [] => []
-  | p :: rest => scanParam p ++ scanParams rest
+  | p :: rest => scanParam scope p ++ scanParams scope rest
 
-def scanParam : Param → List Violation
-  | .opt _ d => scan false d
-  | .key _ (some d) => scan false d
-  | .destr subs => scanParams subs
+def scanParam (scope : Scope) : Param → List Violation
+  | .opt _ d => scan scope false d
+  | .key _ (some d) => scan scope false d
+  | .destr subs => scanParams scope subs
   | _ => []
 
 end
 
 /-- The fragment predicate. Decidable and executable on purpose: it is the
     hypothesis of a theorem *and* a tool that can be run over a corpus. -/
-def inSorbetFragment (e : Expr) : Bool := (scan false e).isEmpty
+def inSorbetFragment (e : Expr) : Bool := (scan emptyScope false e).isEmpty
 
 /-- Violations with duplicates collapsed — the report wants "this program uses
     `T.unsafe`", not one line per occurrence. -/
 def violationSummary (e : Expr) : List Violation :=
-  (scan false e).foldl (fun acc v => if acc.contains v then acc else acc ++ [v]) []
+  (scan emptyScope false e).foldl (fun acc v => if acc.contains v then acc else acc ++ [v]) []
 
 end Types
 end RubyCore
