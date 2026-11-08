@@ -932,6 +932,18 @@ def binArg (m : Machine) (args : List Value) (k : Value → BRes) : BRes :=
   | [b] => k b
   | _ => .err Boot.argumentErrorId
       s!"wrong number of arguments (given {args.length}, expected 1)" m
+
+/-- `start_with?`/`end_with?` accept any number of prefixes/suffixes and answer
+    as soon as one matches, so an argument after the match is never inspected.
+    `none` means the search reached an argument that is not a String, which
+    these builtins refuse rather than guess at. -/
+def anyStrArg (h : Heap) (p : String → Bool) : List Value → Option Bool
+  | [] => some false
+  | a :: rest =>
+    match strPayload? h a with
+    | some t => if p t then some true else anyStrArg h p rest
+    | none => none
+
 def hshPayload? (h : Heap) : Value → Option (Array (Value × Value))
   | .ref o => match (h.get o).payload with
     | .hsh xs => some xs
