@@ -242,7 +242,8 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     have he : Builtins.runObjects "String#start_with?" (.ref o) [.ref p] m =
         .ok (.bool (s.startsWith t)) m := by
       change Builtins.runStrings "String#start_with?" (.ref o) [.ref p] m = _
-      simp [Builtins.runStrings, Builtins.binArg, Builtins.strPayload?, hs, ht]
+      simp only [Builtins.runStrings, Builtins.anyStrArg, Builtins.strPayload?, hs, ht]
+      by_cases hmatch : s.startsWith t <;> simp [hmatch]
     simp only [Builtins.run]
     repeat' split
     all_goals first | trivial | (rw [he]; exact stepSpec_value hm hk (by simp [denM, isBoolV])) | skip
