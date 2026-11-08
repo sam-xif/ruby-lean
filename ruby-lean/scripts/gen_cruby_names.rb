@@ -1,6 +1,20 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require "rbconfig"
+
+# Pin the oracle's startup load state. CRuby loads its default gems (rubygems,
+# did_you_mean, error_highlight, ...) unless started with --disable-gems, and
+# `-r` in RUBYOPT loads whatever the caller injected; both change the tables
+# this script snapshots. Re-exec once with a canonical startup — no RUBYOPT and
+# no --disable-gems — so `make gen` and `make gen-check` agree on every machine.
+# `RUBY_LEAN_GEN_PINNED` stops the re-exec loop when --disable-gems came from
+# the command line rather than RUBYOPT.
+if ENV["RUBY_LEAN_GEN_PINNED"] != "1" &&
+   (ENV["RUBYOPT"].to_s != "" || !defined?(Gem::Specification))
+  exec({ "RUBYOPT" => nil, "RUBY_LEAN_GEN_PINNED" => "1" }, RbConfig.ruby, __FILE__, *ARGV)
+end
+
 # Regenerate RubyCore/Generated/CRubyNames.lean from the pinned CRuby oracle:
 #
 #   "$(brew --prefix ruby)/bin/ruby" scripts/gen_cruby_names.rb > RubyCore/Generated/CRubyNames.lean
