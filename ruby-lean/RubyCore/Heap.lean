@@ -394,10 +394,18 @@ def fileId : ObjId := 45
 /-- `Dir` (issue #7 step 1) — the directory-listing class. `Dir.entries` is
     step 3; the class exists now so `Dir` in program text resolves to it. -/
 def dirId : ObjId := 46
+/-- `IOError < StandardError` — the class CRuby raises for stream failures and
+    the superclass of `EOFError`. It exists so `raise IOError`/`rescue IOError`
+    are ordinary Ruby rather than an unbound constant (issue #37 step 7). -/
+def ioErrorId : ObjId := 47
+/-- `EOFError < IOError` — raised by `IO#readline`/`IO#read` at end of file
+    (issue #37). The class exists before descriptor line reads land so the
+    error vocabulary is in the boot heap. -/
+def eofErrorId : ObjId := 48
 /-- Toplevel self (`main`), an ordinary Object instance. **Must stay last**:
     `initHeap` allocates every `classTable` entry densely and then `main`, so
     `mainId = classTable.length`. Adding a bootstrap class means bumping this. -/
-def mainId : ObjId := 47
+def mainId : ObjId := 49
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -447,7 +455,9 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (yielderId, "Enumerator::Yielder", some objectId),
   (ioId, "IO", some objectId),
   (fileId, "File", some ioId),
-  (dirId, "Dir", some objectId)
+  (dirId, "Dir", some objectId),
+  (ioErrorId, "IOError", some standardErrorId),
+  (eofErrorId, "EOFError", some ioErrorId)
 ]
 
 /-! ### The virtual filesystem fixture (issue #7 step 1)
