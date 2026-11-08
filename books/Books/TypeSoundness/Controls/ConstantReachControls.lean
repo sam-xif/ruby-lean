@@ -21,11 +21,13 @@ private def hooks : List (String × MethodDef) :=
 private def eigenPayload : ClassPayload :=
   { superclass := some Boot.basicObjectId, name := "", attached := some 45, methods := hooks }
 private def eigenObj : Object := { klass := Boot.classId, payload := .cls eigenPayload }
-/-- The three scratch ids (`detached` at 45, its eigenclass at 46, and the fresh
-    `"Next"` object allocated on top at 47) sit immediately after the boot classes, so the
-    literal size is `Boot.mainId + 3`. Expressed in terms of `mainId` so adding a bootstrap
-    class (which moves `mainId`) cannot silently truncate the heap (issue #22). -/
-private def heapSize : Nat := Boot.mainId + 3
+/-- The boot heap's highest live index is the `main` object at `Boot.mainId`; the scratch
+    objects this control installs (`detached` at 45 and its eigenclass at 46) sit below it,
+    and `FreshClassActual` allocates the fresh `"Next"` class on top of the heap. Sizing the
+    heap at `Boot.mainId + 1` therefore keeps every live index and reproduces `48` when
+    `mainId = 47`. Expressed in terms of `mainId` so adding a bootstrap class (which moves
+    `mainId`) cannot silently truncate the heap (issue #22). -/
+private def heapSize : Nat := Boot.mainId + 1
 private def h : Heap :=
   { objs := ((((Array.replicate heapSize (default : Object)).set! 0 basic).set! 1 root).set! 45 detached).set! 46 eigenObj }
 private def m : Machine :=
@@ -91,7 +93,7 @@ theorem old_site_not_preserved :
   intro site
   have he := site.constants "Next"
   have hmiss : instanceConstResolve (FreshClassActual.heap m "Next" 46) 45 "Next" = none := rfl
-  have hglobal : constLookup (FreshClassActual.heap m "Next" 46) "Next" = some (.ref (Boot.mainId + 3)) := rfl
+  have hglobal : constLookup (FreshClassActual.heap m "Next" 46) "Next" = some (.ref (Boot.mainId + 1)) := rfl
   rw [hmiss, hglobal] at he
   cases he
 
