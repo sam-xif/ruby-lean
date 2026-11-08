@@ -234,9 +234,12 @@ def inspectP (m : Machine) (v : Value) : Except String String :=
   if pureOk m.heap inspectSensitive v then inspect m.heap v
   else .error "inspect after user override of inspect"
 
-def toSP (m : Machine) (v : Value) : Except String String :=
-  if pureOk m.heap toSSensitive v then toS m.heap v
+/-- `toSP` over a heap, for callers that read nothing else from the machine. -/
+def toSPh (h : Heap) (v : Value) : Except String String :=
+  if pureOk h toSSensitive v then toS h v
   else .error "to_s after user override of to_s"
+
+def toSP (m : Machine) (v : Value) : Except String String := toSPh m.heap v
 
 /-- Operand description in "no implicit conversion of X into Y" errors:
     class name, except nil/true/false literally [V]
@@ -1149,6 +1152,29 @@ def flattenAll (m : Machine) (v : Value) : Nat → Option (List Value)
         | some _ => do pure (acc ++ (← flattenAll m x fuel))
         | none => some (acc ++ [x])
     | none => some [v]
+/-- `Array#join`'s recursive renderer. Each element of an Array is one part: a
+    nested Array is joined with the same separator and contributes that whole
+    result as one part, so an **empty** nested Array is an empty part and still
+    gets a separator boundary (CRuby's `[[], 1].join("-")` is `"-1"`). Fuel
+    bounds the walk over cyclic arrays. -/
+def joinValue : Nat → Heap → String → Value → Except String String
+  | 0, _, _, _ => .error "join"
+  | fuel + 1, h, sep, v =>
+    match arrPayload? h v with
+    | none =>
+      match v with
+      | .nil => .ok ""
+      | _ => toSPh h v
+    | some xs =>
+      let step : (String × Bool) → Value → Except String (String × Bool) :=
+        fun acc x =>
+          match joinValue fuel h sep x with
+          | .error e => .error e
+          | .ok s => .ok (if acc.2 then (s, false) else (acc.1 ++ sep ++ s, false))
+      match xs.foldlM step ("", true) with
+      | .error e => .error e
+      | .ok (s, _) => .ok s
+
 /-- Sort key: all-numeric or all-string arrays only (general sort needs
     `<=>` dispatch, deferred). -/
 def joinImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
@@ -1156,16 +1182,12 @@ def joinImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
     | [] => some ""
     | [s] => strPayload? m.heap s
     | _ => none
-  match sep, flattenAll m recv 100 with
-  | some sep, some flat =>
-    let parts := flat.mapM fun v =>
-      match v with
-      | .nil => Except.ok ""
-      | _ => toSP m v
-    match parts with
-    | .ok ps => okStr m (String.intercalate sep ps)
+  match sep with
+  | some sep =>
+    match joinValue 100 m.heap sep recv with
+    | .ok s => okStr m s
     | .error e => .unsupported e
-  | _, _ => .unsupported "join"
+  | none => .unsupported "join"
 /-- Recursively flatten nested arrays (fuel against cycles). -/
 def sortKey? (h : Heap) (xs : Array Value) : Option (Array (SortKey × Value)) :=
   xs.mapM fun v =>
