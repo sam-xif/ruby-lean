@@ -70,15 +70,18 @@ Details, including the measurement on the Homebrew slice (three conforming
 `alias`es, one `instance_variable_set`, **zero** removals) and the polarity
 asymmetry of `respond_to?`: `homebrew/typing-a-mutable-method-table.md`.
 
-**Two known gaps in criterion 3, named rather than hidden.** Renaming is caught
-only at the two *named* operations: `K = Class.new` reaches the same hazard
-through a plain constant assignment, and deciding that syntactically would mean
-knowing the assigned value is an anonymous class. And a class that defines
-`method_missing` is still admitted — a `method_missing`-served call cannot make
-a conforming call fail to conform, it only makes the *result* untyped, so the
-scheduling question (admit now, or exclude until occurrence typing can consume
-an untyped value) is deliberately left open. Both are F1a's problem, not this
-file's.
+**Three known gaps in criterion 3, named rather than hidden.** Renaming is
+caught only at the two *named* operations: `K = Class.new` reaches the same
+hazard through a plain constant assignment, and deciding that syntactically
+would mean knowing the assigned value is an anonymous class. A class that
+defines `method_missing` is still admitted — a `method_missing`-served call
+cannot make a conforming call fail to conform, it only makes the *result*
+untyped, so the scheduling question (admit now, or exclude until occurrence
+typing can consume an untyped value) is deliberately left open. And the
+`define_method` redefinition check is *per body*: a `sig` in one `class C` body
+and a literal `define_method(:name)` in a reopened `class C` body are not
+matched, because this file does not associate declaration scopes across bodies.
+All three are F1a's problem, not this file's.
 
 What this file is NOT: a claim that in-fragment programs are safe. It is the
 *hypothesis* of that claim. The theorem is separate work; this is its scope —
@@ -144,10 +147,11 @@ def sigHeader? : Expr → Bool
   | .send (some recv) _ _ _ => sigHeader? recv
   | _ => false
 
-/-- The method names a `sig` in the current scope declares. `scan` extends this
+/-- The method names a `sig` in the current body declares. `scan` extends this
     as it walks a statement list and starts it afresh inside a class or module
     body, so a literal `define_method` can be matched against the declaration it
-    would displace without guessing across scopes. -/
+    would displace without guessing across scopes. A reopened class body is a
+    separate scope; see the header's third known gap in criterion 3. -/
 structure Scope where
   instanceNames : List String := []
   singletonNames : List String := []
@@ -155,12 +159,14 @@ deriving Repr, Inhabited
 
 def emptyScope : Scope := {}
 
-/-- The name a `define_method`-style call installs, when its argument is a
-    literal symbol or string. A computed name cannot be matched syntactically,
-    so it stays admitted. -/
+/-- The name a `define_method`-style call installs, when its first argument is
+    a literal symbol or string. The remaining arguments do not change the
+    installed name: `define_method(:f, proc { … })` installs `:f` just like the
+    block form, so the match must not require a one-element argument list. A
+    computed name cannot be matched syntactically, so it stays admitted. -/
 def literalMethodName? : List Expr → Option String
-  | [.sym s] => some s
-  | [.str s] => some s
+  | (.sym s) :: _ => some s
+  | (.str s) :: _ => some s
   | _ => none
 
 /-- **Admitted** (D10): these install a method and cannot remove one. Where the
