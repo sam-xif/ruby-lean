@@ -12,7 +12,9 @@ the fixture tree that lives in the heap. An unmodeled operation is a named
 
 `File.write` mutates inode bytes in place; `flush` is a no-op because descriptor
 writes update the inode on write (the documented step-2 simplification, and the
-only descriptor behavior step 1 needs).
+only descriptor behavior step 1 needs). `File.size` and the value `File.write`
+returns count bytes: the fixture and a written UTF-8 String are measured with
+`String.utf8ByteSize`, not `String.length`.
 -/
 
 namespace RubyCore
@@ -48,17 +50,25 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
   | "File#write" | "IO#write" =>
     match args with
     | [p, data] =>
-      match pathArg? m p, pathArg? m data with
+      match pathArg? m p, strPayload? h data with
       | some path, some bytes =>
-        match VFS.lookup h path with
-        | some o =>
-          match (h.get o).payload with
-          | .file _ =>
-            let h' := h.set o { h.get o with payload := .file bytes }
-            .ok (.int (Int.ofNat bytes.length)) { m with heap := h' }
-          | .dir _ _ => .unsupported "File.write: is a directory (Errno::EISDIR gated at step 1)"
-          | _ => .unsupported "File.write: not a regular file"
-        | none => .unsupported "File.write: no such file (Errno::ENOENT gated at step 1)"
+        -- A file stores bytes; the payload stores a UTF-8 String. A binary String
+        -- whose characters are not all one byte each cannot be written without
+        -- losing the distinction between its bytes and a UTF-8 decoding of them.
+        if isBinaryStr h data && bytes.utf8ByteSize != bytes.length then
+          .unsupported "File.write: binary data (the file model stores UTF-8 text)"
+        else
+          -- `File.write` answers the number of bytes written, not characters.
+          let written := if isBinaryStr h data then bytes.length else bytes.utf8ByteSize
+          match VFS.lookup h path with
+          | some o =>
+            match (h.get o).payload with
+            | .file _ =>
+              let h' := h.set o { h.get o with payload := .file bytes }
+              .ok (.int (Int.ofNat written)) { m with heap := h' }
+            | .dir _ _ => .unsupported "File.write: is a directory (Errno::EISDIR gated at step 1)"
+            | _ => .unsupported "File.write: not a regular file"
+          | none => .unsupported "File.write: no such file (Errno::ENOENT gated at step 1)"
       | _, _ => .unsupported "File.write: path or data argument is not a String"
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
   | "File#exist?" | "Dir#exist?" =>
@@ -88,7 +98,7 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
     | [p] => (match pathArg? m p with
       | some path => match VFS.lookup h path with
         | some o => match (h.get o).payload with
-          | .file bytes => .ok (.int (Int.ofNat bytes.length)) m
+          | .file bytes => .ok (.int (Int.ofNat bytes.utf8ByteSize)) m
           | .dir _ _ => .unsupported "File.size: is a directory (Errno::EISDIR gated at step 1)"
           | _ => .unsupported "File.size: not a regular file"
         | none => .unsupported "File.size: no such file (Errno::ENOENT gated at step 1)"
