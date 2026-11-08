@@ -1,0 +1,5 @@
+{
+  "vfs": "step1",
+  "expect": "sut_unsupported",
+  "description": "A read of a missing path must decline (Errno::ENOENT is step 7), never guess the failure."
+}

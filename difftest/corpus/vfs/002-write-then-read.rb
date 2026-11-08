@@ -1,0 +1,6 @@
+File.write("/tmp/readme.txt", "changed\n")
+puts File.read("/tmp/readme.txt")
+puts File.size("/tmp/readme.txt")
+File.write("/tmp/vfsdata/nums.txt", "9\n")
+puts File.read("/tmp/vfsdata/nums.txt")
+puts File.size("/tmp/vfsdata/nums.txt")

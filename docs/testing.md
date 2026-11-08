@@ -33,7 +33,7 @@ build.
 | `make soundness` | The 268 typed programs of `books/corpus/` | Any disagrees |
 | `make feature-loading` | `require`: scope, caching, re-entry and retry after a failed load | The model and CRuby differ |
 | `make book-checks` | Each program book's program, on a grid of inputs | CRuby, the model and the theorem do not all agree |
-| `make difftest-test` | The differential tester's own unit tests, including the Sorbet probes | Any test fails, is skipped because a tool is missing, or coverage falls below the recorded baseline |
+| `make difftest-test` | The differential tester's own unit tests, including the Sorbet probes and the step-1 filesystem corpus (`difftest/corpus/vfs/`) | Any test fails, is skipped because a tool is missing, or coverage falls below the recorded baseline |
 | `make desugar-test` | Every program in `desugar/corpus/` | The desugared program behaves differently from the original under CRuby |
 | `make desugar-coverage` | `bootstraptest` | The desugarer supports fewer programs than the recorded baseline |
 | `make desugar-unit` | The desugarer's unit tests (`desugar/test/`) | Any test fails, or coverage falls below the recorded baseline |

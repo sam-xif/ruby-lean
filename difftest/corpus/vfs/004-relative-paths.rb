@@ -1,0 +1,5 @@
+p File.exist?("relative/missing")
+p File.exist?("")
+p File.file?("")
+p File.directory?("")
+p Dir.exist?("")

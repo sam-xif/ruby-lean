@@ -9,6 +9,7 @@ from .compare import CaseResult, Verdict, compare
 from .control import CRubyRunner, HarnessError
 from .sut import SystemUnderTest, Unsupported
 from .testcase import TestCase
+from .vfs import materialized
 
 
 def run_case(case: TestCase, control: CRubyRunner, sut: SystemUnderTest) -> CaseResult:
@@ -18,7 +19,9 @@ def run_case(case: TestCase, control: CRubyRunner, sut: SystemUnderTest) -> Case
         return CaseResult(case, Verdict.CONTROL_INVALID, reason=f"parse error: {syntax_err}")
 
     try:
-        control_obs, why = control.run_deterministic(case.source)
+        control_obs, why = control.run_deterministic(
+            case.source, fixture=case.provenance.get("vfs")
+        )
     except HarnessError as e:
         return CaseResult(case, Verdict.HARNESS_ERROR, reason=str(e))
     if control_obs is None:
@@ -26,7 +29,11 @@ def run_case(case: TestCase, control: CRubyRunner, sut: SystemUnderTest) -> Case
     t1 = time.monotonic()
 
     try:
-        sut_out = sut.run(case.source)
+        # A SUT that executes under CRuby (identity, desugar) needs the same
+        # tree; the Lean model carries its own copy in the heap, so this is a
+        # no-op for it.
+        with materialized(case.provenance.get("vfs")):
+            sut_out = sut.run(case.source)
     except HarnessError as e:
         return CaseResult(case, Verdict.HARNESS_ERROR, reason=str(e), control_obs=control_obs)
     t2 = time.monotonic()

@@ -61,10 +61,18 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
         | none => .unsupported "File.write: no such file (Errno::ENOENT gated at step 1)"
       | _, _ => .unsupported "File.write: path or data argument is not a String"
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
-  | "File#exist?" | "Dir#exist?" =>
+  | "File#exist?" =>
     match args with
     | [p] => (match pathArg? m p with
       | some path => .ok (.bool (VFS.lookup h path).isSome) m
+      | none => .unsupported s!"{bid}: path argument is not a String")
+    | _ => .unsupported s!"{bid}: argument shape outside step 1"
+  | "Dir#exist?" =>
+    match args with
+    | [p] => (match pathArg? m p with
+      | some path => .ok (.bool (match VFS.lookup h path with
+        | some o => (match (h.get o).payload with | .dir _ _ => true | _ => false)
+        | none => false)) m
       | none => .unsupported s!"{bid}: path argument is not a String")
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
   | "File#file?" =>
