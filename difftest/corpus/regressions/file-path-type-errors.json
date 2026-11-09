@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro (issue #57)",
+  "arm": "hand",
+  "case_id": "file-path-type-errors",
+  "note": "Issue #57: File.basename/dirname/extname/join resolved every path argument with `to_s`, so they answered where CRuby raises TypeError and ignored the to_path/to_str conversions CRuby accepts. All four now go through one `rb_get_path` twin (`__str_value` then `__file_path`): a String is the path, otherwise `to_path` and then `to_str` are consulted (`to_path` wins when both answer, a non-String answer is the `can't convert` message, a nil answer is a NilClass mismatch), and everything else is CRuby's `no implicit conversion of X into String`, with nil/true/false spelled literally. File.basename converts its suffix first with `StringValue`, so an explicit nil suffix is a TypeError and a bad suffix is reported before a bad path; the arity message is CRuby's `1..2`. A NUL byte is `path name contains null byte`, or `string contains null byte` where CRuby checks a suffix or a String part of `File.join`. File.join's Array parts still gate: CRuby flattens them, which is a separate decision from the path conversion."
+}
