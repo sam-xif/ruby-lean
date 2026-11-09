@@ -12,10 +12,21 @@ namespace RubyCore
 namespace Builtins
 
 /-- CRuby's `rb_isspace` set, which is what `strtol`/`strtod` skip: the six
-    ASCII whitespace characters. It is *not* `String#strip`'s set, so `\v` and
-    `\f` count here and Unicode whitespace does not [V]. -/
+    ASCII whitespace characters. Unicode whitespace is not in it [V]. -/
 def rbIsSpace (c : Char) : Bool :=
   c == ' ' || c == '\t' || c == '\n' || c == '\x0b' || c == '\x0c' || c == '\r'
+
+/-- The set `String#strip` removes from both ends: `rbIsSpace` plus NUL, which
+    is CRuby's `" \t\n\v\f\r\0"` and nothing else — Unicode whitespace and
+    every byte above `\x7f` are kept [V]. -/
+def stripChar (c : Char) : Bool :=
+  rbIsSpace c || c == '\x00'
+
+/-- `String#strip`: drop `stripChar` at both ends and leave the middle alone
+    (`"a\0b".strip` is `"a\0b"`) [V]. -/
+def stripEnds (s : String) : String :=
+  let cs := s.toList.dropWhile stripChar
+  String.ofList (cs.reverse.dropWhile stripChar).reverse
 
 /-- The value of `c` as a digit, `100` when it is not one: `a`-`z` and `A`-`Z`
     are digits 10-35, and a radix is at most 36 (or `100` is above it), so the
@@ -344,7 +355,14 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | none => .unsupported "downcase"
   | "String#strip" =>
     match strPayload? h recv with
-    | some s => okStrFrom m recv s.trimAscii.toString
+    | some s =>
+      if args.isEmpty then okStrFrom m recv (stripEnds s)
+      else
+        -- Ruby 4.0's `strip(*selectors)` takes a character-selector language
+        -- (ranges, negation, escapes), which the model does not have, so the
+        -- with-selector form is refused rather than answered with the default
+        -- whitespace set [V]
+        .unsupported "String#strip with character selectors"
     | none => .unsupported "strip"
   | "String#chomp" =>
     match strPayload? h recv, args with

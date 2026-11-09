@@ -882,7 +882,7 @@ def zeroArgBids : List String :=
    "Float#nan?", "Float#to_i",
    "String#to_s", "String#to_str", "String#inspect", "String#length",
    "String#size", "String#empty?", "String#reverse", "String#upcase",
-   "String#b", "String#downcase", "String#strip", "String#frozen?", "String#dup",
+   "String#b", "String#downcase", "String#frozen?", "String#dup",
    "String#to_sym", "String#freeze",
    "Symbol#to_s", "Symbol#inspect", "Symbol#to_sym", "Symbol#to_proc",
    "Array#length", "Array#size", "Array#empty?", "Array#inspect",

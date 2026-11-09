@@ -183,7 +183,7 @@ theorem strStrip_step {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Mach
       (by first | rfl | simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
         nativeReal, rationalPayload?, complexPayload?, Builtins.toAryDefer?,
         Builtins.strCmpDefer?, Builtins.strCmpTwin?, hs]) (by rfl) hfree]
-    have he : Builtins.runObjects "String#strip" (.ref o) [] m = Builtins.okStrEnc m (Builtins.isBinaryStr m.heap (.ref o)) s.trimAscii.toString := by
+    have he : Builtins.runObjects "String#strip" (.ref o) [] m = Builtins.okStrEnc m (Builtins.isBinaryStr m.heap (.ref o)) (Builtins.stripEnds s) := by
       change Builtins.runStrings "String#strip" (.ref o) [] m = _
       simp [Builtins.runStrings, Builtins.strPayload?, hs, Builtins.okStrFrom]
     rw [string_nullary_run (bid := "String#strip") _ _ rfl (by decide +kernel) (by decide +kernel), he]
