@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_by": "Jiro (agent), 2026-11-09 — `Range#count` counts through `each` for a block, and keeps `size` for the bare form",
+  "filed_by": "hand, Jiro",
+  "arm": "hand",
+  "case_id": "range-count-block",
+  "first_reconciled": "2026-11-09, lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'block => 5' vs 'block => 3', and 'float each => NoMethodError: undefined method 'succ' for an instance of Float' vs 'TypeError: can't iterate from Float'",
+  "note": "`Range#count` was `alias count size`, so the block form silently answered the element count (`(1..5).count { |x| x > 2 }` was 5, CRuby says 3) and the item form was rejected with `size`'s arity instead of counting. `count` is now its own method: the bare form still answers `size` (O(1), and that is what CRuby's `enum_count` defers to), a block counts matches through `each`, and the item argument keeps the named `Enumerable#count with an argument` gate that `Array#count` already gives, so the whole program is a gate and this case pins the answering forms only. The block form goes through `each`, which now raises CRuby's `TypeError: can't iterate from Float` for a Float begin instead of leaking its own `succ` `NoMethodError`."
+}

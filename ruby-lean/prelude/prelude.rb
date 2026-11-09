@@ -693,11 +693,21 @@ class Range
     __range_new_unchecked(lo, hi, excl)
   end
 
+  # Iteration is `succ` on the begin, and CRuby refuses a begin whose class it has
+  # no iteration story for: `(1.0..3.0).each` raises `TypeError: can't iterate
+  # from Float`, not a `NoMethodError` from its own `succ` send [V]. Raise the
+  # same refusal here, so a `Float` range answers like CRuby instead of leaking
+  # the model's dispatch. A `String` range still reaches `String#succ`, a named
+  # gate while that is unmodeled, and a beginless or endless range is the gate
+  # above.
   def each
     return __unsupported__("Enumerator: Range#each without a block") unless block_given?
     i = self.begin
     fin = self.end
     return __unsupported__("Range#each over a beginless/endless range") if i.nil? || fin.nil?
+    unless i.is_a?(Integer) || i.is_a?(String) || i.is_a?(Symbol)
+      raise TypeError, "can't iterate from #{i.class}"
+    end
     if exclude_end?
       while i < fin
         yield(i)
@@ -749,7 +759,23 @@ class Range
     n = exclude_end? ? hi - lo : hi - lo + 1
     n < 0 ? 0 : n
   end
-  alias count size
+
+  # `count` is **not** `size`: CRuby's `enum_count` defers to `size` only for the
+  # bare form, and counts matches when it is given a block, so
+  # `(1..5).count { |x| x > 2 }` is 3 [V]. Aliasing the whole method to `size`
+  # made a block a silent no-op — the answer was the element count — and
+  # rejected the item argument with `size`'s arity instead of counting it.
+  # The block form counts through `each`. The item form is the same named gate
+  # `Enumerable#count` gives every other collection (an `Array` included), so a
+  # Range does not answer where its neighbours refuse.
+  def count(*a)
+    return size if a.empty? && !block_given?
+    return __unsupported__("Enumerable#count with an argument") unless a.empty?
+
+    n = 0
+    each { |x| n = n + 1 if yield(x) }
+    n
+  end
 end
 
 # ─── Integer ────────────────────────────────────────────────────────────────
