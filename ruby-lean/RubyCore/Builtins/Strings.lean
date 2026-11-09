@@ -11,12 +11,78 @@ namespace RubyCore
 
 namespace Builtins
 
+/-- CRuby's `rb_isspace` set, which is what `strtol`/`strtod` skip: the six
+    ASCII whitespace characters. It is *not* `String#strip`'s set, so `\v` and
+    `\f` count here and Unicode whitespace does not [V]. -/
+def rbIsSpace (c : Char) : Bool :=
+  c == ' ' || c == '\t' || c == '\n' || c == '\x0b' || c == '\x0c' || c == '\r'
+
+/-- The value of `c` as a digit, `100` when it is not one: `a`-`z` and `A`-`Z`
+    are digits 10-35, and a radix is at most 36 (or `100` is above it), so the
+    sentinel never passes a `< base` test. -/
+def radixDigit (c : Char) : Nat :=
+  let n := c.toNat
+  if n ≥ 48 && n ≤ 57 then n - 48
+  else if n ≥ 97 && n ≤ 122 then n - 87
+  else if n ≥ 65 && n ≤ 90 then n - 55
+  else 100
+
+/-- Drop the radix prefix an **explicit** base accepts. A base accepts only its
+    own prefix, so `"0b11".to_i(16)` reads `b11` as base-16 digits (`2833`) while
+    `"0x11".to_i(16)` reads `11` [V]. -/
+def stripRadixPrefix (base : Nat) : List Char → List Char
+  | '0' :: x :: r =>
+    match base, x with
+    | 16, 'x' | 16, 'X' | 2, 'b' | 2, 'B' | 8, 'o' | 8, 'O' | 10, 'd' | 10, 'D' => r
+    | _, _ => '0' :: x :: r
+  | cs => cs
+
+/-- Resolve base `0`, which means "read the prefix": `0x` hex, `0b` binary,
+    `0o` octal, `0d` decimal, and a bare leading `0` octal (`"017".to_i(0)` is
+    `15`). A single `"0"` is the digit zero. The bare `0` stays in the digit
+    stream because it is a digit: it is value-neutral in base 8, and it is what
+    lets a `_` follow it (`"0_17".to_i(0)` is `15`, not `0`) [V]. -/
+def autoRadix : List Char → Nat × List Char
+  | '0' :: x :: r =>
+    match x with
+    | 'x' | 'X' => (16, r)
+    | 'b' | 'B' => (2, r)
+    | 'o' | 'O' => (8, r)
+    | 'd' | 'D' => (10, r)
+    | _ => (8, '0' :: x :: r)
+  | cs => (10, cs)
+
+/-- `String#to_i`'s radix parse: skip whitespace, take an optional sign, resolve
+    the radix and its prefix, then read digits, with `_` a separator only
+    **between** two of them (`"f_".to_i(16)` is 15, `"_f".to_i(16)` is 0) [V].
+    Reading stops at the first character that is not a digit in that radix and
+    no digit at all is `0`, never an error: `"9".to_i(8)` is `0` [V]. -/
+def parseIntPrefix (str : String) (radix : Nat) : Int :=
+  let cs := str.toList.dropWhile rbIsSpace
+  let (neg, cs) := match cs with
+    | '-' :: r => (true, r)
+    | '+' :: r => (false, r)
+    | r => (false, r)
+  let (base, cs) :=
+    if radix == 0 then autoRadix cs else (radix, stripRadixPrefix radix cs)
+  let rec grab : List Char → List Char → List Char
+    | acc, d :: r =>
+      if radixDigit d < base then grab (d :: acc) r
+      else if d == '_' then
+        match r with
+        | e :: r' => if radixDigit e < base && !acc.isEmpty then grab (e :: acc) r' else acc.reverse
+        | [] => acc.reverse
+      else acc.reverse
+    | acc, [] => acc.reverse
+  let digits := grab [] cs
+  let n : Int := digits.foldl (fun acc c => acc * (base : Int) + (radixDigit c : Int)) 0
+  if neg then -n else n
+
 /-- `String#to_f`'s lenient prefix parse: whitespace, sign, digits with `_`
     separators, an optional fraction, an optional exponent; stop at the first
     character that does not fit, and answer `0.0` on no match at all [V]. -/
 def parseFloatPrefix (str : String) : Float :=
-  let cs := str.toList.dropWhile fun c =>
-    c == ' ' || c == '\t' || c == '\n' || c == '\r'
+  let cs := str.toList.dropWhile rbIsSpace
   let (neg, cs) := match cs with
     | '-' :: r => (true, r)
     | '+' :: r => (false, r)
@@ -213,30 +279,24 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | none => .unsupported "String#chars on a non-String"
   | "String#to_i" =>
     -- CRuby's `to_i` is lenient by design: skip leading whitespace, take an
-    -- optional sign, then digits (with `_` allowed *between* digits), and stop
-    -- at the first character that does not fit. No match at all is `0`, not an
-    -- error — which is why `"nope".to_i` is `0` and not a `TypeError` [V].
+    -- optional sign, resolve the radix, then read digits (with `_` allowed
+    -- *between* digits), and stop at the first character that does not fit. No
+    -- digit at all is `0`, not an error — which is why `"nope".to_i` is `0` and
+    -- not a `TypeError` [V]. The radix argument is `NUM2INT`'d by CRuby, which
+    -- takes an Integer or truncates a Float; anything else is *converted* with
+    -- `to_int`, a dispatch this arm refuses rather than guesses.
     match strPayload? h recv with
     | none => .unsupported "String#to_i on a non-String"
     | some str =>
-      let cs := str.toList.dropWhile (fun c => c == ' ' || c == '\t' || c == '\n' || c == '\r')
-      let (neg, cs) := match cs with
-        | '-' :: r => (true, r)
-        | '+' :: r => (false, r)
-        | r => (false, r)
-      -- `_` is a separator only *between* digits: `"1_0"` is 10, but `"_5"` is
-      -- 0 and `"1__0"` is 1 [V]. So this is a small scan, not a filter.
-      let rec grab : List Char → List Char → List Char
-        | acc, d :: r => if d.isDigit then grab (d :: acc) r
-                         else if d == '_' then
-                           match r with
-                           | e :: r' => if e.isDigit && !acc.isEmpty then grab (e :: acc) r' else acc.reverse
-                           | [] => acc.reverse
-                         else acc.reverse
-        | acc, [] => acc.reverse
-      let digits := grab [] cs
-      let n : Int := digits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) (0 : Int)
-      .ok (.int (if neg then -n else n)) m
+      match args with
+      | [] => .ok (.int (parseIntPrefix str 10)) m
+      | [.int b] =>
+        if b == 0 || (2 ≤ b && b ≤ 36) then .ok (.int (parseIntPrefix str b.toNat)) m
+        else .err Boot.argumentErrorId s!"invalid radix {b}" m
+      | [_] => .unsupported
+          "String#to_i with a non-Integer radix (CRuby converts it with to_int)"
+      | _ => .err Boot.argumentErrorId
+          s!"wrong number of arguments (given {args.length}, expected 0..1)" m
   | "String#inspect" =>
     -- the *result* is UTF-8 whatever the receiver was [V] — escaping makes it
     -- pure ASCII — but the escaping itself is tag-sensitive
