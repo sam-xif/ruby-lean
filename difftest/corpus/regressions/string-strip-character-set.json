@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed for #109 (guard, not campaign output)",
+  "arm": "hand",
+  "case_id": "string-strip-character-set",
+  "observed_then": "disagree",
+  "diff_then": "stdout: '[[9, 10, 13, 32], [9, 10, 13, 32], [9, 10, 13, 32], ...' vs '[[0, 9, 10, 11, 12, 13, 32], ...'",
+  "note": "#109: String#strip was Lean's `String.trimAscii`, which trims only space, \\t, \\n and \\r, so NUL, \\v and \\f stayed attached (\"\\0a\\0\".strip was \"\\0a\\0\", \"\\v\".strip was not empty). CRuby strips \" \\t\\n\\v\\f\\r\\0\" and nothing else, so the program sweeps all 256 bytes at each end and pins the exact set, then checks interior NULs, the C1 controls, Unicode whitespace, binary strings with a high byte, and the encoding tag. Exact program agrees with CRuby 4.0.5.",
+  "fixed_in": "String#strip models CRuby's character set (#109)"
+}
