@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_by": "Jiro (agent), 2026-11-09 — `String#to_i` reads its radix, and both numeric prefix parsers skip CRuby's whole whitespace set",
+  "filed_by": "hand, Jiro",
+  "arm": "hand",
+  "case_id": "string-to-i-radix",
+  "first_reconciled": "2026-11-09, lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: '\"hex\" => 0' vs '\"hex\" => 255'",
+  "note": "`String#to_i` ignored its radix argument, answering the base-10 value for every call: `\"ff\".to_i(16)` was 0 and `\"10\".to_i(2)` was 10. A wrong answer, not a gate — and `to_i(16)` is how Ruby reads a hex string. The arm now resolves the radix (0 reads the prefix, an explicit base accepts only its own), reads digits in that radix, and reports `invalid radix N` and the arity error the way CRuby does; a radix that CRuby obtains by `to_int` dispatch (a Float truncates, a non-numeric raises TypeError) still gates by name rather than guessing. The same file's prefix parsers skipped only ` \\t\\n\\r`, so `\"\\v10\".to_i` and `\"\\f1.5\".to_f` answered 0; CRuby's `rb_isspace` set also has `\\v` and `\\f`, and both now share one predicate."
+}
