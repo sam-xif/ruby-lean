@@ -219,22 +219,29 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
     | _, _ => .unsupported "Integer#to_s on a non-Integer"
   | "Integer#round" | "Integer#ceil" | "Integer#floor" | "Integer#truncate" =>
     -- An Integer rounds to itself for ndigits ≥ 0; a negative count rounds to a
-    -- power of ten, and `round` there is half **up** away from zero (`25.round(-1)`
-    -- is 30, not 20) while `ceil`/`floor` go their own ways [V].
+    -- power of ten. The quotient is Ruby's floor division, so the remainder is
+    -- never negative and the quotient is already the **floor**: `floor` steps it
+    -- nowhere, `ceil` steps it up by one, `truncate` steps it up by one only below
+    -- zero (where the floor is the further-from-zero neighbour), and `round` steps
+    -- it up past the halfway point, or exactly at it above zero — `round` is half
+    -- **away from zero** (`25.round(-1)` is 30, `-25.round(-1)` is -30) [V].
+    -- Reading the remainder as a signed one stepped a negative receiver *down* at
+    -- or past the halfway point, which answered -210 for `-195.round(-1)`; with a
+    -- signed remainder `truncate` answered the floor, not the direction of zero.
     match recv, args with
     | .int n, [] => .ok (.int n) m
     | .int n, [.int d] =>
       if d ≥ 0 then .ok (.int n) m
       else
         let p : Int := 10 ^ (-d).toNat
-        let q := n / p
-        let r := n % p
+        let q := Int.fdiv n p
+        let r := Int.fmod n p
         let kind := (bid.drop 8).toString
         let adj : Int :=
           if kind == "round" then
-            (if r.natAbs * 2 ≥ p.natAbs then (if n ≥ 0 then 1 else -1) else 0)
+            (if r * 2 > p then 1 else if r * 2 == p && n ≥ 0 then 1 else 0)
           else if kind == "ceil" then (if r > 0 then 1 else 0)
-          else if kind == "floor" then (if r < 0 then -1 else 0)
+          else if kind == "truncate" then (if n < 0 && r > 0 then 1 else 0)
           else 0
         .ok (.int ((q + adj) * p)) m
     | _, _ => .unsupported "Integer#round/ceil/floor arity"
