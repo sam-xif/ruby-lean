@@ -750,6 +750,52 @@ class Range
     n < 0 ? 0 : n
   end
   alias count size
+
+  # `Range#first` is two methods that share a name, the mirror of `Range#last`.
+  # The bare form is `#begin`, except that a **beginless** range has no first
+  # element: CRuby raises `RangeError: cannot get the first element of beginless
+  # range` where an unguarded `#begin` answers `nil` [V]. That check comes
+  # *before* the arity check in `rb_range_first`, so a beginless range raises it
+  # for every argument shape. An *endless* range is fine here (`(1..).first` is
+  # `1`), the mirror of `#last`'s endless-range refusal.
+  #
+  # The counted form answers the first `n` elements, as CRuby's `rb_range_first`
+  # does: `Enumerable#first(n)` stops at the end of the range, so an over-large
+  # `n` is the whole range and an endless range simply yields `n` elements. The
+  # count is coerced the way `NUM2LONG` coerces it: a value beyond a machine word
+  # is its own `RangeError`, and a negative count is the `rb_ary_new2`
+  # `ArgumentError` [V]. Corners the model cannot reproduce word for word — a
+  # non-Integer count, or a range whose endpoints are not Integers (whose
+  # failure is CRuby's per-class `each` `TypeError`) — are declined rather than
+  # approximated.
+  def first(*a)
+    lo = self.begin
+    raise RangeError, "cannot get the first element of beginless range" if lo.nil?
+    return lo if a.empty?
+    if a.length > 1
+      raise ArgumentError, "wrong number of arguments (given #{a.length}, expected 1)"
+    end
+    n = a[0]
+    unless n.is_a?(Integer)
+      return __unsupported__("Range#first(n) with a non-Integer count")
+    end
+    if n > 9223372036854775807 || n < -9223372036854775807 - 1
+      raise RangeError, "bignum too big to convert into 'long'"
+    end
+    raise ArgumentError, "negative array size (or size too big)" if n < 0
+    hi = self.end
+    unless lo.is_a?(Integer) && (hi.nil? || hi.is_a?(Integer))
+      return __unsupported__("Range#first(n) over a non-Integer range")
+    end
+    last = hi.nil? ? nil : (exclude_end? ? hi - 1 : hi)
+    r = []
+    i = lo
+    while r.length < n && (last.nil? || i <= last)
+      r.push(i)
+      i = i + 1
+    end
+    r
+  end
 end
 
 # ─── Integer ────────────────────────────────────────────────────────────────
