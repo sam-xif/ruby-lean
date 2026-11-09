@@ -878,19 +878,136 @@ class Integer
     self
   end
 
-  def step(limit, by)
-    return __unsupported__("Enumerator: Integer#step without a block") unless block_given?
+  # `Integer#step` is CRuby's `num_step` (`numeric.c`): `step(to = nil, by = 1)`
+  # with the `to:`/`by:` keywords, the arity, duplicate-keyword and
+  # non-numeric-step errors raised in the order the C raises them, and its three
+  # loops. An all-Integer call takes the integer loop; a Float anywhere takes the
+  # float loop, whose length is `ruby_float_step_size` — including its rounding
+  # tolerance, without which `1.step(1.9, 0.3)` stops at 1.6 because `0.9/0.3`
+  # rounds to 2.9999999999999996 [V]; anything else (Rational, or a limit that is
+  # not numeric at all) takes the generic comparison loop, so the error a
+  # non-numeric limit raises is the one from `<`/`>` that CRuby raises too.
+  def step(*args, **kw)
+    n = args.length
+    raise ArgumentError, "wrong number of arguments (given " + n.to_s + ", expected 0..2)" if n > 2
+    to = args[0]
+    by = args[1]
+    keys = kw.keys
+    unknown = keys.reject { |k| k == :to || k == :by }
+    unless unknown.empty?
+      raise ArgumentError,
+        (unknown.length == 1 ? "unknown keyword: " : "unknown keywords: ") +
+          unknown.map { |k| k.inspect }.join(", ")
+    end
+    # `to` is checked before `by` whatever order the keyword hash holds them in,
+    # because that is the order `rb_get_kwargs` walks its table.
+    if keys.include?(:to)
+      raise ArgumentError, "to is given twice" if n > 0
+      to = kw[:to]
+    end
+    by_given = false
+    if keys.include?(:by)
+      raise ArgumentError, "step is given twice" if n > 1
+      by = kw[:by]
+      by_given = true
+    end
+    # Without a block CRuby returns an enumerator before it ever inspects the
+    # step, so a nil positional step is only an error when a block is given.
+    unless block_given?
+      by = 1 if by.nil?
+      return __unsupported__("Integer#step with a zero step (ArgumentError)") if by == 0
+      return __unsupported__("Enumerator: Integer#step without a block")
+    end
+    raise TypeError, "step must be numeric" if n > 1 && by.nil? && !by_given
     return __unsupported__("Integer#step with a zero step (ArgumentError)") if by == 0
-    i = self
-    if by > 0
-      while i <= limit
-        yield(i)
-        i = i + by
+    by = 1 if by.nil?
+    # `num_step_negative_p` and the float size formula both compare, and the model
+    # declines every NaN comparison; CRuby's answer for a NaN here is "yield
+    # nothing", but that is a fact about C's comparisons, not a rule to guess.
+    if (to.is_a?(Float) && to.nan?) || (by.is_a?(Float) && by.nan?)
+      return __unsupported__("Integer#step with a NaN limit or step")
+    end
+    # `num_step_negative_p` asks `step > 0` and, when that method does not exist at
+    # all, raises CRuby's `coerce_failed`: "0 can't be coerced into <class>".
+    unless by.respond_to?(:>) || by.__user_defines?(:method_missing)
+      raise TypeError, "0 can't be coerced into " + by.class.to_s
+    end
+    desc = !(by > 0)
+    return __unsupported__("Integer#step with no limit (endless sequence)") if to.nil?
+    if to.is_a?(Float) && (to == Float::INFINITY || to == -Float::INFINITY)
+      endless = to == Float::INFINITY ? !desc : desc
+      return __unsupported__("Integer#step with an infinite limit (endless sequence)") if endless
+    end
+    if to.is_a?(Integer) && by.is_a?(Integer)
+      i = self
+      if desc
+        while i >= to
+          yield(i)
+          i = i + by
+        end
+      else
+        while i <= to
+          yield(i)
+          i = i + by
+        end
+      end
+    elsif to.is_a?(Float) || by.is_a?(Float)
+      # `NUM2DBL` reads a Float, an Integer or a Rational; anything else is left
+      # to be declined rather than guessed at.
+      numeric = (to.is_a?(Integer) || to.is_a?(Float) || to.is_a?(Rational)) &&
+                (by.is_a?(Integer) || by.is_a?(Float) || by.is_a?(Rational))
+      return __unsupported__("Integer#step with a limit or step that is not a number") unless numeric
+      beg = self.to_f
+      endv = to.to_f
+      unit = by.to_f
+      # An infinite step is the one float shape the size formula does not
+      # describe: CRuby yields the first value once and stops.
+      if unit == Float::INFINITY
+        yield(beg) if beg <= endv
+      elsif unit == -Float::INFINITY
+        yield(beg) if beg >= endv
+      else
+        # CRuby's `ruby_float_step_size`: the count starts from
+        # `(end - beg)/unit` rounded by a tolerance, and is then re-checked
+        # against the value the last index would actually produce.
+        count = (endv - beg) / unit
+        if count < 0
+          count = 0
+        else
+          err = ((beg.abs + endv.abs + (endv - beg).abs) / unit.abs) * Float::EPSILON
+          err = 0.5 if err > 0.5
+          count = (count + err).floor
+          probe = (count + 1) * unit + beg
+          if beg < endv
+            count = count + 1 if probe <= endv
+          elsif beg > endv
+            count = count + 1 if probe >= endv
+          end
+          count = count + 1
+        end
+        j = 0
+        while j < count
+          # The last step of a float run is clamped to the limit, which is why
+          # `-1.0.step(-0.3, 0.1)` ends at `-0.3` and not at its neighbouring
+          # double `-0.29999999999999993` [V].
+          d = j * unit + beg
+          d = endv if (unit >= 0 ? endv < d : d < endv)
+          yield(d)
+          j = j + 1
+        end
       end
     else
-      while i >= limit
-        yield(i)
-        i = i + by
+      i = self
+      if desc
+        while !(i < to)
+          yield(i)
+          i = i + by
+        end
+      else
+        while !(i > to)
+          yield(i)
+          i = i + by
+        end
       end
     end
     self

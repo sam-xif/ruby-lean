@@ -632,12 +632,16 @@ def initHeap : Heap :=
   -- bit patterns, not as `0.0 / 0.0` and `1.0 / 0.0`: the sign of the NaN a
   -- division produces depends on the processor, and a bit pattern is a term the
   -- kernel can compare (`RubyCore/Generated/BootedHeap.lean`). CRuby's `NAN` is
-  -- the positive quiet NaN.
+  -- the positive quiet NaN. `EPSILON` is there for the same reason and because a
+  -- Ruby method needs it: `Integer#step`'s length for a Float argument is
+  -- CRuby's `ruby_float_step_size`, whose rounding tolerance is
+  -- `Float::EPSILON` (2⁻⁵², bit pattern `0x3CB0000000000000`).
   let hBuiltins := match hBuiltins.classPayload? floatId with
     | some c => hBuiltins.setClassPayload floatId
         { c with consts := c.consts ++
             [("NAN", Value.flt (Float.ofBits 0x7FF8000000000000)),
-             ("INFINITY", Value.flt (Float.ofBits 0x7FF0000000000000))] }
+             ("INFINITY", Value.flt (Float.ofBits 0x7FF0000000000000)),
+             ("EPSILON", Value.flt (Float.ofBits 0x3CB0000000000000))] }
     | Option.none => hBuiltins
   let hBuiltins := match hBuiltins.classPayload? enumeratorId with
     | some c => hBuiltins.setClassPayload enumeratorId
