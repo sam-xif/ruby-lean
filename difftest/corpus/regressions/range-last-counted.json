@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "Jiro PR (2026-11-09)",
+  "note": "Range#last took no argument, so the counted form CRuby defines raised `ArgumentError: wrong number of arguments (given 1, expected 0)` while `Array#last(n)` and `Range#first(n)` gated: an answer where the model must decline (issue #110). The bare form also answered `nil` on an endless range where CRuby raises RangeError. Compared with CRuby 4.0.5."
+}
