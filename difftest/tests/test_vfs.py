@@ -151,6 +151,11 @@ def test_the_corpus_requires_a_fixture_in_every_sidecar(tmp_path):
         load_vfs_corpus(tmp_path)
 
 
+def test_an_empty_corpus_is_an_error(tmp_path):
+    with pytest.raises(VfsError, match="no filesystem cases under"):
+        load_vfs_corpus(tmp_path)
+
+
 def test_the_corpus_loads_with_its_fixture(tmp_path):
     (tmp_path / "case.rb").write_text("p 1\n")
     (tmp_path / "case.json").write_text(json.dumps({"vfs": "v1"}))
