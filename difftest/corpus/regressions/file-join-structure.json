@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "fixed_in": "File.join follows rb_file_join (issue #57)",
+  "filed_by": "hand-filed with the fix for issue #57",
+  "arm": "hand",
+  "case_id": "file-join-structure",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'nested => \"[\\\"a\\\", [\\\"b\\\", [\\\"c\\\"]]]\"' vs 'nested => \"a/b/c\"'; 'a/ then /b => \"a///b\"' vs '\"a/b\"'; a self-containing array ran to the fuel limit instead of raising",
+  "note": "`File.join` was `parts.map { |x| x.to_s }.join(\"/\")`, which is not `rb_file_join`: a nested Array was rendered with `Array#to_s` instead of joined first, a separator run was doubled (`File.join(\"a/\", \"/b\")` answered `\"a///b\"`), and an array containing itself lost the whole program to the fuel limit instead of raising `ArgumentError: recursive array`. The prelude now walks CRuby's loop: each element is a path (`FilePathStringValue`) or a joined Array, the array being joined and its ancestors are the cycle test, an element starting with `/` replaces the collected separators and one that does not gets a `/` only when the result does not already end with one. Found while fixing the coercion half (`File.join(1, 2)`), which is the same call site."
+}

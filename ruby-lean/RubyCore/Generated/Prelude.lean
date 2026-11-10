@@ -8104,6 +8104,117 @@ def core_41 : Expr :=
                  "+"
                  [RubyCore.Expr.str ")"]
                  none]
+              none]),
+       RubyCore.Expr.def'
+         "__to_string_type"
+         [RubyCore.Param.req "obj"]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj"))
+                "is_a?"
+                [RubyCore.Expr.const "String"]
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj")))
+              none,
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.send
+                   none
+                   "__conv_callable?"
+                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj", RubyCore.Expr.sym "to_str"]
+                   none))
+                "!"
+                []
+                none)
+              (RubyCore.Expr.send
+                none
+                "raise"
+                [RubyCore.Expr.const "TypeError",
+                 RubyCore.Expr.send
+                   (some (RubyCore.Expr.send
+                      (some (RubyCore.Expr.str "no implicit conversion of "))
+                      "+"
+                      [RubyCore.Expr.send
+                         none
+                         "__conv_desc"
+                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj"]
+                         none]
+                      none))
+                   "+"
+                   [RubyCore.Expr.str " into String"]
+                   none]
+                none)
+              none,
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "r"
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj"))
+                "to_str"
+                []
+                none),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"))
+                "is_a?"
+                [RubyCore.Expr.const "String"]
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r")))
+              none,
+            RubyCore.Expr.send
+              none
+              "raise"
+              [RubyCore.Expr.const "TypeError",
+               RubyCore.Expr.send
+                 (some (RubyCore.Expr.send
+                    (some (RubyCore.Expr.send
+                       (some (RubyCore.Expr.send
+                          (some (RubyCore.Expr.send
+                             (some (RubyCore.Expr.send
+                                (some (RubyCore.Expr.str "can't convert "))
+                                "+"
+                                [RubyCore.Expr.send
+                                   (some (RubyCore.Expr.send
+                                      (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj"))
+                                      "class"
+                                      []
+                                      none))
+                                   "to_s"
+                                   []
+                                   none]
+                                none))
+                             "+"
+                             [RubyCore.Expr.str " to String ("]
+                             none))
+                          "+"
+                          [RubyCore.Expr.send
+                             (some (RubyCore.Expr.send
+                                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj"))
+                                "class"
+                                []
+                                none))
+                             "to_s"
+                             []
+                             none]
+                          none))
+                       "+"
+                       [RubyCore.Expr.str "#to_str gives "]
+                       none))
+                    "+"
+                    [RubyCore.Expr.send
+                       (some (RubyCore.Expr.send
+                          (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"))
+                          "class"
+                          []
+                          none))
+                       "to_s"
+                       []
+                       none]
+                    none))
+                 "+"
+                 [RubyCore.Expr.str ")"]
+                 none]
               none])])
 
 def core_42 : Expr :=
@@ -8800,95 +8911,268 @@ def core_47 : Expr :=
       [RubyCore.Expr.casgn "SEPARATOR" (RubyCore.Expr.str "/"),
        RubyCore.Expr.defs
          (RubyCore.Expr.self')
-         "basename"
-         [RubyCore.Param.req "path", RubyCore.Param.opt "suffix" (RubyCore.Expr.nil)]
+         "__path"
+         [RubyCore.Param.req "obj"]
          (RubyCore.Expr.seq
            [RubyCore.Expr.vasgn
               (RubyCore.VarKind.lvar)
               "s"
-              (RubyCore.Expr.send
-                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"))
-                "to_s"
-                []
-                none),
-            RubyCore.Expr.vasgn
-              (RubyCore.VarKind.lvar)
-              "parts"
-              (RubyCore.Expr.send
-                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
-                "split"
-                [RubyCore.Expr.str "/"]
-                none),
-            RubyCore.Expr.vasgn
-              (RubyCore.VarKind.lvar)
-              "base"
               (RubyCore.Expr.if'
                 (RubyCore.Expr.send
-                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"))
-                  "empty?"
-                  []
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj"))
+                  "is_a?"
+                  [RubyCore.Expr.const "String"]
                   none)
-                (RubyCore.Expr.if'
-                  (RubyCore.Expr.send
-                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
-                    "empty?"
-                    []
-                    none)
-                  (RubyCore.Expr.str "")
-                  (some (RubyCore.Expr.str "/")))
+                (RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj")
                 (some (RubyCore.Expr.send
-                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"))
-                   "[]"
-                   [RubyCore.Expr.send
-                      (some (RubyCore.Expr.send
-                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"))
-                         "length"
-                         []
-                         none))
-                      "-"
-                      [RubyCore.Expr.int 1]
-                      none]
+                   none
+                   "__to_string_type"
+                   [RubyCore.Expr.if'
+                      (RubyCore.Expr.send
+                        none
+                        "__conv_callable?"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj",
+                         RubyCore.Expr.sym "to_path"]
+                        none)
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj"))
+                        "to_path"
+                        []
+                        none)
+                      (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj"))]
                    none))),
             RubyCore.Expr.if'
               (RubyCore.Expr.send
-                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
-                "nil?"
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                "include?"
+                [RubyCore.Expr.str "\x00"]
+                none)
+              (RubyCore.Expr.send
+                none
+                "raise"
+                [RubyCore.Expr.const "ArgumentError",
+                 RubyCore.Expr.str "path name contains null byte"]
+                none)
+              none,
+            RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"]),
+       RubyCore.Expr.defs
+         (RubyCore.Expr.self')
+         "__component_start"
+         [RubyCore.Param.req "s"]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "n"
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                "length"
                 []
-                none)
-              (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base")))
-              none,
-            RubyCore.Expr.if'
-              (RubyCore.Expr.send
-                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
-                "=="
-                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"]
-                none)
-              (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base")))
-              none,
-            RubyCore.Expr.if'
-              (RubyCore.Expr.send
-                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
-                "=="
-                [RubyCore.Expr.str ".*"]
-                none)
+                none),
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "i" (RubyCore.Expr.int 0),
+            RubyCore.Expr.while'
               (RubyCore.Expr.seq
                 [RubyCore.Expr.vasgn
                    (RubyCore.VarKind.lvar)
-                   "i"
+                   "__dt_t88"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                     "<"
+                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"]
+                     none),
+                 RubyCore.Expr.if'
+                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t88")
                    (RubyCore.Expr.send
                      (some (RubyCore.Expr.send
-                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
-                        "length"
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                        "[]"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
+                        none))
+                     "=="
+                     [RubyCore.Expr.str "/"]
+                     none)
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t88"))])
+              (RubyCore.Expr.vasgn
+                (RubyCore.VarKind.lvar)
+                "i"
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                  "+"
+                  [RubyCore.Expr.int 1]
+                  none)),
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "start"
+              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"),
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "j"
+              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"),
+            RubyCore.Expr.while'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "j"))
+                "<"
+                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"]
+                none)
+              (RubyCore.Expr.if'
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                     "[]"
+                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "j"]
+                     none))
+                  "=="
+                  [RubyCore.Expr.str "/"]
+                  none)
+                (RubyCore.Expr.seq
+                  [RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "k"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "j"),
+                   RubyCore.Expr.while'
+                     (RubyCore.Expr.seq
+                       [RubyCore.Expr.vasgn
+                          (RubyCore.VarKind.lvar)
+                          "__dt_t89"
+                          (RubyCore.Expr.send
+                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "k"))
+                            "<"
+                            [RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"]
+                            none),
+                        RubyCore.Expr.if'
+                          (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t89")
+                          (RubyCore.Expr.send
+                            (some (RubyCore.Expr.send
+                               (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                               "[]"
+                               [RubyCore.Expr.var (RubyCore.VarKind.lvar) "k"]
+                               none))
+                            "=="
+                            [RubyCore.Expr.str "/"]
+                            none)
+                          (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t89"))])
+                     (RubyCore.Expr.vasgn
+                       (RubyCore.VarKind.lvar)
+                       "k"
+                       (RubyCore.Expr.send
+                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "k"))
+                         "+"
+                         [RubyCore.Expr.int 1]
+                         none)),
+                   RubyCore.Expr.if'
+                     (RubyCore.Expr.send
+                       (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "k"))
+                       ">="
+                       [RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"]
+                       none)
+                     (RubyCore.Expr.brk none)
+                     none,
+                   RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "start"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "k"),
+                   RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "j"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "k")])
+                (some (RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "j"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "j"))
+                     "+"
+                     [RubyCore.Expr.int 1]
+                     none)))),
+            RubyCore.Expr.var (RubyCore.VarKind.lvar) "start"]),
+       RubyCore.Expr.defs
+         (RubyCore.Expr.self')
+         "__rmext"
+         [RubyCore.Param.req "base", RubyCore.Param.req "before", RubyCore.Param.req "suffix"]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
+                "empty?"
+                []
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.int 0)))
+              none,
+            RubyCore.Expr.if'
+              (RubyCore.Expr.seq
+                [RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "__dt_t91"
+                   (RubyCore.Expr.seq
+                     [RubyCore.Expr.vasgn
+                        (RubyCore.VarKind.lvar)
+                        "__dt_t90"
+                        (RubyCore.Expr.send
+                          (some (RubyCore.Expr.send
+                             (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
+                             "length"
+                             []
+                             none))
+                          "=="
+                          [RubyCore.Expr.int 2]
+                          none),
+                      RubyCore.Expr.if'
+                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t90")
+                        (RubyCore.Expr.send
+                          (some (RubyCore.Expr.send
+                             (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
+                             "[]"
+                             [RubyCore.Expr.int 1]
+                             none))
+                          "=="
+                          [RubyCore.Expr.str "*"]
+                          none)
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t90"))]),
+                 RubyCore.Expr.if'
+                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t91")
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.send
+                        (some (RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
+                           "[]"
+                           [RubyCore.Expr.int 0]
+                           none))
+                        "ord"
                         []
                         none))
-                     "-"
-                     [RubyCore.Expr.int 1]
+                     "<"
+                     [RubyCore.Expr.int 128]
+                     none)
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t91"))])
+              (RubyCore.Expr.seq
+                [RubyCore.Expr.if'
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
+                        "[]"
+                        [RubyCore.Expr.int 0]
+                        none))
+                     "=="
+                     [RubyCore.Expr.str "."]
+                     none)
+                   (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "before")))
+                   none,
+                 RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "last"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                     "length"
+                     []
                      none),
+                 RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "i" (RubyCore.Expr.int 0),
                  RubyCore.Expr.while'
                    (RubyCore.Expr.send
                      (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
-                     ">"
-                     [RubyCore.Expr.int 0]
+                     "<"
+                     [RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                        "length"
+                        []
+                        none]
                      none)
                    (RubyCore.Expr.seq
                      [RubyCore.Expr.if'
@@ -8899,49 +9183,353 @@ def core_47 : Expr :=
                              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
                              none))
                           "=="
-                          [RubyCore.Expr.str "."]
-                          none)
-                        (RubyCore.Expr.ret
-                          (some (RubyCore.Expr.send
-                             (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                          [RubyCore.Expr.send
+                             (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
                              "[]"
-                             [RubyCore.Expr.int 0, RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
-                             none)))
+                             [RubyCore.Expr.int 0]
+                             none]
+                          none)
+                        (RubyCore.Expr.vasgn
+                          (RubyCore.VarKind.lvar)
+                          "last"
+                          (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
                         none,
                       RubyCore.Expr.vasgn
                         (RubyCore.VarKind.lvar)
                         "i"
                         (RubyCore.Expr.send
                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
-                          "-"
+                          "+"
                           [RubyCore.Expr.int 1]
                           none)]),
-                 RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"])
-              (some (RubyCore.Expr.if'
-                 (RubyCore.Expr.send
+                 RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "last"))])
+              none,
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.send
                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
-                   "end_with?"
-                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"]
-                   none)
-                 (RubyCore.Expr.send
+                   "length"
+                   []
+                   none))
+                "<"
+                [RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
+                   "length"
+                   []
+                   none]
+                none)
+              (RubyCore.Expr.ret
+                (some (RubyCore.Expr.send
                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                   "length"
+                   []
+                   none)))
+              none,
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                "end_with?"
+                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"]
+                none)
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                   "length"
+                   []
+                   none))
+                "-"
+                [RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
+                   "length"
+                   []
+                   none]
+                none)
+              (some (RubyCore.Expr.int 0))]),
+       RubyCore.Expr.defs
+         (RubyCore.Expr.self')
+         "basename"
+         [RubyCore.Param.rest (some "args")]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "__dt_t92"
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
+                           "length"
+                           []
+                           none))
+                        "=="
+                        [RubyCore.Expr.int 1]
+                        none),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t92")
+                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t92")
+                      (some (RubyCore.Expr.send
+                         (some (RubyCore.Expr.send
+                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
+                            "length"
+                            []
+                            none))
+                         "=="
+                         [RubyCore.Expr.int 2]
+                         none))]))
+                "!"
+                []
+                none)
+              (RubyCore.Expr.send
+                none
+                "raise"
+                [RubyCore.Expr.const "ArgumentError",
+                 RubyCore.Expr.send
+                   (some (RubyCore.Expr.send
+                      (some (RubyCore.Expr.str "wrong number of arguments (given "))
+                      "+"
+                      [RubyCore.Expr.send
+                         (some (RubyCore.Expr.send
+                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
+                            "length"
+                            []
+                            none))
+                         "to_s"
+                         []
+                         none]
+                      none))
+                   "+"
+                   [RubyCore.Expr.str ", expected 1..2)"]
+                   none]
+                none)
+              none,
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "suffix"
+              (RubyCore.Expr.if'
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
+                     "length"
+                     []
+                     none))
+                  "=="
+                  [RubyCore.Expr.int 2]
+                  none)
+                (RubyCore.Expr.send
+                  none
+                  "__to_string_type"
+                  [RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
+                     "[]"
+                     [RubyCore.Expr.int 1]
+                     none]
+                  none)
+                (some (RubyCore.Expr.nil))),
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "s"
+              (RubyCore.Expr.send
+                none
+                "__path"
+                [RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
                    "[]"
-                   [RubyCore.Expr.int 0,
+                   [RubyCore.Expr.int 0]
+                   none]
+                none),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                "empty?"
+                []
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s")))
+              none,
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "start"
+              (RubyCore.Expr.send
+                none
+                "__component_start"
+                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"]
+                none),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "start"))
+                ">="
+                [RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                   "length"
+                   []
+                   none]
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.str "/")))
+              none,
+            RubyCore.Expr.if'
+              (RubyCore.Expr.seq
+                [RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "__dt_t93"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
+                        "nil?"
+                        []
+                        none))
+                     "!"
+                     []
+                     none),
+                 RubyCore.Expr.if'
+                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t93")
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
+                     "include?"
+                     [RubyCore.Expr.str "\x00"]
+                     none)
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t93"))])
+              (RubyCore.Expr.send
+                none
+                "raise"
+                [RubyCore.Expr.const "ArgumentError", RubyCore.Expr.str "string contains null byte"]
+                none)
+              none,
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "base"
+              (RubyCore.Expr.send
+                none
+                "__chomp_seps"
+                [RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                   "[]"
+                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "start",
                     RubyCore.Expr.send
                       (some (RubyCore.Expr.send
-                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
                          "length"
                          []
                          none))
                       "-"
-                      [RubyCore.Expr.send
-                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
-                         "length"
-                         []
-                         none]
+                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "start"]
                       none]
-                   none)
-                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))))]),
+                   none]
+                none),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"))
+                "nil?"
+                []
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base")))
+              none,
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "q" (RubyCore.Expr.int 0),
+            RubyCore.Expr.while'
+              (RubyCore.Expr.seq
+                [RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "__dt_t94"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "q"))
+                     "<"
+                     [RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                        "length"
+                        []
+                        none]
+                     none),
+                 RubyCore.Expr.if'
+                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t94")
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                        "[]"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "q"]
+                        none))
+                     "=="
+                     [RubyCore.Expr.str "."]
+                     none)
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t94"))])
+              (RubyCore.Expr.vasgn
+                (RubyCore.VarKind.lvar)
+                "q"
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "q"))
+                  "+"
+                  [RubyCore.Expr.int 1]
+                  none)),
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "dot" (RubyCore.Expr.int (-1)),
+            RubyCore.Expr.while'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "q"))
+                "<"
+                [RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                   "length"
+                   []
+                   none]
+                none)
+              (RubyCore.Expr.seq
+                [RubyCore.Expr.if'
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                        "[]"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "q"]
+                        none))
+                     "=="
+                     [RubyCore.Expr.str "."]
+                     none)
+                   (RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "dot"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "q"))
+                   none,
+                 RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "q"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "q"))
+                     "+"
+                     [RubyCore.Expr.int 1]
+                     none)]),
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "before"
+              (RubyCore.Expr.if'
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "dot"))
+                  "=="
+                  [RubyCore.Expr.int (-1)]
+                  none)
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                  "length"
+                  []
+                  none)
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "dot"))),
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "f"
+              (RubyCore.Expr.send
+                none
+                "__rmext"
+                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "base",
+                 RubyCore.Expr.var (RubyCore.VarKind.lvar) "before",
+                 RubyCore.Expr.var (RubyCore.VarKind.lvar) "suffix"]
+                none),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "f"))
+                "=="
+                [RubyCore.Expr.int 0]
+                none)
+              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base")
+              (some (RubyCore.Expr.send
+                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "base"))
+                 "[]"
+                 [RubyCore.Expr.int 0, RubyCore.Expr.var (RubyCore.VarKind.lvar) "f"]
+                 none))]),
        RubyCore.Expr.defs
          (RubyCore.Expr.self')
          "extname"
@@ -8949,96 +9537,68 @@ def core_47 : Expr :=
          (RubyCore.Expr.seq
            [RubyCore.Expr.vasgn
               (RubyCore.VarKind.lvar)
-              "b"
+              "s"
               (RubyCore.Expr.send
                 none
-                "basename"
+                "__path"
                 [RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"]
                 none),
             RubyCore.Expr.vasgn
               (RubyCore.VarKind.lvar)
-              "i"
+              "n"
               (RubyCore.Expr.send
-                (some (RubyCore.Expr.send
-                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "b"))
-                   "length"
-                   []
-                   none))
-                "-"
-                [RubyCore.Expr.int 1]
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                "length"
+                []
                 none),
-            RubyCore.Expr.while'
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "start"
               (RubyCore.Expr.send
-                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
-                ">"
-                [RubyCore.Expr.int 0]
-                none)
+                none
+                "__component_start"
+                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"]
+                none),
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "i"
+              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "start"),
+            RubyCore.Expr.while'
               (RubyCore.Expr.seq
-                [RubyCore.Expr.if'
+                [RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "__dt_t95"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                     "<"
+                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"]
+                     none),
+                 RubyCore.Expr.if'
+                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t95")
                    (RubyCore.Expr.send
                      (some (RubyCore.Expr.send
-                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "b"))
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
                         "[]"
                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
                         none))
                      "=="
                      [RubyCore.Expr.str "."]
                      none)
-                   (RubyCore.Expr.ret
-                     (some (RubyCore.Expr.send
-                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "b"))
-                        "[]"
-                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "i",
-                         RubyCore.Expr.send
-                           (some (RubyCore.Expr.send
-                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "b"))
-                              "length"
-                              []
-                              none))
-                           "-"
-                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
-                           none]
-                        none)))
-                   none,
-                 RubyCore.Expr.vasgn
-                   (RubyCore.VarKind.lvar)
-                   "i"
-                   (RubyCore.Expr.send
-                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
-                     "-"
-                     [RubyCore.Expr.int 1]
-                     none)]),
-            RubyCore.Expr.str ""]),
-       RubyCore.Expr.defs
-         (RubyCore.Expr.self')
-         "dirname"
-         [RubyCore.Param.req "path"]
-         (RubyCore.Expr.seq
-           [RubyCore.Expr.vasgn
-              (RubyCore.VarKind.lvar)
-              "s"
-              (RubyCore.Expr.send
-                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"))
-                "to_s"
-                []
-                none),
-            RubyCore.Expr.vasgn
-              (RubyCore.VarKind.lvar)
-              "i"
-              (RubyCore.Expr.send
-                (some (RubyCore.Expr.send
-                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
-                   "length"
-                   []
-                   none))
-                "-"
-                [RubyCore.Expr.int 1]
-                none),
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t95"))])
+              (RubyCore.Expr.vasgn
+                (RubyCore.VarKind.lvar)
+                "i"
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                  "+"
+                  [RubyCore.Expr.int 1]
+                  none)),
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "dot" (RubyCore.Expr.int (-1)),
             RubyCore.Expr.while'
               (RubyCore.Expr.send
                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
-                ">="
-                [RubyCore.Expr.int 0]
+                "<"
+                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"]
                 none)
               (RubyCore.Expr.seq
                 [RubyCore.Expr.if'
@@ -9051,51 +9611,631 @@ def core_47 : Expr :=
                      "=="
                      [RubyCore.Expr.str "/"]
                      none)
-                   (RubyCore.Expr.seq
-                     [RubyCore.Expr.if'
-                        (RubyCore.Expr.send
-                          (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
-                          "zero?"
-                          []
-                          none)
-                        (RubyCore.Expr.ret (some (RubyCore.Expr.str "/")))
-                        none,
-                      RubyCore.Expr.ret
-                        (some (RubyCore.Expr.send
-                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
-                           "[]"
-                           [RubyCore.Expr.int 0, RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
-                           none))])
+                   (RubyCore.Expr.brk none)
+                   none,
+                 RubyCore.Expr.if'
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                        "[]"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
+                        none))
+                     "=="
+                     [RubyCore.Expr.str "."]
+                     none)
+                   (RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "dot"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
                    none,
                  RubyCore.Expr.vasgn
                    (RubyCore.VarKind.lvar)
                    "i"
                    (RubyCore.Expr.send
                      (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
-                     "-"
+                     "+"
                      [RubyCore.Expr.int 1]
                      none)]),
-            RubyCore.Expr.str "."]),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "dot"))
+                "=="
+                [RubyCore.Expr.int (-1)]
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.str "")))
+              none,
+            RubyCore.Expr.send
+              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+              "[]"
+              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "dot",
+               RubyCore.Expr.send
+                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                 "-"
+                 [RubyCore.Expr.var (RubyCore.VarKind.lvar) "dot"]
+                 none]
+              none]),
+       RubyCore.Expr.defs
+         (RubyCore.Expr.self')
+         "dirname"
+         [RubyCore.Param.rest (some "args")]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "__dt_t96"
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
+                           "length"
+                           []
+                           none))
+                        "=="
+                        [RubyCore.Expr.int 1]
+                        none),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t96")
+                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t96")
+                      (some (RubyCore.Expr.send
+                         (some (RubyCore.Expr.send
+                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
+                            "length"
+                            []
+                            none))
+                         "=="
+                         [RubyCore.Expr.int 2]
+                         none))]))
+                "!"
+                []
+                none)
+              (RubyCore.Expr.send
+                none
+                "raise"
+                [RubyCore.Expr.const "ArgumentError",
+                 RubyCore.Expr.send
+                   (some (RubyCore.Expr.send
+                      (some (RubyCore.Expr.str "wrong number of arguments (given "))
+                      "+"
+                      [RubyCore.Expr.send
+                         (some (RubyCore.Expr.send
+                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
+                            "length"
+                            []
+                            none))
+                         "to_s"
+                         []
+                         none]
+                      none))
+                   "+"
+                   [RubyCore.Expr.str ", expected 1..2)"]
+                   none]
+                none)
+              none,
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
+                   "length"
+                   []
+                   none))
+                "=="
+                [RubyCore.Expr.int 2]
+                none)
+              (RubyCore.Expr.ret
+                (some (RubyCore.Expr.send
+                   none
+                   "__unsupported__"
+                   [RubyCore.Expr.str
+                      "File.dirname(path, level) (the level argument is not modeled)"]
+                   none)))
+              none,
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "s"
+              (RubyCore.Expr.send
+                none
+                "__path"
+                [RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))
+                   "[]"
+                   [RubyCore.Expr.int 0]
+                   none]
+                none),
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "n"
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                "length"
+                []
+                none),
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "root" (RubyCore.Expr.int 0),
+            RubyCore.Expr.while'
+              (RubyCore.Expr.seq
+                [RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "__dt_t97"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "root"))
+                     "<"
+                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"]
+                     none),
+                 RubyCore.Expr.if'
+                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t97")
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                        "[]"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "root"]
+                        none))
+                     "=="
+                     [RubyCore.Expr.str "/"]
+                     none)
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t97"))])
+              (RubyCore.Expr.vasgn
+                (RubyCore.VarKind.lvar)
+                "root"
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "root"))
+                  "+"
+                  [RubyCore.Expr.int 1]
+                  none)),
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "start"
+              (RubyCore.Expr.if'
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "root"))
+                  ">"
+                  [RubyCore.Expr.int 1]
+                  none)
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "root"))
+                  "-"
+                  [RubyCore.Expr.int 1]
+                  none)
+                (some (RubyCore.Expr.int 0))),
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "last" (RubyCore.Expr.int (-1)),
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "i"
+              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "root"),
+            RubyCore.Expr.while'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                "<"
+                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"]
+                none)
+              (RubyCore.Expr.if'
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                     "[]"
+                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
+                     none))
+                  "=="
+                  [RubyCore.Expr.str "/"]
+                  none)
+                (RubyCore.Expr.seq
+                  [RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "k"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"),
+                   RubyCore.Expr.while'
+                     (RubyCore.Expr.seq
+                       [RubyCore.Expr.vasgn
+                          (RubyCore.VarKind.lvar)
+                          "__dt_t98"
+                          (RubyCore.Expr.send
+                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "k"))
+                            "<"
+                            [RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"]
+                            none),
+                        RubyCore.Expr.if'
+                          (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t98")
+                          (RubyCore.Expr.send
+                            (some (RubyCore.Expr.send
+                               (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                               "[]"
+                               [RubyCore.Expr.var (RubyCore.VarKind.lvar) "k"]
+                               none))
+                            "=="
+                            [RubyCore.Expr.str "/"]
+                            none)
+                          (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t98"))])
+                     (RubyCore.Expr.vasgn
+                       (RubyCore.VarKind.lvar)
+                       "k"
+                       (RubyCore.Expr.send
+                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "k"))
+                         "+"
+                         [RubyCore.Expr.int 1]
+                         none)),
+                   RubyCore.Expr.if'
+                     (RubyCore.Expr.send
+                       (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "k"))
+                       ">="
+                       [RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"]
+                       none)
+                     (RubyCore.Expr.brk none)
+                     none,
+                   RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "last"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"),
+                   RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "i"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "k")])
+                (some (RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "i"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                     "+"
+                     [RubyCore.Expr.int 1]
+                     none)))),
+            RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "p"
+              (RubyCore.Expr.if'
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "last"))
+                  "=="
+                  [RubyCore.Expr.int (-1)]
+                  none)
+                (RubyCore.Expr.var (RubyCore.VarKind.lvar) "root")
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "last"))),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "p"))
+                "=="
+                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "start"]
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.str ".")))
+              none,
+            RubyCore.Expr.send
+              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+              "[]"
+              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "start",
+               RubyCore.Expr.send
+                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "p"))
+                 "-"
+                 [RubyCore.Expr.var (RubyCore.VarKind.lvar) "start"]
+                 none]
+              none]),
        RubyCore.Expr.defs
          (RubyCore.Expr.self')
          "join"
          [RubyCore.Param.rest (some "parts")]
          (RubyCore.Expr.send
-           (some (RubyCore.Expr.send
-              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"))
-              "map"
-              []
-              (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 []
-                 (RubyCore.Expr.send
-                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
-                   "to_s"
-                   []
-                   none)))))
-           "join"
-           [RubyCore.Expr.str "/"]
+           none
+           "__join"
+           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts", RubyCore.Expr.array []]
            none),
+       RubyCore.Expr.defs
+         (RubyCore.Expr.self')
+         "__join"
+         [RubyCore.Param.req "parts", RubyCore.Param.req "ancestors"]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"))
+                "empty?"
+                []
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.str "")))
+              none,
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "result" (RubyCore.Expr.str ""),
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "i" (RubyCore.Expr.int 0),
+            RubyCore.Expr.while'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                "<"
+                [RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"))
+                   "length"
+                   []
+                   none]
+                none)
+              (RubyCore.Expr.seq
+                [RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "tmp"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"))
+                     "[]"
+                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
+                     none),
+                 RubyCore.Expr.if'
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"))
+                     "is_a?"
+                     [RubyCore.Expr.const "Array"]
+                     none)
+                   (RubyCore.Expr.seq
+                     [RubyCore.Expr.if'
+                        (RubyCore.Expr.seq
+                          [RubyCore.Expr.vasgn
+                             (RubyCore.VarKind.lvar)
+                             "__dt_t99"
+                             (RubyCore.Expr.send
+                               (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"))
+                               "equal?"
+                               [RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"]
+                               none),
+                           RubyCore.Expr.if'
+                             (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t99")
+                             (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t99")
+                             (some (RubyCore.Expr.send
+                                none
+                                "__join_ancestor?"
+                                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "ancestors",
+                                 RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"]
+                                none))])
+                        (RubyCore.Expr.send
+                          none
+                          "raise"
+                          [RubyCore.Expr.const "ArgumentError", RubyCore.Expr.str "recursive array"]
+                          none)
+                        none,
+                      RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "ancestors"))
+                        "push"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"]
+                        none,
+                      RubyCore.Expr.vasgn
+                        (RubyCore.VarKind.lvar)
+                        "tmp"
+                        (RubyCore.Expr.send
+                          none
+                          "__join"
+                          [RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp",
+                           RubyCore.Expr.var (RubyCore.VarKind.lvar) "ancestors"]
+                          none),
+                      RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "ancestors"))
+                        "pop"
+                        []
+                        none])
+                   (some (RubyCore.Expr.if'
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"))
+                        "is_a?"
+                        [RubyCore.Expr.const "String"]
+                        none)
+                      (RubyCore.Expr.if'
+                        (RubyCore.Expr.send
+                          (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"))
+                          "include?"
+                          [RubyCore.Expr.str "\x00"]
+                          none)
+                        (RubyCore.Expr.send
+                          none
+                          "raise"
+                          [RubyCore.Expr.const "ArgumentError",
+                           RubyCore.Expr.str "string contains null byte"]
+                          none)
+                        none)
+                      (some (RubyCore.Expr.vasgn
+                         (RubyCore.VarKind.lvar)
+                         "tmp"
+                         (RubyCore.Expr.send
+                           none
+                           "__path"
+                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"]
+                           none))))),
+                 RubyCore.Expr.if'
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                     "=="
+                     [RubyCore.Expr.int 0]
+                     none)
+                   (RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "result"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"))
+                   (some (RubyCore.Expr.if'
+                      (RubyCore.Expr.seq
+                        [RubyCore.Expr.vasgn
+                           (RubyCore.VarKind.lvar)
+                           "__dt_t101"
+                           (RubyCore.Expr.send
+                             (some (RubyCore.Expr.send
+                                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"))
+                                "empty?"
+                                []
+                                none))
+                             "!"
+                             []
+                             none),
+                         RubyCore.Expr.if'
+                           (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t101")
+                           (RubyCore.Expr.send
+                             (some (RubyCore.Expr.send
+                                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"))
+                                "[]"
+                                [RubyCore.Expr.int 0]
+                                none))
+                             "=="
+                             [RubyCore.Expr.str "/"]
+                             none)
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t101"))])
+                      (RubyCore.Expr.vasgn
+                        (RubyCore.VarKind.lvar)
+                        "result"
+                        (RubyCore.Expr.send
+                          (some (RubyCore.Expr.send
+                             none
+                             "__chomp_seps"
+                             [RubyCore.Expr.var (RubyCore.VarKind.lvar) "result"]
+                             none))
+                          "+"
+                          [RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"]
+                          none))
+                      (some (RubyCore.Expr.if'
+                         (RubyCore.Expr.seq
+                           [RubyCore.Expr.vasgn
+                              (RubyCore.VarKind.lvar)
+                              "__dt_t100"
+                              (RubyCore.Expr.send
+                                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "result"))
+                                "empty?"
+                                []
+                                none),
+                            RubyCore.Expr.if'
+                              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t100")
+                              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t100")
+                              (some (RubyCore.Expr.send
+                                 (some (RubyCore.Expr.send
+                                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "result"))
+                                    "[]"
+                                    [RubyCore.Expr.send
+                                       (some (RubyCore.Expr.send
+                                          (some (RubyCore.Expr.var
+                                             (RubyCore.VarKind.lvar)
+                                             "result"))
+                                          "length"
+                                          []
+                                          none))
+                                       "-"
+                                       [RubyCore.Expr.int 1]
+                                       none]
+                                    none))
+                                 "!="
+                                 [RubyCore.Expr.str "/"]
+                                 none))])
+                         (RubyCore.Expr.vasgn
+                           (RubyCore.VarKind.lvar)
+                           "result"
+                           (RubyCore.Expr.send
+                             (some (RubyCore.Expr.send
+                                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "result"))
+                                "+"
+                                [RubyCore.Expr.str "/"]
+                                none))
+                             "+"
+                             [RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"]
+                             none))
+                         (some (RubyCore.Expr.vasgn
+                            (RubyCore.VarKind.lvar)
+                            "result"
+                            (RubyCore.Expr.send
+                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "result"))
+                              "+"
+                              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "tmp"]
+                              none))))))),
+                 RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "i"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                     "+"
+                     [RubyCore.Expr.int 1]
+                     none)]),
+            RubyCore.Expr.var (RubyCore.VarKind.lvar) "result"]),
+       RubyCore.Expr.defs
+         (RubyCore.Expr.self')
+         "__join_ancestor?"
+         [RubyCore.Param.req "ancestors", RubyCore.Param.req "ary"]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "i" (RubyCore.Expr.int 0),
+            RubyCore.Expr.while'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                "<"
+                [RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "ancestors"))
+                   "length"
+                   []
+                   none]
+                none)
+              (RubyCore.Expr.seq
+                [RubyCore.Expr.if'
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "ancestors"))
+                        "[]"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
+                        none))
+                     "equal?"
+                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "ary"]
+                     none)
+                   (RubyCore.Expr.ret (some (RubyCore.Expr.tru)))
+                   none,
+                 RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "i"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                     "+"
+                     [RubyCore.Expr.int 1]
+                     none)]),
+            RubyCore.Expr.fls]),
+       RubyCore.Expr.defs
+         (RubyCore.Expr.self')
+         "__chomp_seps"
+         [RubyCore.Param.req "s"]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "i"
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                "length"
+                []
+                none),
+            RubyCore.Expr.while'
+              (RubyCore.Expr.seq
+                [RubyCore.Expr.vasgn
+                   (RubyCore.VarKind.lvar)
+                   "__dt_t102"
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                     ">"
+                     [RubyCore.Expr.int 0]
+                     none),
+                 RubyCore.Expr.if'
+                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t102")
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                        "[]"
+                        [RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                           "-"
+                           [RubyCore.Expr.int 1]
+                           none]
+                        none))
+                     "=="
+                     [RubyCore.Expr.str "/"]
+                     none)
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t102"))])
+              (RubyCore.Expr.vasgn
+                (RubyCore.VarKind.lvar)
+                "i"
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                  "-"
+                  [RubyCore.Expr.int 1]
+                  none)),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
+                "=="
+                [RubyCore.Expr.send
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                   "length"
+                   []
+                   none]
+                none)
+              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s")
+              (some (RubyCore.Expr.send
+                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"))
+                 "[]"
+                 [RubyCore.Expr.int 0, RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"]
+                 none))]),
        RubyCore.Expr.defs
          (RubyCore.Expr.self')
          "method_missing"
@@ -9884,14 +11024,14 @@ def core_48 : Expr :=
               (RubyCore.Expr.seq
                 [RubyCore.Expr.vasgn
                    (RubyCore.VarKind.lvar)
-                   "__dt_t88"
+                   "__dt_t103"
                    (RubyCore.Expr.send
                      (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "from"))
                      "start_with?"
                      [RubyCore.Expr.str "^"]
                      none),
                  RubyCore.Expr.if'
-                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t88")
+                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t103")
                    (RubyCore.Expr.send
                      (some (RubyCore.Expr.send
                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "from"))
@@ -9901,7 +11041,7 @@ def core_48 : Expr :=
                      ">"
                      [RubyCore.Expr.int 1]
                      none)
-                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t88"))]),
+                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t103"))]),
             RubyCore.Expr.vasgn
               (RubyCore.VarKind.lvar)
               "src"
@@ -10072,7 +11212,7 @@ def core_48 : Expr :=
                 (RubyCore.Expr.seq
                   [RubyCore.Expr.vasgn
                      (RubyCore.VarKind.lvar)
-                     "__dt_t89"
+                     "__dt_t104"
                      (RubyCore.Expr.send
                        (some (RubyCore.Expr.send
                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
@@ -10087,7 +11227,7 @@ def core_48 : Expr :=
                           none]
                        none),
                    RubyCore.Expr.if'
-                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t89")
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t104")
                      (RubyCore.Expr.send
                        (some (RubyCore.Expr.send
                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "spec"))
@@ -10101,7 +11241,7 @@ def core_48 : Expr :=
                        "=="
                        [RubyCore.Expr.str "-"]
                        none)
-                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t89"))])
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t104"))])
                 (RubyCore.Expr.seq
                   [RubyCore.Expr.vasgn
                      (RubyCore.VarKind.lvar)
@@ -10228,15 +11368,15 @@ def core_48 : Expr :=
                 (RubyCore.Expr.seq
                   [RubyCore.Expr.vasgn
                      (RubyCore.VarKind.lvar)
-                     "__dt_t90"
+                     "__dt_t105"
                      (RubyCore.Expr.send
                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "enc"))
                        "__name_raw"
                        []
                        none),
                    RubyCore.Expr.if'
-                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t90")
-                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t90")
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t105")
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t105")
                      (some (RubyCore.Expr.str "UTF-8"))])
                 (some (RubyCore.Expr.send
                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "enc"))
@@ -10247,39 +11387,39 @@ def core_48 : Expr :=
               (RubyCore.Expr.seq
                 [RubyCore.Expr.vasgn
                    (RubyCore.VarKind.lvar)
-                   "__dt_t94"
+                   "__dt_t109"
                    (RubyCore.Expr.seq
                      [RubyCore.Expr.vasgn
                         (RubyCore.VarKind.lvar)
-                        "__dt_t93"
+                        "__dt_t108"
                         (RubyCore.Expr.seq
                           [RubyCore.Expr.vasgn
                              (RubyCore.VarKind.lvar)
-                             "__dt_t92"
+                             "__dt_t107"
                              (RubyCore.Expr.send
                                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"))
                                "=="
                                [RubyCore.Expr.str "ASCII-8BIT"]
                                none),
                            RubyCore.Expr.if'
-                             (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t92")
-                             (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t92")
+                             (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t107")
+                             (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t107")
                              (some (RubyCore.Expr.send
                                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"))
                                 "=="
                                 [RubyCore.Expr.str "BINARY"]
                                 none))]),
                       RubyCore.Expr.if'
-                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t93")
-                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t93")
+                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t108")
+                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t108")
                         (some (RubyCore.Expr.send
                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"))
                            "=="
                            [RubyCore.Expr.str "ascii-8bit"]
                            none))]),
                  RubyCore.Expr.if'
-                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t94")
-                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t94")
+                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t109")
+                   (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t109")
                    (some (RubyCore.Expr.send
                       (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"))
                       "=="
@@ -10290,15 +11430,15 @@ def core_48 : Expr :=
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.vasgn
                       (RubyCore.VarKind.lvar)
-                      "__dt_t91"
+                      "__dt_t106"
                       (RubyCore.Expr.send
                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"))
                         "=="
                         [RubyCore.Expr.str "UTF-8"]
                         none),
                     RubyCore.Expr.if'
-                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t91")
-                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t91")
+                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t106")
+                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t106")
                       (some (RubyCore.Expr.send
                          (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "n"))
                          "=="
@@ -10573,23 +11713,23 @@ def core_50 : Expr :=
                            (RubyCore.Expr.seq
                              [RubyCore.Expr.vasgn
                                 (RubyCore.VarKind.lvar)
-                                "__dt_t97"
+                                "__dt_t112"
                                 (RubyCore.Expr.send
                                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "kwi"))
                                   "=="
                                   [RubyCore.Expr.tru]
                                   none),
                               RubyCore.Expr.if'
-                                (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t97")
-                                (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t97")
+                                (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t112")
+                                (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t112")
                                 (some (RubyCore.Expr.seq
                                    [RubyCore.Expr.vasgn
                                       (RubyCore.VarKind.lvar)
-                                      "__dt_t96"
+                                      "__dt_t111"
                                       (RubyCore.Expr.seq
                                         [RubyCore.Expr.vasgn
                                            (RubyCore.VarKind.lvar)
-                                           "__dt_t95"
+                                           "__dt_t110"
                                            (RubyCore.Expr.send
                                              (some (RubyCore.Expr.var
                                                 (RubyCore.VarKind.lvar)
@@ -10598,7 +11738,7 @@ def core_50 : Expr :=
                                              []
                                              none),
                                          RubyCore.Expr.if'
-                                           (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t95")
+                                           (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t110")
                                            (RubyCore.Expr.send
                                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "a"))
                                              "empty?"
@@ -10606,9 +11746,9 @@ def core_50 : Expr :=
                                              none)
                                            (some (RubyCore.Expr.var
                                               (RubyCore.VarKind.lvar)
-                                              "__dt_t95"))]),
+                                              "__dt_t110"))]),
                                     RubyCore.Expr.if'
-                                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t96")
+                                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t111")
                                       (RubyCore.Expr.send
                                         (some (RubyCore.Expr.send
                                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "kw"))
@@ -10620,7 +11760,7 @@ def core_50 : Expr :=
                                         none)
                                       (some (RubyCore.Expr.var
                                          (RubyCore.VarKind.lvar)
-                                         "__dt_t96"))]))])
+                                         "__dt_t111"))]))])
                            (RubyCore.Expr.seq
                              [RubyCore.Expr.vasgn
                                 (RubyCore.VarKind.lvar)
@@ -10892,14 +12032,14 @@ def core_50 : Expr :=
                                    [RubyCore.Expr.var (RubyCore.VarKind.lvar) "s",
                                     RubyCore.Expr.vasgn
                                       (RubyCore.VarKind.lvar)
-                                      "__dt_t98"
+                                      "__dt_t113"
                                       (RubyCore.Expr.send
                                         none
                                         "send"
                                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"]
                                         none)]
                                    none,
-                                 RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t98"]))),
+                                 RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t113"]))),
                          RubyCore.Expr.var (RubyCore.VarKind.lvar) "h"]))),
                  RubyCore.Expr.send
                    none
@@ -10938,15 +12078,15 @@ def core_50 : Expr :=
                              (RubyCore.Expr.seq
                                [RubyCore.Expr.vasgn
                                   (RubyCore.VarKind.lvar)
-                                  "__dt_t99"
+                                  "__dt_t114"
                                   (RubyCore.Expr.send
                                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
                                     "<"
                                     [RubyCore.Expr.int 0]
                                     none),
                                 RubyCore.Expr.if'
-                                  (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t99")
-                                  (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t99")
+                                  (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t114")
+                                  (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t114")
                                   (some (RubyCore.Expr.send
                                      (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"))
                                      ">="
@@ -11053,7 +12193,7 @@ def core_50 : Expr :=
                       (RubyCore.Expr.seq
                         [RubyCore.Expr.vasgn
                            (RubyCore.VarKind.lvar)
-                           "__dt_t100"
+                           "__dt_t115"
                            (RubyCore.Expr.send
                              (some (RubyCore.Expr.send
                                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "other"))
@@ -11064,7 +12204,7 @@ def core_50 : Expr :=
                              [RubyCore.Expr.send (some (RubyCore.Expr.self')) "class" [] none]
                              none),
                          RubyCore.Expr.if'
-                           (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t100")
+                           (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t115")
                            (RubyCore.Expr.send
                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "syms"))
                              "all?"
@@ -11085,7 +12225,7 @@ def core_50 : Expr :=
                                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "s"]
                                      none]
                                   none))))
-                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t100"))]))),
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t115"))]))),
                  RubyCore.Expr.send
                    none
                    "define_method"
