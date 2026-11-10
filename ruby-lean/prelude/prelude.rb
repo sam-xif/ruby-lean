@@ -252,9 +252,6 @@ module Enumerable
       __unsupported__("Enumerable#find_index arity")
     end
   end
-  # `Array#index` with a block is the same search (the blockless forms stay on
-  # the builtin; the block form falls through to here).
-  alias index find_index
 
   def all?(*pat)
     return __unsupported__("Enumerable#all? with a pattern argument") unless pat.empty?
@@ -1014,6 +1011,47 @@ class String
 end
 
 class Array
+  # `Array#index` is `Array#find_index`: CRuby defines the name on `Array`
+  # **only**, so `(1..5).index(2)`, `{a: 1}.index(1)` and a user class that
+  # includes Enumerable all raise `NoMethodError` rather than servicing the
+  # call [V]. It takes a block or one argument — never two — and the arity error
+  # names that range [V].
+  #
+  # Defining it here is what keeps the name off every other Enumerable: an alias
+  # in `Enumerable` used to install it on all of them. Defining it here also
+  # means it wins over the blockless builtin, so this body is the whole of
+  # `Array#index`.
+  def index(*a)
+    if a.length > 1
+      raise ArgumentError, "wrong number of arguments (given " + a.length.to_s +
+                           ", expected 0..1)"
+    end
+    return __unsupported__("Enumerator: Array#index without a block") if a.empty? && !block_given?
+
+    # `rb_ary_index` walks the array's own storage; this body is Ruby, so it
+    # reads through `each`. A receiver that *defines* `each` (a subclass, a
+    # module, a singleton method) would search something CRuby never looks at,
+    # so decline there instead of answering.
+    return __unsupported__("Array#index on a receiver that defines #each") if __user_defines?(:each)
+
+    # A block wins over an argument, and the block form is the same search as
+    # `Enumerable#find_index` — which is the method CRuby aliases here [V].
+    i = 0
+    unless block_given?
+      needle = a[0]
+      each { |x|
+        return i if x == needle
+        i = i + 1
+      }
+      return nil
+    end
+    each { |x|
+      return i if yield(x)
+      i = i + 1
+    }
+    nil
+  end
+
   # `zip` over one or more other arrays; a short partner pads with nil [V]. The
   # block form yields each tuple and returns nil.
   def zip(*others)

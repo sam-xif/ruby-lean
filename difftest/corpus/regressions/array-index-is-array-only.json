@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, issue #116",
+  "arm": "probe",
+  "case_id": "array-index-is-array-only",
+  "note": "Array#index is Array#find_index: CRuby defines the name on Array only, so (1..5).index(3), {a: 1}.index(1) and a user class including Enumerable raise NoMethodError. An alias in the prelude's Enumerable answered for all of them; the alias is now an Array method. Also pins the Array surface (block form, 0..1 arity with CRuby's message), == comparison, live reading, and that Enumerable#find_index is untouched. Compared with CRuby 4.0.5."
+}
