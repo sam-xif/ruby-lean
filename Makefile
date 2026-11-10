@@ -268,21 +268,24 @@ $(BOOTSTRAP):
 	fi
 	$(RUBY) desugar/bin/harvest_bootstraptest "$(RUBY_SRC)/bootstraptest"
 
-# The model against CRuby, over three sets of programs:
+# The model against CRuby, over four sets of programs:
 #   * every program of MRI's bootstraptest. The run fails on any disagreement;
 #     check-conformance.sh then fails if fewer programs agree, or more are
 #     declined as unsupported, than difftest/coverage-baseline.json records;
 #   * every minimized reproducer of a disagreement found in the past
 #     (difftest/corpus/regressions/);
-#   * the hand-written adversarial programs (difftest/corpus/tier3/).
+#   * the hand-written adversarial programs (difftest/corpus/tier3/);
+#   * the filesystem programs (difftest/corpus/vfs/), run against the boot
+#     fixture materialized for CRuby. A gate is allowed there (the model's
+#     filesystem is built one step at a time); a disagreement is not.
 CONFORMANCE_OUT := $(CURDIR)/$(STAMP)/conformance
 DIFFTEST_RUN    := cd difftest && $(UV) run difftest
 
-conformance: difftest $(BOOTSTRAP) ## The model against CRuby: bootstraptest, past regressions, adversarial programs
+conformance: difftest $(BOOTSTRAP) ## The model against CRuby: bootstraptest, past regressions, adversarial programs, the filesystem corpus
 	@rm -rf $(CONFORMANCE_OUT)
 	$(DIFFTEST_RUN) run --tier 0 --sut lean --out $(CONFORMANCE_OUT)
 	scripts/check-conformance.sh $(CONFORMANCE_OUT)
-	@for t in "run --tier regressions" "replay corpus/tier3"; do \
+	@for t in "run --tier regressions" "run --tier vfs" "replay corpus/tier3"; do \
 	  name=$${t##* }; name=$${name##*/}; \
 	  if ($(DIFFTEST_RUN) $$t --sut lean --out $(CONFORMANCE_OUT)-$$name) > $(STAMP)/conformance-$$name.log 2>&1; \
 	  then echo "  $$name: the model and CRuby agree"; \
