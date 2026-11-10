@@ -174,6 +174,7 @@ inductive ExcCls : String → Prop
   | keyError : ExcCls "KeyError"
   | rangeError : ExcCls "RangeError"
   | ioError : ExcCls "IOError"
+  | eofError : ExcCls "EOFError"
   | frozenError : ExcCls "FrozenError"
   | notImplementedError : ExcCls "NotImplementedError"
 
@@ -181,7 +182,7 @@ inductive ExcCls : String → Prop
 def excCls? : String → Bool
   | "StandardError" | "RuntimeError" | "ArgumentError" | "TypeError" | "NameError"
   | "NoMethodError" | "ZeroDivisionError" | "IndexError" | "KeyError" | "RangeError"
-  | "IOError" | "FrozenError" | "NotImplementedError" => true
+  | "IOError" | "EOFError" | "FrozenError" | "NotImplementedError" => true
   | _ => false
 
 /-- The primitive-method signature table, as a **relation** with one constructor per

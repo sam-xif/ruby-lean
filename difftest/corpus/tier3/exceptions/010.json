@@ -1,0 +1,5 @@
+{
+  "tier": 3,
+  "category": "exceptions",
+  "description": "IOError and EOFError are real constants with CRuby's ancestry and message."
+}

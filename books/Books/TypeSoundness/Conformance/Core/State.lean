@@ -486,7 +486,7 @@ theorem currentFrame_headD {m : Machine} (h : m.stack ≠ []) :
   | cons fid rest => simp [Machine.currentFrame, hs]
 
 /-- The class names the three `.const` rules can conclude about without the program having
-declared anything: `BuiltinCls`'s nine (`Judge.constBuiltin`) and `ExcCls`'s thirteen
+declared anything: `BuiltinCls`'s nine (`Judge.constBuiltin`) and `ExcCls`'s fourteen
 (`Judge.constExc`). A **list** rather than a predicate, so `CoreOk`'s clause about them is one
 decidable `Bool` at the booted heap (`Books/TypeSoundness/Conformance/Core/Boot.lean`) instead of a quantifier over
 `String`. -/
@@ -495,7 +495,7 @@ def coreClsNames : List String :=
    "Hash",
    "StandardError", "RuntimeError", "ArgumentError", "TypeError", "NameError",
    "NoMethodError", "ZeroDivisionError", "IndexError", "KeyError", "RangeError",
-   "IOError", "FrozenError", "NotImplementedError"]
+   "IOError", "EOFError", "FrozenError", "NotImplementedError"]
 
 /-- The boot metaclasses of Integer and String: `Integer === x` and `String === x` dispatch
 from here, where Module#=== is installed (checked at boot by `coreDataB`).
@@ -506,8 +506,8 @@ exception eigenclasses, so the ids depend on the whole boot. They are re-pinned 
 hand whenever a bootstrap class or a boot-time eigenclass is added, and `#guard
 bootOkB` catches a stale value. Deriving them from the heap instead of pinning
 them is tracked as follow-up debt. -/
-def intMetaId : ObjId := 87
-def strMetaId : ObjId := 96
+def intMetaId : ObjId := 91
+def strMetaId : ObjId := 100
 
 /-- **The core classes are what they are.**
 
@@ -561,10 +561,9 @@ structure CoreOk (h : Heap) : Prop where
       The two `.const` rules that need no declaration (`constBuiltin`, `constExc`) conclude
       `.clsOf n` for a name out of a fixed list, and `isClassRefNamed` answers `false` unless
       the name resolves to something carrying a class payload. Stated as an implication rather
-      than as "the class exists", because one of the twenty-two does **not** exist in the
-      booted heap: the model has no `IOError`. At an unbound name `evalExpr` gates
-      (`.unsupported`) or raises, so no value is produced and `Judge.constExc`'s obligation at
-      `"IOError"` is discharged by having no case rather than by a fact about the heap. -/
+      than as "the class exists": `evalExpr` may gate (`.unsupported`) or raise before it
+      produces a value, and when it does there is no obligation. The list's error classes are
+      bound in the boot heap, so `Judge.constExc`'s rows are discharged by the table. -/
   coreNamed : ∀ n ∈ coreClsNames, ∀ v, constLookup h n = some v →
     ∃ o, v = .ref o ∧ (h.classPayload? o).isSome = true
   /-- Integer's and String's dispatch classes stay their boot metaclasses. -/

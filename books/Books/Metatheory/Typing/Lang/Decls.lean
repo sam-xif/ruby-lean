@@ -108,6 +108,8 @@ def bootConstNames : List String :=
    "IndexError",
    "KeyError",
    "RangeError",
+   "IOError",
+   "EOFError",
    "StopIteration",
    "NotImplementedError",
    "ScriptError",
@@ -892,8 +894,9 @@ and `NoMethodError`, read as `raise ArgumentError, "…"`.
 The rows are free, and *measured* free: `scripts/probes/reopen_probe.lean` decides all seven
 `ClassOk` clauses for every candidate, and all fourteen below pass all seven. Nothing
 in `books/Books/Metatheory/` changes — `ClassOk` is quantified over the list — so the whole cost is
-`classOkB` still answering `true`, which `check-proofs.sh` runs. (The probe also
-refuses `IOError`: it is not a constant of `Object` at the booted heap at all.) -/
+`classOkB` still answering `true`, which `check-proofs.sh` runs. (`IOError` and
+`EOFError` are boot constants now, but nothing in the slice reopens them, so they
+stay off the list.) -/
 def reopenableClasses : List String :=
   ["String", "Integer", "Symbol", "NilClass", "TrueClass", "FalseClass",
    "Proc", "Exception",
@@ -945,9 +948,9 @@ def bootClassNames : List String :=
    "FalseClass", "Integer", "Float", "String", "Symbol", "Array", "Hash",
    "Exception", "StandardError", "RuntimeError", "ArgumentError", "TypeError",
    "NameError", "NoMethodError", "ZeroDivisionError", "LocalJumpError",
-   "FrozenError", "IndexError", "KeyError", "RangeError", "StopIteration",
-   "NotImplementedError", "ScriptError", "Proc", "Random", "Math", "Range",
-   "Kernel", "Numeric", "UncaughtThrowError", "Regexp", "MatchData",
+   "FrozenError", "IndexError", "KeyError", "RangeError", "IOError", "EOFError",
+   "StopIteration", "NotImplementedError", "ScriptError", "Proc", "Random", "Math",
+   "Range", "Kernel", "Numeric", "UncaughtThrowError", "Regexp", "MatchData",
    "RegexpError"]
 
 /-- **A well-formed fresh definition name** (J56): nonempty, no `::` (the parser

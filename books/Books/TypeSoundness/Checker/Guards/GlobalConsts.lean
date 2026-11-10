@@ -8,7 +8,7 @@ def bootGlobalConsts : List String :=
    "TrueClass", "FalseClass", "Integer", "Float", "String", "Symbol", "Array", "Hash",
    "Exception", "StandardError", "RuntimeError", "ArgumentError", "TypeError", "NameError",
    "NoMethodError", "ZeroDivisionError", "LocalJumpError", "FrozenError", "IndexError",
-   "KeyError", "RangeError", "StopIteration", "NotImplementedError", "ScriptError", "Proc",
+   "KeyError", "RangeError", "IOError", "EOFError", "StopIteration", "NotImplementedError", "ScriptError", "Proc",
    "Random", "Math", "Range", "Kernel", "Numeric", "UncaughtThrowError", "Regexp",
    "MatchData", "RegexpError", "Rational", "Complex", "Enumerator"]
 

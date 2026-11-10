@@ -5,6 +5,7 @@ import Books.TypeSoundness.Controls.CallbackSourceControls
 import Books.TypeSoundness.Controls.ClassHookControls
 import Books.TypeSoundness.Controls.ClosureFlowControls
 import Books.TypeSoundness.Controls.ConstantReachControls
+import Books.TypeSoundness.Controls.ExceptionClassControls
 import Books.TypeSoundness.Controls.FrozenDefinitionControls
 import Books.TypeSoundness.Controls.InitBodyControls
 import Books.TypeSoundness.Controls.InstanceCallerControls

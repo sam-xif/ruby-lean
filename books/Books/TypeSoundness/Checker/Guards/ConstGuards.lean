@@ -18,7 +18,7 @@ def reservedConstNames : List String :=
   ["Integer", "Float", "String", "Symbol", "NilClass", "TrueClass", "FalseClass", "Array",
    "Hash", "StandardError", "RuntimeError", "ArgumentError", "TypeError", "NameError",
    "NoMethodError", "ZeroDivisionError", "IndexError", "KeyError", "RangeError",
-   "IOError", "FrozenError", "NotImplementedError"]
+   "IOError", "EOFError", "FrozenError", "NotImplementedError"]
 
 def casgnTopB (κ : Ctx) (Γ : Env) (I τ : Ty) (n : String) : Bool :=
   constValTyB τ && FirstOrder τ && localTypesB Γ && reframeTypesB κ I &&
