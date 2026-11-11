@@ -71,20 +71,45 @@ which object the loop works on. -/
     `raise_to`. None of that is written out here: the kernel computes it. -/
 def entry (b n : Int) : Machine := (stepN 61 (start (program b n))).getD default
 
+/-! ### The objects the loop touches
+
+A bootstrap class or a boot fixture object moves every id the program allocates.
+A pinned id then names a *different* object, and nothing fails where the id is
+written: the stub theorems still type-check, because both sides of them reduce to
+the same wrong machine, so the mismatch surfaces at the use site instead (issue
+#53). Each id is therefore read off the heap by the invariant that makes it that
+object, and the guards at the end of this section fail loudly if the invariant
+stops holding. -/
+
+/-- `o` is the `Power` instance: `initialize` is the only thing in the program
+    that writes both `@base` and `@steps`. -/
+def isPowerObject (o : Object) : Bool :=
+  o.ivars.any (fun p => p.1 == "@base") && o.ivars.any (fun p => p.1 == "@steps")
+
+/-- The id of the `Power` instance in `h`, or `0` if `h` holds none — which
+    `setup` then fails on, rather than writing the loop's state into object 0. -/
+def powerIdOf (h : Heap) : ObjId := (h.objs.findIdx? isPowerObject).getD 0
+
+/-- The Array the program answers with is the last object it allocates, so it is
+    the last object of the heap at `final` (guarded below). -/
+def resultIdOf (h : Heap) : ObjId := h.objs.size - 1
+
 /-- The machine at the loop test when the loop's variables hold these values.
     Everything the loop does not touch is taken from `entry`; what it does
     touch is spelled out — the locals of `raise_to`'s frame (frame 3) and the
-    instance variables of the `Power` object (object 114), whose `revision`
-    counts the writes it has received. -/
+    instance variables of the `Power` object, whose `revision` counts the writes
+    it has received. Which object that is comes from `powerIdOf`, not from an id
+    written here. -/
 def loopHead (b n : Int) (result square left : Int) (steps : Nat) : Machine :=
   let m := entry b n
+  let id := powerIdOf m.heap
   let f := m.frames.getD 3 default
-  let o := m.heap.objs.getD 114 default
+  let o := m.heap.objs.getD id default
   { m with
     frames := m.frames.set! 3 { f with locals :=
       [("left", .int left), ("square", .int square), ("result", .int result),
        ("exponent", .int n)] }
-    heap := { m.heap with objs := m.heap.objs.set! 114 { o with
+    heap := { m.heap with objs := m.heap.objs.set! id { o with
       ivars := [("@steps", .int steps), ("@base", .int b)], revision := steps + 2 } } }
 
 /-- `left > 0` has been evaluated to `t` and the `while` is about to act on it. -/
@@ -138,6 +163,17 @@ theorem even_iter (b n r s e : Int) (c : Nat) :
 def final (b n r s e : Int) (c : Nat) : Machine :=
   (stepN 21 (tested b n r s e c false)).getD default
 
+/-! The two reads above are only as good as the invariants they name, so each is
+    guarded here: the heap holds exactly one `Power` instance, at the loop head
+    and at `final`, and the program allocates exactly one object between the two
+    — the Array it answers with — so `resultIdOf` names it. Both sides of each
+    comparison move with the boot, so an additive boot change keeps passing; a
+    change to the program, or a second object carrying `@base`/`@steps`, fails
+    here instead of somewhere below. -/
+#guard ((entry 3 2).heap.objs.filter isPowerObject).size == 1
+#guard ((final 3 2 9 4 1 0).heap.objs.filter isPowerObject).size == 1
+#guard (final 3 2 9 4 1 0).heap.objs.size == (entry 3 2).heap.objs.size + 1
+
 theorem leave (b n r s e : Int) (c : Nat) :
     stepN 21 (tested b n r s e c false) = some (final b n r s e c) := by kernel_rfl
 
@@ -151,7 +187,8 @@ theorem finish (b n r s e : Int) (c : Nat) :
     stepFn (final b n r s e c) = .done (outcome b n r s e c).1 (outcome b n r s e c).2 := by
   kernel_rfl
 
-theorem outcome_value (b n r s e : Int) (c : Nat) : (outcome b n r s e c).1 = .ref 115 := by
+theorem outcome_value (b n r s e : Int) (c : Nat) :
+    (outcome b n r s e c).1 = .ref (resultIdOf (final b n r s e c).heap) := by
   kernel_rfl
 
 /-- What `puts answer` wrote: the decimal digits of `result` and a newline. -/
@@ -161,7 +198,8 @@ theorem outcome_out (b n r s e : Int) (c : Nat) :
 
 /-- The value is an Array of the final `result` and `@steps`. -/
 theorem outcome_array (b n r s e : Int) (c : Nat) :
-    ((outcome b n r s e c).2.heap.get 115).payload = .arr #[.int r, .int c] := by kernel_rfl
+    ((outcome b n r s e c).2.heap.get (resultIdOf (final b n r s e c).heap)).payload
+      = .arr #[.int r, .int c] := by kernel_rfl
 
 /-! ## 3. Arithmetic -/
 
@@ -291,7 +329,8 @@ theorem fast_power_correct (b n : Int) :
   let r := b ^ n.toNat
   let c := bitLength n.toNat
   refine ⟨(outcome b n r s' e' c).1, (outcome b n r s' e' c).2, ⟨_, boot_ok _, ?_⟩, ?_,
-    115, outcome_value b n r s' e' c, outcome_array b n r s' e' c⟩
+    resultIdOf (final b n r s' e' c).heap, outcome_value b n r s' e' c,
+    outcome_array b n r s' e' c⟩
   · exact .of_reaches
       ((Reaches.of_stepN (setup b n)).trans <| hloop.trans (.of_stepN (leave b n r s' e' c)))
       (finish b n r s' e' c)
