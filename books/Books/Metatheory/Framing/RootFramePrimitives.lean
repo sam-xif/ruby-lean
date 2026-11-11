@@ -924,6 +924,13 @@ set_option maxRecDepth 400000 in
     | (rw [foldPairArray_frame K]; try simp only [rootFrameLem])
     | intro _)
 
+@[rootFrameLem] theorem caseMapping_frame (K : List Kont) (down : Bool) (recv : Value)
+    (args : List Value) (m : Machine) :
+    caseMapping down recv args (pushRootK K m) = bRootPush K (caseMapping down recv args m) := by
+  rw [caseMapping.eq_def, caseMapping.eq_def]
+  root_simp
+  root_arms
+
 set_option maxHeartbeats 4000000 in
 set_option maxRecDepth 400000 in
 @[rootFrameLem] theorem runStrings_frame (K : List Kont) (bid : String) (recv : Value)

@@ -39,9 +39,12 @@ theorem strUpcase_step {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Mac
       (by first | rfl | simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
         nativeReal, rationalPayload?, complexPayload?, Builtins.toAryDefer?,
         Builtins.strCmpDefer?, Builtins.strCmpTwin?, hs]) (by rfl) hfree]
-    have he : Builtins.runObjects "String#upcase" (.ref o) [] m = Builtins.okStrEnc m (Builtins.isBinaryStr m.heap (.ref o)) s.toUpper := by
+    have he : Builtins.runObjects "String#upcase" (.ref o) [] m =
+        Builtins.okStrEnc m (Builtins.isBinaryStr m.heap (.ref o))
+          (if Builtins.isBinaryStr m.heap (.ref o) then s.toUpper else unicodeUpper s) := by
       change Builtins.runStrings "String#upcase" (.ref o) [] m = _
-      simp [Builtins.runStrings, Builtins.strPayload?, hs, Builtins.okStrFrom]
+      by_cases hb : Builtins.isBinaryStr m.heap (.ref o) <;>
+        simp [Builtins.runStrings, Builtins.caseMapping, Builtins.strPayload?, Builtins.okStrFrom, hs, hb]
     rw [string_nullary_run (bid := "String#upcase") _ _ rfl (by decide +kernel) (by decide +kernel), he]
     exact stepSpec_string hm hk _ _
 
@@ -163,9 +166,12 @@ theorem strDowncase_step {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : M
       (by first | rfl | simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
         nativeReal, rationalPayload?, complexPayload?, Builtins.toAryDefer?,
         Builtins.strCmpDefer?, Builtins.strCmpTwin?, hs]) (by rfl) hfree]
-    have he : Builtins.runObjects "String#downcase" (.ref o) [] m = Builtins.okStrEnc m (Builtins.isBinaryStr m.heap (.ref o)) s.toLower := by
+    have he : Builtins.runObjects "String#downcase" (.ref o) [] m =
+        Builtins.okStrEnc m (Builtins.isBinaryStr m.heap (.ref o))
+          (if Builtins.isBinaryStr m.heap (.ref o) then s.toLower else unicodeLower s) := by
       change Builtins.runStrings "String#downcase" (.ref o) [] m = _
-      simp [Builtins.runStrings, Builtins.strPayload?, hs, Builtins.okStrFrom]
+      by_cases hb : Builtins.isBinaryStr m.heap (.ref o) <;>
+        simp [Builtins.runStrings, Builtins.caseMapping, Builtins.strPayload?, Builtins.okStrFrom, hs, hb]
     rw [string_nullary_run (bid := "String#downcase") _ _ rfl (by decide +kernel) (by decide +kernel), he]
     exact stepSpec_string hm hk _ _
 
