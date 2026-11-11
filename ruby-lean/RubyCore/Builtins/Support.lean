@@ -952,6 +952,125 @@ def hshPayload? (h : Heap) : Value → Option (Array (Value × Value))
 /-- The legacy class hint is superseded by effectful real-class.to_s rendering. -/
 def frozenErr (m : Machine) (recv : Value) (_cls : String) : BRes :=
   .frozen recv m
+
+/-! ### `Array#[]=`
+
+Two subscript shapes reach one element write: `rb_ary_aset` converts an Integer
+subscript with `rb_num2long` and stores one element, while a **Range** subscript
+goes through `rb_range_beg_len` + `rb_ary_splice` and may insert, delete or grow
+the array. -/
+
+/-- `Array#[]=` with an Integer subscript: one element is written, and an index
+    past the end pads the gap with `nil` [V]. The subscript is converted before
+the frozen check, which is CRuby's order (`rb_ary_aset` converts, then
+`rb_ary_modify`) — see `aryAsetRange` for the Range shape. -/
+def arrayAsetInt (m : Machine) (o : ObjId) (xs : Array Value) (iv v : Value) : BRes :=
+  withIndex m iv "Array#[]= non-int index" fun i =>
+    if (m.heap.get o).frozen then frozenErr m (.ref o) "Array"
+    else
+      let idx := if i < 0 then i + xs.size else i
+      if idx < 0 then
+        .err Boot.indexErrorId
+          s!"index {i} too small for array; minimum: -{xs.size}" m
+      else
+        let xs := if idx.toNat ≥ xs.size
+          then (xs ++ Array.replicate (idx.toNat - xs.size + 1) Value.nil).set! idx.toNat v
+          else xs.set! idx.toNat v
+        .ok v { m with heap := m.heap.set o { m.heap.get o with payload := .arr xs } }
+
+/-- How a Range subscript resolves against an Array of `n` elements:
+    `rb_range_beg_len` answers `(beg, count)`, and the two ways it can fail are
+    kept apart because only one of them renders the range. -/
+inductive RangeSplice where
+  /-- replace `count` elements at `beg`; `beg` may exceed the array, which pads -/
+  | ok (beg : Int) (count : Nat)
+  /-- the start is still negative after counting from the end: `RangeError`
+      naming the range -/
+  | tooSmall
+  /-- an endpoint the model does not convert (it would have to dispatch) -/
+  | gate (why : String)
+  /-- an endpoint that raises, e.g. NaN -/
+  | err (cls : ObjId) (msg : String)
+
+/-- One `rb_num2long` endpoint of a Range subscript, as a `RangeSplice` when it
+    fails rather than converts. -/
+def rangeBound (h : Heap) (v : Value) : Except RangeSplice Int :=
+  match numIndex h true v with
+  | .ok n => .ok n
+  | .gate w => .error (.gate (w.getD "Array#[]= range: an endpoint that dispatches"))
+  | .err c msg => .error (.err c msg)
+
+/-- `rb_range_beg_len(range, &beg, &len, n, 1)`. Negative endpoints count from
+    the end and a finite Float truncates toward zero (`rb_num2long`); a start
+    still negative after that is `tooSmall`, and `nil` endpoints are the
+    beginless (0) and endless (to the end) forms. `count` is what
+    `rb_ary_splice` removes: it never reaches past the end, and an empty range
+    (`beg > end`) removes nothing, which inserts at `beg` [V].
+
+    An endless Range is *not* "end at the last index": CRuby answers a length of
+    -1 there, so `a[1..]` and `a[1...]` both replace to the end of the array. -/
+def rangeSplice (h : Heap) (n : Nat) (lo hi : Value) (excl : Bool) : RangeSplice :=
+  let sz : Int := Int.ofNat n
+  let begE : Except RangeSplice Int := match lo with
+    | .nil => .ok 0
+    | b => rangeBound h b
+  match begE with
+  | .error r => r
+  | .ok b0 =>
+    let beg := if b0 < 0 then b0 + sz else b0
+    if beg < 0 then .tooSmall
+    else
+      let endE : Except RangeSplice (Option Int) := match hi with
+        | .nil => .ok none
+        | e => (rangeBound h e).map some
+      match endE with
+      | .error r => r
+      | .ok none => .ok beg (max 0 (sz - beg)).toNat
+      | .ok (some e0) =>
+        let e := if e0 < 0 then e0 + sz else e0
+        let count0 : Int := if excl then e - beg else e - beg + 1
+        .ok beg (max 0 (min count0 (sz - beg))).toNat
+
+/-- The elements an `Array#[]=` with a Range splices in: an Array value
+    contributes its elements, `nil` is the single value `nil` (not an empty
+    list), and anything else is one element. An object that could answer
+    `to_ary` would have to dispatch, so it answers `none` and the caller gates. -/
+def arraySpliceValue (h : Heap) (v : Value) : Option (Array Value) :=
+  match arrPayload? h v with
+  | some vs => some vs
+  | none =>
+    match v with
+    | .nil => some #[Value.nil]
+    | _ => if mayDispatchToAry h v then none else some #[v]
+
+/-- `Array#[]=` with a Range subscript: resolve with `rangeSplice`, then splice.
+    The range itself is a parameter because `tooSmall` raises
+    `RangeError "<range> out of range"`, and CRuby names the range through `%+`.
+
+    The value becomes its **elements** when it is an Array (`nil` is the single
+    value `nil`, not an empty list), and the single value otherwise; an object
+    that could answer `to_ary` would have to dispatch, so it gates. A `beg` past
+    the end pads with `nil` before the replacement [V]. -/
+def aryAsetRange (m : Machine) (o : ObjId) (xs : Array Value) (lo hi : Value)
+    (excl : Bool) (rng v : Value) : BRes :=
+  match rangeSplice m.heap xs.size lo hi excl with
+  | .err c msg => .err c msg m
+  | .gate w => .unsupported w
+  | .tooSmall =>
+    match toSP m rng with
+    | .ok s => .err Boot.rangeErrorId s!"{s} out of range" m
+    | .error _ => .unsupported "Array#[]= range out of range (the message renders the range)"
+  | .ok beg count =>
+    let n : Int := Int.ofNat xs.size
+    match arraySpliceValue m.heap v with
+    | none => .unsupported "Array#[]= range: a value that could dispatch to_ary"
+    | some repl =>
+      let kept := (xs.toList.take beg.toNat).toArray
+      let pad := Array.replicate (max 0 (beg - n)).toNat Value.nil
+      let rest := (xs.toList.drop (beg + count).toNat).toArray
+      let xs' := kept ++ pad ++ repl ++ rest
+      .ok v { m with heap := m.heap.set o { m.heap.get o with payload := .arr xs' } }
+
 /-- puts: no args → newline; array → recursive per element; string keeps
     an existing trailing newline; nil → blank line; else to_s [V]. -/
 def putsGo (m : Machine) (args : List Value) : Nat → Option Machine

@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed for #27's family (a probe found it; guard, not campaign output)",
+  "arm": "hand",
+  "case_id": "array-assign-range",
+  "observed_then": "disagree",
+  "diff_then": "stdout: '' vs '[1, 0]\\n' | exception: (TypeError: no implicit conversion of Range into Integer) vs (none)",
+  "note": "Array#[]= routed every two-argument write through rb_num2long, so a Range subscript raised TypeError: no implicit conversion of Range into Integer where CRuby runs rb_range_beg_len + rb_ary_splice and answers. A wrong answer in the TypeError family, not a gate. The program pins the whole resolution matrix: which elements a range replaces, an empty range inserting at beg, a start past the end padding with nil, negative endpoints counting from the end, a start too small even after that as RangeError \"<range> out of range\", endless and beginless subscripts, Float endpoints truncating toward zero, the value side (an Array value's elements, nil as the single value nil, anything else one element), the returned value, in-place growth, and the frozen check coming before the range resolution. Exact program agrees with CRuby 4.0.5.",
+  "fixed_in": "Array#[]= with a Range models rb_range_beg_len + rb_ary_splice"
+}
