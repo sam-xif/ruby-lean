@@ -553,8 +553,69 @@ module Enumerable
     best
   end
 
+  # With a block, `minmax` walks the elements **pairwise**, as CRuby's
+  # `enum_minmax` does: it compares two consecutive elements once, then the
+  # smaller with the running minimum and the larger with the running maximum,
+  # and compares a trailing odd element last. The block is a comparison over
+  # those pairs, not a key function, so `[min { ... }, max { ... }]` would
+  # answer the wrong pair for a block that is not a pure function of its
+  # arguments, and would run it in another order.
+  #
+  # Without a block the pair is the same under any total order, so it stays
+  # `[min, max]`: that is how CRuby's `Array#minmax` answers, and `min`/`max`
+  # are already the builtins that gate when `<=>` is not modeled.
   def minmax
-    [min, max]
+    return [min, max] unless block_given?
+    minv = nil
+    maxv = nil
+    have = false
+    last = nil
+    has_last = false
+    each { |x|
+      if !has_last
+        last = x
+        has_last = true
+        next
+      end
+      j = last
+      has_last = false
+      c = yield(j, x)
+      return __unsupported__("Enumerable#minmax with a nil comparison") if c.nil?
+      if c == 0
+        x = j
+      elsif c < 0
+        tmp = x
+        x = j
+        j = tmp
+      end
+      if !have
+        minv = x
+        maxv = j
+        have = true
+      else
+        c = yield(x, minv)
+        return __unsupported__("Enumerable#minmax with a nil comparison") if c.nil?
+        minv = x if c < 0
+        c = yield(j, maxv)
+        return __unsupported__("Enumerable#minmax with a nil comparison") if c.nil?
+        maxv = j if c > 0
+      end
+    }
+    if has_last
+      x = last
+      if !have
+        minv = x
+        maxv = x
+      else
+        c = yield(x, minv)
+        return __unsupported__("Enumerable#minmax with a nil comparison") if c.nil?
+        minv = x if c < 0
+        c = yield(x, maxv)
+        return __unsupported__("Enumerable#minmax with a nil comparison") if c.nil?
+        maxv = x if c > 0
+      end
+    end
+    [minv, maxv]
   end
 
   # Insertion sort over an extracted key vector: `<=>` dispatch means user
