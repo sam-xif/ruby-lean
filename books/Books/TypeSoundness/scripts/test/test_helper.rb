@@ -5,14 +5,14 @@
 # with coverage-baseline.json).
 require "simplecov"
 
-ROOT = File.expand_path("../../..", __dir__)
+ROOT = File.expand_path("../../../../..", __dir__)
 
 SimpleCov.start do
   root ROOT
   coverage_dir ".make/coverage/emitter"
   command_name "emitter-unit"
   enable_coverage :branch
-  cover "books/scripts/emit_deriv.rb", "books/scripts/read_sigs.rb"
+  cover "books/Books/TypeSoundness/scripts/emit_deriv.rb", "books/Books/TypeSoundness/scripts/read_sigs.rb"
   formatter SimpleCov::Formatter::SimpleFormatter
 end
 

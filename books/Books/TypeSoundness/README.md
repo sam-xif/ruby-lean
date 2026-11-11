@@ -28,7 +28,7 @@ rule the checker has enabled. Every file in this directory builds.
 
 ```sh
 make soundness                                          # from the repository root
-cd books && ./scripts/check-soundness.sh --proofs-only  # the proofs without the corpus
+scripts/check-soundness.sh --proofs-only                # here: the proofs without the corpus
 ```
 
 ## How the proof is put together
@@ -54,8 +54,23 @@ in a fresh kernel. To review what the book claims, read that file. Its `sorry`s
 are deliberate and are the only ones in the book.
 
 [`Semantics/Interp.lean`](Semantics/Interp.lean) is where the model's `stepFn`
-is imported and `typeStuck` is defined. `Report/Active.lean` is the source of
-the corpus report that `make soundness` prints.
+is imported and `typeStuck` is defined.
+
+## The corpus and the scripts
+
+Everything the checker is measured with is in this directory too.
+
+| Path | Contents |
+|---|---|
+| [`corpus/`](corpus/) | 267 Sorbet-annotated Ruby programs. Each `NNN-name.rb` has a `NNN-name.meta.json` saying what Sorbet and the checker are expected to answer. `accepted.txt` records which ones the checker accepts |
+| `scripts/check-soundness.sh` | The whole check: what `make soundness` runs |
+| `scripts/srb_sigs.py`, `read_sigs.rb`, `emit_deriv.rb` | The untrusted scripts in front of the checker: read the signatures (with Sorbet, or with Prism for the browser) and propose a typing derivation |
+| `scripts/build_corpus.py`, `check_pipeline.py`, `record_baseline.py`, `cmp_sig_readers.py` | Run the corpus through those scripts; the pipeline's own controls; record expected answers; compare the two signature readers |
+| `scripts/generate_audited_checker.py`, `check-isolation.sh` | Regenerate `Checker/Audit/`; check that the checker imports nothing outside itself |
+| `scripts/run-comparator.sh` | What `make comparator` runs |
+| `Report/` | The corpus report that `make soundness` prints, and its executable (`corpus-report`) |
+| `Probes/AxiomAudit.lean` | Prints the axioms of the supporting lemmas and of a few worked end-to-end theorems; the check fails on any outside Lean's three |
+| `build/` | Output of `build_corpus.py`. Not committed |
 
 `Conformance/` is grouped by the part of the machine state a lemma is about:
 

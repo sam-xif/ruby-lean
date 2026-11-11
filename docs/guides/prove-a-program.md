@@ -8,8 +8,9 @@ and returns what the theorem says.
 A proof about one program lives in a *program book*: a directory under
 `books/Books/` with the program, the program as a Lean term, and the proof.
 [`Books/FastPower/`](https://github.com/sam-xif/ruby-lean/tree/main/books/Books/FastPower)
-is a complete one. It proves that an exponentiation-by-squaring loop computes
-`b ** n` for every `b` and `n`.
+is a complete one. It states what it means to compute `b ** n`, proves that a
+simple loop and an exponentiation-by-squaring loop both do, and proves that the
+second takes fewer steps.
 
 ## 1. Start a book
 
@@ -107,7 +108,7 @@ def program (a b : Int) : Expr :=
 
 and state the `#guard` in `Check.lean` for `program 48 18`. Giving names to the
 subterms the proof will mention (the loop condition, the loop body) keeps the
-states below readable; `FastPower/Program.lean` does this.
+states below readable; `FastPower/Fast/Program.lean` does this.
 
 ## 4. Find where the kernel stops
 
@@ -132,10 +133,23 @@ Each line is one transition: the activation stack, the sizes of the frame store
 and the heap, the control, and the continuation. This is where the frame and
 object numbers in the next step come from.
 
-## 5. States, segments, arithmetic, induction
+## 5. Specification, states, segments, invariant
 
-A proof about a loop has four parts. `FastPower/Proof.lean` is about 300 lines
-and is laid out in this order.
+A proof about a loop has four parts. `FastPower/Fast/Proof.lean` is about 200
+lines and is laid out in this order.
+
+**Specification.** Say what the program must do without mentioning how. In
+`FastPower/Spec.lean`:
+
+```lean
+def PowerResult (b : Int) (n : Nat) (v : Value) (m' : Machine) : Prop :=
+  v = .int (b ^ n) ∧ m'.out = toString (b ^ n) ++ "\n"
+
+def ComputesPower (program : Int → Nat → Expr) : Prop :=
+  ∀ (b : Int) (n : Nat), ∃ v m', Runs (program b n) v m' ∧ PowerResult b n v m'
+```
+
+Any program can be measured against it. The book proves it of two.
 
 **States.** Define the machine at the loop test as a function of the loop's
 variables. Do not write it out in full. Take everything the loop leaves alone
@@ -143,9 +157,9 @@ variables. Do not write it out in full. Take everything the loop leaves alone
 and spell out only what changes:
 
 ```lean
-def entry (b n : Int) : Machine := (stepN 61 (start (program b n))).getD default
+def entry (b : Int) (n : Nat) : Machine := (stepN 51 (start (program b n))).getD default
 
-def loopHead (b n : Int) (result square left : Int) (steps : Nat) : Machine :=
+def loopHead (b : Int) (n : Nat) (result square left : Int) : Machine :=
   let m := entry b n
   { m with frames := …the locals of the loop's frame… }
 ```
@@ -153,32 +167,46 @@ def loopHead (b n : Int) (result square left : Int) (steps : Nat) : Machine :=
 **Segments.** Prove each straight stretch between two states by running it:
 
 ```lean
-theorem setup (b n : Int) :
-    stepN 61 (start (program b n)) = some (loopHead b n 1 b n 0) := by kernel_rfl
+theorem setup (b : Int) (n : Nat) :
+    stepN 51 (start (program b n)) = some (loopHead b n 1 b n) := by kernel_rfl
 
-theorem odd_iter (b n r s e : Int) (c : Nat) :
-    stepN 34 (parity b n r s e c true)
-      = some (loopHead b n (r * s) (s * s) (Int.fdiv e 2) (c + 1)) := by kernel_rfl
+theorem odd_body (b : Int) (n : Nat) (r s e : Int) :
+    stepN 26 (parity b n r s e true)
+      = some (loopHead b n (r * s) (s * s) (Int.fdiv e 2)) := by kernel_rfl
 ```
 
 Each is one line, and each holds for all values of the variables. The right-hand
 side shows what Ruby's operators became: `left / 2` on integers is `Int.fdiv`.
 
-**Arithmetic.** Prove the loop invariant as a fact about integers, with no Ruby
-in it. For fast exponentiation it is `result * square ^ left = b ^ n`.
-
-**Induction.** Join the segments with the invariant by induction on the loop's
-measure. The result for `FastPower`:
+**Invariant.** State one invariant over the machine and prove it inductive.
+The program's *cut points* are its start and the head of each loop. The
+invariant says which cut point the machine is at, what the loop invariant says
+about the machine's own frame there, and how many transitions remain:
 
 ```lean
-theorem fast_power_correct (b n : Int) :
-    ∃ v m', Runs (program b n) v m' ∧
-      m'.out = toString (b ^ n.toNat) ++ "\n" ∧
-      IsArray m'.heap v [.int (b ^ n.toNat), .int (bitLength n.toNat)]
+inductive Inv (b : Int) (n : Nat) : Nat → Machine → Prop
+  | start : Inv b n (cost n) (start (program b n))
+  | loop (result square : Int) (left : Nat) (h : result * square ^ left = b ^ n) :
+      Inv b n (loopCost left) (loopHead b n result square left)
 ```
 
-For every base and exponent the program terminates, prints `b ** n`, and returns
-`[b ** n, s]` where `s` is the number of loop iterations.
+It is inductive (`Inductive` in `Lib/Invariant.lean`) when every machine it
+holds of either runs on to another machine it holds of, spending exactly the
+transitions it claims, or finishes in a state the specification accepts. Proving
+that takes one case per path between cut points: the segments supply the
+execution, and ordinary arithmetic shows the loop invariant is re-established.
+`Inductive.returnsIn` then gives termination, the result, and the exact running
+time at once; the remaining count is the termination measure.
+
+```lean
+theorem computes_power : ComputesPowerIn program cost := fun b n =>
+  (inv_inductive b n).returnsIn .start
+```
+
+Because the invariant counts transitions, running times can be compared.
+`FastPower/Faster.lean` proves the simple loop takes `24 * n + 65` transitions,
+the squaring loop at most `43 * bitLength n + 69`, and so the second takes fewer
+for every exponent from 6 up.
 
 Two habits keep these proofs fast. Establish arithmetic facts before any fact
 about a machine is in context, because `omega` is slow when it has to read one.
@@ -207,6 +235,7 @@ is what every program book imports.
 |---|---|
 | `Exec.lean` | `stepN`, `Reaches`, `Returns` and their algebra; the `kernel_rfl` tactic; the `#kernel_steps` and `#kernel_whnf` commands |
 | `Boot.lean` | `start p`, the booted machine `rubycore` runs `p` on, with `boot_ok`; `Runs`; `IsArray` |
+| `Invariant.lean` | `Inductive`, an invariant at a program's cut points that counts transitions, and `Inductive.returnsIn`; `ReturnsIn`, `RunsIn` |
 | `Trace.lean` | `trace` and `showState`, for looking at concrete runs |
 
 ## Limits

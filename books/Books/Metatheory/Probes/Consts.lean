@@ -3,8 +3,8 @@ import Books.Metatheory.Typing.Infer.Decls
 
 /-!
 The measurement the **constant-table** rung owes before anything is proved — the
-same move `names_probe.lean` made for the declaration rows and
-`ancestors_probe.lean` for the fuel clause, and for the same reason
+same move `Probes/Names.lean` made for the declaration rows and
+`Probes/Ancestors.lean` for the fuel clause, and for the same reason
 .
 
 ## The question, and why it is not the one the rung looks like
@@ -56,7 +56,7 @@ current definee's chain owns this name*, and at the booted heap it is discharged
 which is why it is a report rather than a failure — and the moment
 `reopenableClasses` grows to something under `T`, this probe stops exiting 0.
 
-    lake env lean --run scripts/probes/consts_probe.lean
+    lake env lean --run Books/Metatheory/Probes/Consts.lean
       -- exit 0 iff `Object` is reachable from every keyable class and nothing
       -- strictly in front of it on an admitted chain owns a constant
 -/
