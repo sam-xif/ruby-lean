@@ -497,17 +497,29 @@ def coreClsNames : List String :=
    "NoMethodError", "ZeroDivisionError", "IndexError", "KeyError", "RangeError",
    "IOError", "FrozenError", "NotImplementedError"]
 
-/-- The boot metaclasses of Integer and String: `Integer === x` and `String === x` dispatch
-from here, where Module#=== is installed (checked at boot by `coreDataB`).
+/-- The eigenclass the prelude boot realized on a class object, read off the boot itself.
 
-These are ids in the **prelude-booted** heap (`Prelude.boot`), not `H₀`'s: phase 1
-realizes the `File`/`Dir`/`IO` singleton eigenclasses (issue #7 step 1) and the
-exception eigenclasses, so the ids depend on the whole boot. They are re-pinned by
-hand whenever a bootstrap class or a boot-time eigenclass is added, and `#guard
-bootOkB` catches a stale value. Deriving them from the heap instead of pinning
-them is tracked as follow-up debt. -/
-def intMetaId : ObjId := 87
-def strMetaId : ObjId := 96
+Phase 1 of the boot runs the prelude, which realizes the `File`/`Dir`/`IO` singleton
+eigenclasses (issue #7 step 1), the exception eigenclasses and the eigenclasses of every
+class in `Boot.classTable`, so the eigenclass ids are data the boot produces, not arithmetic
+over `Boot.classTable.length`. Writing them as literals means a bootstrap class or a
+boot-time eigenclass silently points them at another object. Computing them from `Prelude.boot`
+means they move with it: the same `#guard bootOkB` that checks the boot then checks the ids,
+and adding a class needs no edit here (issue #22).
+
+`Boot.classId` (0) when the boot declines or the class has no eigenclass: no core class's
+eigenclass *is* the `Class` object, so `coreDataB` fails loudly rather than agreeing with a
+wrong id. -/
+def bootEigenId (cls : ObjId) : ObjId :=
+  match Prelude.boot with
+  | .ok m => ((m.heap.get cls).eigen).getD Boot.classId
+  | .error _ => Boot.classId
+
+/-- The boot metaclasses of Integer and String: `Integer === x` and `String === x` dispatch
+from here, where Module#=== is installed (checked at boot by `coreDataB`). Derived from the
+booted heap, so neither needs re-pinning when the boot changes. -/
+def intMetaId : ObjId := bootEigenId Boot.integerId
+def strMetaId : ObjId := bootEigenId Boot.stringId
 
 /-- **The core classes are what they are.**
 
