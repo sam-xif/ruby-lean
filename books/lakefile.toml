@@ -1,6 +1,6 @@
 name = "books"
 version = "0.1.0"
-defaultTargets = ["FastPower", "Metatheory", "TypeSoundness", "corpus-report", "validate-one"]
+defaultTargets = ["LoopSum", "FastPower", "Metatheory", "TypeSoundness", "corpus-report", "validate-one"]
 
 # Every proof in this repository. `../ruby-lean` holds the executable model
 # (`RubyCore/`) and is used here as a library. A path dependency builds in `../ruby-lean/.lake`,
@@ -56,3 +56,10 @@ root = "CorpusReport"
 [[lean_exe]]
 name = "validate-one"
 root = "Books.TypeSoundness.Checker.Main"
+
+# A proof about one Ruby program. Created by bin/new-book.
+[[lean_lib]]
+name = "LoopSum"
+srcDir = "."
+roots = ["Books"]
+globs = ["Books.LoopSum.+"]
