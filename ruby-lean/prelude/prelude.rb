@@ -750,6 +750,51 @@ class Range
     n < 0 ? 0 : n
   end
   alias count size
+
+  # `Range#last` is two methods that share a name. The bare form is `#end` with
+  # one correction: an **endless** range has no last element, and CRuby raises
+  # `RangeError: cannot get the last element of endless range` where an
+  # unguarded `#end` answers `nil` [V]. A *beginless* range is fine here
+  # (`(nil..5).last` is `5`).
+  #
+  # The counted form answers the last `n` elements, as CRuby's `rb_range_last`
+  # does: it walks back from the end, so an over-large `n` is the whole range and
+  # a beginless range still has a last `n` (`(nil..5).last(2)` is `[4, 5]`). The
+  # count is coerced the way `NUM2LONG` coerces it, which is why a negative count
+  # is its own `ArgumentError` [V]. Corners the model cannot reproduce word for
+  # word — a non-Integer count or endpoint, whose failure is CRuby's per-class
+  # `TypeError` text or a `float`/`String` iteration message — are declined rather
+  # than approximated.
+  def last(*a)
+    hi = self.end
+    raise RangeError, "cannot get the last element of endless range" if hi.nil?
+    return hi if a.empty?
+    if a.length > 1
+      raise ArgumentError, "wrong number of arguments (given #{a.length}, expected 1)"
+    end
+    n = a[0]
+    unless n.is_a?(Integer)
+      return __unsupported__("Range#last(n) with a non-Integer count")
+    end
+    raise ArgumentError, "negative array size" if n < 0
+    if n > 9223372036854775807
+      return __unsupported__("Range#last(n) with a count beyond a machine word")
+    end
+    lo = self.begin
+    unless hi.is_a?(Integer) && (lo.nil? || lo.is_a?(Integer))
+      return __unsupported__("Range#last(n) over a non-Integer range")
+    end
+    last = exclude_end? ? hi - 1 : hi
+    from = last - n + 1
+    from = lo if !lo.nil? && from < lo
+    r = []
+    i = from
+    while i <= last
+      r.push(i)
+      i = i + 1
+    end
+    r
+  end
 end
 
 # ─── Integer ────────────────────────────────────────────────────────────────
