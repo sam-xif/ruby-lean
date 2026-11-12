@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "File.basename with the \".*\" suffix treats a leading run of dots as part of the name (2026-11-07)",
+  "note": "The prelude's \".*\" branch scanned back to the last dot anywhere in the basename, so `File.basename(\"..\", \".*\")` answered \".\" where CRuby answers \"..\"; the same wrong answer appeared for \"...\", \"..foo\" and any other name whose only dot is in the leading run. The fix mirrors CRuby's `ruby_enc_find_basename`: skip the leading dots, then strip from the last dot after them. Compared with CRuby 4.0.5."
+}
