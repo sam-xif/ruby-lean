@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed for #137 (probe of the Enumerable counting methods, not campaign output)",
+  "arm": "hand",
+  "case_id": "enumerable-count-conversion",
+  "observed_then": "disagree",
+  "diff_then": "stdout: '[]\\n[]\\n[1, 2]\\n[]\\n[1, 2]\\n...' vs 'ArgumentError: attempt to take negative size\\n[]\\n[1, 2]\\n[]\\nArgumentError: attempt to drop negative size\\n...'",
+  "note": "#137: take, drop, each_slice and each_cons compared the raw count (`n <= 0`, `length == n`), so `take(-1)` answered [] instead of raising, `take(1.5)` answered the whole receiver instead of [1], `take(nil)` raised NoMethodError for `<` instead of TypeError, and `take(2**63)`/`take(Float::NAN)` answered instead of raising RangeError. The program pins every conversion and validation message against CRuby 4.0.5, on Array, Hash, Range and a user Enumerable.",
+  "fixed_in": "Enumerable#take/#drop/#each_slice/#each_cons convert their count with NUM2LONG (#137)"
+}
