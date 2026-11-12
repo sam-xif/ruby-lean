@@ -693,21 +693,48 @@ class Range
     __range_new_unchecked(lo, hi, excl)
   end
 
+  # CRuby's `range_each` asks whether the begin responds to `succ` **before it
+  # yields anything** and refuses with `TypeError: can't iterate from <Class>`
+  # otherwise [V]; calling `succ` and letting that raise answers `NoMethodError`
+  # instead, and only after the first element has been yielded. `respond_to?`
+  # here is CRuby's name table, so a begin whose `succ` CRuby has but the model
+  # does not model (`String`, `Symbol`) still falls through to the `succ` gate
+  # below rather than being mistaken for one CRuby cannot step.
+  #
+  # The loop body is the comparison CRuby's `range_each` makes for a non-Integer
+  # begin, `<=>`, not `<`/`<=`: an object that defines `succ` and `<=>` iterates
+  # without the operators `Comparable` would add [V]. CRuby tests `<=>` *before*
+  # each step and yields the end value once after the loop rather than testing
+  # `<= 0` in it, which is why a begin whose `succ` answers itself yields a
+  # single element and stops [V] where a `<= 0` loop would never terminate. An
+  # Integer begin keeps the native comparison, which answers the same and costs
+  # a step rather than three.
   def each
     return __unsupported__("Enumerator: Range#each without a block") unless block_given?
     i = self.begin
     fin = self.end
     return __unsupported__("Range#each over a beginless/endless range") if i.nil? || fin.nil?
-    if exclude_end?
-      while i < fin
-        yield(i)
-        i = i.succ
+    raise TypeError, "can't iterate from " + i.class.to_s unless i.respond_to?(:succ)
+    if i.is_a?(Integer)
+      if exclude_end?
+        while i < fin
+          yield(i)
+          i = i.succ
+        end
+      else
+        while i <= fin
+          yield(i)
+          i = i.succ
+        end
       end
     else
-      while i <= fin
+      cmp = i <=> fin
+      while cmp < 0
         yield(i)
         i = i.succ
+        cmp = i <=> fin
       end
+      yield(i) if cmp == 0 && !exclude_end?
     end
     self
   end

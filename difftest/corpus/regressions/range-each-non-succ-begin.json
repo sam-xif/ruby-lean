@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, Jiro",
+  "arm": "probe",
+  "case_id": "range-each-non-succ-begin",
+  "observed_then": "disagree",
+  "note": "Range#each called `succ` on its begin without asking whether CRuby can step it: `(1.0..2.0).each { }` raised NoMethodError (after yielding 1.0!) where CRuby raises TypeError \"can't iterate from Float\" with nothing yielded. The same loop compared with `<`/`<=`, so an object that defines `succ` and `<=>` raised NoMethodError on `<` where CRuby iterates; and it tested `<= 0` inside the loop where CRuby tests `< 0` and yields the end value once, so a `succ` that answers itself spins here and stops there.",
+  "diff_then": "stdout: '[TypeError, can\"t iterate from Float]...' vs '1.0\\n[NoMethodError, \"undefined method \\'succ\\' for an instance of Float\"]...'; result: '[1, 2, 3]' vs None; exception: None vs ('NoMethodError', \"undefined method '<=' for an instance of Stepper\")",
+  "fixed_in": "Range#each asks respond_to?(:succ) before stepping and compares with <=> (issue #144)"
+}
