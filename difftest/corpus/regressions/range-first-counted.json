@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "Jiro PR (2026-11-09)",
+  "note": "`Range#first` was a native builtin with arity 0, so the counted form CRuby defines raised `ArgumentError: wrong number of arguments (given 1, expected 0)` while `Array#first(n)` gated, and the bare form answered `nil` on a beginless range where CRuby raises `RangeError`. It is now a prelude method with both forms: the counted form is `Enumerable#first(n)`, the bare form is `#begin` with the beginless refusal, and the count follows `NUM2LONG` (negative counts are `rb_ary_new2`'s `ArgumentError`, a count beyond a machine word is its `RangeError`). A non-Integer count or a range with non-Integer endpoints gates with a named `Unsupported` rather than guessing CRuby's per-class `each` `TypeError`. Compared with CRuby 4.0.5. See issue #114."
+}
