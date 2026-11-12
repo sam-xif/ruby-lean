@@ -98,19 +98,25 @@ the owner's review.
 
 ## Generated files
 
-`ruby-lean/RubyCore/Generated/` and `books/Books/TypeSoundness/Checker/Audit/` are written by
-scripts and committed. `make gen` regenerates them and `make gen-check` fails if
-one is stale. After editing `ruby-lean/prelude/prelude.rb`, a file under
-`ruby-lean/prelude/features/`, or a checker source under
-`books/Books/TypeSoundness/Checker/Check/`, run `make gen`.
+Generated Lean sources are build artifacts: they are not in the repository, and
+`make` writes each one before building anything that needs it, whenever its
+inputs have changed. They are:
 
-One file in `Generated/` is different. `BootedHeap.lean`, the heap the prelude
-boot produces written out as terms, is a build artifact: it is not in the
-repository, and `make` writes it before building anything that needs it,
-whenever the model has changed. The proof books import it, so build them with
-`make books` (or any other `make` target) rather than a bare `lake build` in a
-fresh checkout. `Books/Metatheory/Heap/BootedHeap.lean` proves the file equal to
-the boot.
+* every file in `ruby-lean/RubyCore/Generated/`: the prelude as Lean terms, the
+  names of CRuby's built-in methods, the Unicode tables, and `BootedHeap.lean`,
+  the heap the prelude boot produces written out as terms
+  (`Books/Metatheory/Heap/BootedHeap.lean` proves it equal to the boot);
+* the modules `books/scripts/generate_audited_checker.py` writes into
+  `books/Books/TypeSoundness/Checker/Audit/` (`--list` prints them). That
+  directory also holds hand-written sources, which are committed as usual.
+
+The CRuby-name and Unicode tables are snapshots of the oracle, so regenerating
+them assumes the Ruby version the repository pins.
+
+Build with `make books` (or any other `make` target) rather than a bare
+`lake build` in a fresh checkout, or run `make gen` first, which writes them all.
+`make gen-check` fails if a generated file is committed, or if `.gitignore`'s list
+of generated audit modules differs from the generator's.
 
 ## Adding Ruby to the model
 
