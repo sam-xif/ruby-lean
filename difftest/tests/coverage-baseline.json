@@ -1,6 +1,6 @@
 {
-  "line": 72.77,
-  "branch": 68.18,
+  "line": 73.28,
+  "branch": 68.72,
   "files": [
     "difftest/difftest/__init__.py",
     "difftest/difftest/__main__.py",
@@ -43,6 +43,7 @@
     "difftest/difftest/tiers/tier1_5/strategies.py",
     "difftest/difftest/tiers/tier3/__init__.py",
     "difftest/difftest/tiers/tier3/generate.py",
-    "difftest/difftest/tiers/tier3/prompts.py"
+    "difftest/difftest/tiers/tier3/prompts.py",
+    "difftest/difftest/vfs.py"
   ]
 }

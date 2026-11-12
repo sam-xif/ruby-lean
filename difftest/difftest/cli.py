@@ -17,6 +17,7 @@ import random
 import sys
 from pathlib import Path
 
+from .compare import Verdict
 from .control import CRubyRunner
 from .report import Reporter
 from .runner import run_campaign
@@ -31,10 +32,12 @@ from .sources import (
     load_regressions_corpus,
     load_slice_corpus,
     load_sorbet_corpus,
+    load_vfs_corpus,
     regression_outcome,
 )
 from .sut import make_sut
 from .tiers import GENERATIVE_ARMS
+from .vfs import VfsError
 
 BASE = Path(__file__).resolve().parents[1]  # ruby/difftest/
 
@@ -214,6 +217,26 @@ def cmd_run(args) -> int:
         run_campaign(cases, control, sut, on_result=reporter.record)
         total_inputs = sum(c.provenance.get("inputs", 0) for c in cases)
         extra = {"advisory": {"programs": len(cases), "inputs": total_inputs}}
+    elif args.tier == "vfs":
+        # The filesystem corpus (tier 5), run against the boot fixture. Runs
+        # whole: it is small and every program pins one path-resolution or
+        # descriptor behavior. A gate is expected — the model's filesystem is
+        # built one step at a time (issue #7) — but a disagreement, a control
+        # failure or a harness error is not, and there is no baseline here to
+        # absorb a silent one, so this tier owns its own verdict.
+        try:
+            cases = load_vfs_corpus(Path(args.corpus) if args.corpus else None)
+        except VfsError as e:
+            print(f"vfs corpus: {e}", file=sys.stderr)
+            return 2
+        results = run_campaign(cases, control, sut, on_result=reporter.record)
+        unexpected = [
+            r.case.id
+            for r in results
+            if r.verdict in (Verdict.DISAGREE, Verdict.HARNESS_ERROR, Verdict.CONTROL_INVALID)
+        ]
+        exit_override = 1 if unexpected else 0
+        extra = {"vfs": {"ran": len(results), "unexpected": unexpected}}
     elif args.tier == "4":
         # The Sorbet corpus (tier 4). Runs whole; it is small and every program
         # is hand-authored to probe a specific feature, so sampling it would
@@ -475,7 +498,19 @@ def main(argv=None) -> int:
         "--tier",
         type=str,
         default="1",
-        choices=["0", "1", "1.5", "2", "3", "4", "slice", "domain", "advisory", "regressions"],
+        choices=[
+            "0",
+            "1",
+            "1.5",
+            "2",
+            "3",
+            "4",
+            "slice",
+            "domain",
+            "advisory",
+            "vfs",
+            "regressions",
+        ],
     )
     p_run.add_argument(
         "--mix",

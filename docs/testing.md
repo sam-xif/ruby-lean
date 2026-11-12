@@ -30,6 +30,7 @@ build.
 | `make conformance` | The 1287 programs of CRuby's `bootstraptest` suite | The model and CRuby disagree on any program; or fewer programs agree, or more are unsupported, than the recorded baseline |
 | `make conformance` | 219 minimized reproducers of every disagreement found in the past (`difftest/corpus/regressions/`) | Any disagrees |
 | `make conformance` | Hand-written adversarial programs for blocks and jumps, dispatch, evaluation order, exceptions, keyword arguments, metaprogramming and namespaces (`difftest/corpus/tier3/`) | Any disagrees |
+| `make conformance` | The filesystem corpus: path resolution, `File`'s singleton operations and (once modeled) descriptors, against the boot fixture (`difftest/corpus/vfs/`) | The model and CRuby disagree, or a case's fixture cannot be materialized |
 | `make soundness` | The 268 typed programs of `books/corpus/` | Any disagrees |
 | `make feature-loading` | `require`: scope, caching, re-entry and retry after a failed load | The model and CRuby differ |
 | `make book-checks` | Each program book's program, on a grid of inputs | CRuby, the model and the theorem do not all agree |
@@ -100,6 +101,29 @@ Each suite records the line and branch coverage of the code it tests, and the
 files measured, in a `coverage-baseline.json` beside it;
 `scripts/check-coverage.py` fails the build if coverage falls or a file stops
 being measured.
+
+## The filesystem fixture
+
+The model's filesystem is heap data, not the host's: a small tree allocated at
+boot (`ruby-lean/RubyCore/Heap.lean` §Virtual filesystem, issue #7 step 1).
+CRuby has to see the same tree at the same absolute paths, or the two sides are
+not running the same program, so a case in `difftest/corpus/vfs/` names a
+fixture in its sidecar (`{"vfs": "v1"}`) and `difftest/vfs.py` builds it for
+the duration of the case. Every CRuby run resets the tree first, so a program
+that writes still gets the same start on both runs of the determinism check.
+
+The fixture is written at `/tmp/readme.txt` and `/tmp/vfsdata/`, because the
+model resolves only absolute paths. Materializing refuses if either already
+exists, so the corpus never overwrites a file of yours; everything it created
+is removed afterwards. `make conformance` runs the corpus; to run it alone:
+
+```sh
+cd difftest && uv run difftest run --tier vfs --sut lean
+```
+
+A gate is allowed there — the model's filesystem is built one step at a time,
+and a gated step is a coverage measurement, not a pass or a failure. A
+disagreement is a wrong answer, and fails.
 
 ## Generated programs
 
