@@ -1,0 +1,5 @@
+{
+  "vfs": "step1",
+  "expect": "agree",
+  "description": "Path resolution corner cases: duplicate separators, `.`/`..`, and a trailing slash on a file (false in every predicate, as CRuby answers)."
+}

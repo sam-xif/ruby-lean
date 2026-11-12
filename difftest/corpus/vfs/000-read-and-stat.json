@@ -1,0 +1,5 @@
+{
+  "vfs": "step1",
+  "expect": "agree",
+  "description": "Step 1 reads and predicates over the boot fixture, including a missing path (predicates answer false; no Errno class is needed)."
+}

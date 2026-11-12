@@ -1,0 +1,6 @@
+p Dir.exist?("/tmp")
+p Dir.exist?("/tmp/vfsdata")
+p Dir.exist?("/tmp/readme.txt")
+p Dir.exist?("/")
+p Dir.exist?("/tmp/vfsdata/")
+p Dir.exist?("/does/not/exist")

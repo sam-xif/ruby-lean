@@ -1,0 +1,5 @@
+{
+  "vfs": "step1",
+  "expect": "sut_unsupported",
+  "description": "Reading, sizing, or writing a directory must decline (Errno::EISDIR is step 7), never guess a byte count or contents."
+}

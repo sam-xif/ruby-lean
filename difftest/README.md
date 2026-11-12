@@ -9,7 +9,8 @@ make conformance      # from the repository root; what `make check` runs
 
 That compares the model with CRuby over CRuby's `bootstraptest` suite, over
 every past disagreement in `corpus/regressions/`, and over the adversarial
-programs in `corpus/tier3/`, and fails on any disagreement.
+programs in `corpus/tier3/`, and fails on any disagreement. `make difftest-test`
+also runs the filesystem corpus in `corpus/vfs/`.
 [How the model is tested](../docs/testing.md) describes what is compared and how
 the recorded baseline works.
 
@@ -43,6 +44,7 @@ and exits with status 1 if anything disagreed.
 | 3 | Adversarial programs written to stress one feature each, in `corpus/tier3/` |
 | 4 | Sorbet-annotated programs in `corpus/sorbet/`, for comparing Sorbet's static verdict with what the program does |
 | `regressions` | Every disagreement found so far, minimized |
+| `vfs` | Step-1 filesystem programs in `corpus/vfs/`. A sidecar names a fixture in `difftest/vfs.py`; the control materializes the same tree under `/tmp` before each run and restores it afterwards |
 
 ## Systems under test
 

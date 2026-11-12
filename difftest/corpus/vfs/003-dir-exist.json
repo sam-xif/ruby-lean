@@ -1,0 +1,5 @@
+{
+  "vfs": "step1",
+  "expect": "agree",
+  "description": "Dir.exist? over directories, a regular file, the root, a trailing slash, and a missing path."
+}
