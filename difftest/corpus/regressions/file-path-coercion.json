@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "fixed_in": "File path helpers coerce through FilePathStringValue (issue #57)",
+  "filed_by": "hand-filed with the fix for issue #57",
+  "arm": "hand",
+  "case_id": "file-path-coercion",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'dirname integer => \".\"' vs 'dirnames integer => TypeError: no implicit conversion of Integer into String' (and the same for basename/join/extname)",
+  "note": "`File.basename`/`dirname`/`extname`/`join` each started with `path.to_s`, so the model answered every argument where CRuby raises `TypeError` \u2014 a wrong answer, not a refusal, and the direction AGENTS.md rule 3 calls a bug. Each helper now coerces with CRuby's `rb_get_path`: a String verbatim; otherwise `to_path` (through `method_missing`, like `rb_check_funcall`), whose answer goes through `StringValue`, which is why a `to_path` answering an Integer reports the *inner* object (`no implicit conversion of Integer into String`); otherwise `to_str`; otherwise `no implicit conversion of <class> into String`. `File.basename`'s suffix is converted before the path and an explicit `nil` suffix is an error, so it takes `*args` rather than a defaulted `suffix = nil` \u2014 and that is also what pins CRuby's `1..2` arity message. The conversion ends where `rb_get_path` does, at `rb_str_to_cstr`: an interior NUL is an `ArgumentError`, and the message names the caller's conversion \u2014 a path says \"path name contains null byte\", while `File.join`'s `StringValueCStr` on a String element and `File.basename`'s on a suffix say \"string contains null byte\" (the suffix only when the path has a component: an all-separator path leaves CRuby's `alllen` at -1 and never reads it)."
+}

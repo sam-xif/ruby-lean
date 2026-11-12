@@ -1849,6 +1849,24 @@ module Kernel
     raise TypeError, "can't convert " + obj.class.to_s + " to Array (" +
                      obj.class.to_s + "#to_ary gives " + r.class.to_s + ")"
   end
+
+  # `StringValue` (`rb_convert_type_with_id`, `idTo_str`), the String twin of
+  # `__to_array_type`: a String is itself, an object answering `to_str` (through
+  # `method_missing` too) is converted and the answer must be a String, and a
+  # non-String answer names the method — `to`, not `into` [V].
+  def __to_string_type(obj)
+    return obj if obj.is_a?(String)
+
+    unless __conv_callable?(obj, :to_str)
+      raise TypeError, "no implicit conversion of " + __conv_desc(obj) + " into String"
+    end
+
+    r = obj.to_str
+    return r if r.is_a?(String)
+
+    raise TypeError, "can't convert " + obj.class.to_s + " to String (" +
+                     obj.class.to_s + "#to_str gives " + r.class.to_s + ")"
+  end
 end
 
 class Array
@@ -2074,56 +2092,237 @@ end
 # `File` is a filesystem class, and the slice reaches exactly one of its
 # methods: `File.basename(url)` in `vulns/identify.rb`, used to chop the last
 # component off a *URL*. That operation is pure string manipulation with no
-# effect at all, so it is modeled; everything else routes to `method_missing`
-# and gates by name. Defining the constant without that guard would turn
+# effect at all, so it is modeled, together with the `dirname`/`extname`/`join`
+# that share its path rules; everything else routes to `method_missing` and
+# gates by name. Defining the constant without that guard would turn
 # `File.read` from an honest Unsupported into a NoMethodError, which is a wrong
 # answer rather than a refusal.
+#
+# Each helper first coerces its argument the way CRuby's `FilePathStringValue`
+# does. Coercing with `to_s` answered `File.dirname(123) == "."` where CRuby
+# raises `TypeError`, so the model **answered** a program CRuby rejects.
 class File
   SEPARATOR = "/"
 
-  def self.basename(path, suffix = nil)
-    s = path.to_s
-    parts = s.split("/")
-    base = parts.empty? ? (s.empty? ? "" : "/") : parts[parts.length - 1]
+  # `FilePathStringValue` (`rb_get_path_check_to_string`): a String is used
+  # verbatim, an object answering `to_path` has its answer run through
+  # `StringValue`, and anything else is `no implicit conversion`. The second
+  # step is why a `to_path` answering an Integer reports the **inner** object:
+  # `no implicit conversion of Integer into String`, not one naming the outer
+  # object [V].
+  def self.__path(obj)
+    s = obj.is_a?(String) ? obj : __to_string_type(__conv_callable?(obj, :to_path) ? obj.to_path : obj)
+    # `rb_get_path_check_convert`: the coerced path is passed through
+    # `rb_str_to_cstr`, so an interior NUL is its own `ArgumentError`.
+    raise ArgumentError, "path name contains null byte" if s.include?("\0")
+    s
+  end
+
+  # `strrdirsep` followed by the run it found: the index where the last path
+  # component starts. A trailing separator run is skipped rather than counted, so
+  # `File.basename("a/b/")` is `"b"` once the caller chomps the run (`extname`
+  # stops at it instead).
+  def self.__component_start(s)
+    n = s.length
+    i = 0
+    i += 1 while i < n && s[i] == "/"
+    start = i
+    j = i
+    while j < n
+      if s[j] == "/"
+        k = j
+        k += 1 while k < n && s[k] == "/"
+        break if k >= n
+        start = k
+        j = k
+      else
+        j += 1
+      end
+    end
+    start
+  end
+
+  # `rmext`: how much of the basename survives `suffix`, or 0 when the suffix
+  # does not match. A two-character suffix whose second character is `*` is a
+  # **pattern** for CRuby, not a literal: `.*` answers `before`, the index of the
+  # last dot, and any other first character answers the index of its last
+  # occurrence in the whole basename (`"axb.c"` with `"x*"` is `"a"`), or the
+  # whole basename when it does not occur. The `ord` guard is CRuby's byte-length
+  # test: a multi-byte first character makes the suffix too long to be that
+  # pattern [V].
+  def self.__rmext(base, before, suffix)
+    return 0 if suffix.empty?
+    if suffix.length == 2 && suffix[1] == "*" && suffix[0].ord < 128
+      return before if suffix[0] == "."
+      last = base.length
+      i = 0
+      while i < base.length
+        last = i if base[i] == suffix[0]
+        i += 1
+      end
+      return last
+    end
+    return base.length if base.length < suffix.length
+
+    base.end_with?(suffix) ? base.length - suffix.length : 0
+  end
+
+  # `rb_file_s_basename`. The suffix goes through `StringValue` **before** the
+  # path is converted, and an explicit `nil` suffix is a `TypeError`, not "no
+  # suffix" — which is why this takes `*args` rather than a defaulted
+  # `suffix = nil`.
+  def self.basename(*args)
+    unless args.length == 1 || args.length == 2
+      raise ArgumentError, "wrong number of arguments (given " + args.length.to_s +
+                           ", expected 1..2)"
+    end
+    suffix = args.length == 2 ? __to_string_type(args[1]) : nil
+    s = __path(args[0])
+    return s if s.empty?
+
+    start = __component_start(s)
+    return "/" if start >= s.length
+
+    # A path that is all separators never looks at the suffix (CRuby's
+    # `alllen` stays -1), so its NUL is only reported below this line.
+    raise ArgumentError, "string contains null byte" if !suffix.nil? && suffix.include?("\0")
+
+    base = __chomp_seps(s[start, s.length - start])
     return base if suffix.nil?
-    return base if suffix == base
-    if suffix == ".*"
-      i = base.length - 1
-      while i > 0
-        return base[0, i] if base[i] == "."
-        i -= 1
-      end
-      base
-    else
-      base.end_with?(suffix) ? base[0, base.length - suffix.length] : base
+
+    # `ruby_enc_find_basename`'s dot scan: leading dots are part of the name,
+    # and the suffix is matched against the part before the *last* dot after
+    # them. `File.basename("..")` is `".."`, not `""`.
+    q = 0
+    q += 1 while q < base.length && base[q] == "."
+    dot = -1
+    while q < base.length
+      dot = q if base[q] == "."
+      q += 1
     end
+    before = dot == -1 ? base.length : dot
+    f = __rmext(base, before, suffix)
+    f == 0 ? base : base[0, f]
   end
 
+  # `rb_file_s_extname`: the extension of the **last** component, which is empty
+  # when the only dot is a leading one (`".profile"`), when the component ends
+  # in the dot (`"a."` answers `"."`), and when there is no dot at all.
   def self.extname(path)
-    b = basename(path)
-    i = b.length - 1
-    while i > 0
-      return b[i, b.length - i] if b[i] == "."
-      i -= 1
+    s = __path(path)
+    n = s.length
+    start = __component_start(s)
+    i = start
+    i += 1 while i < n && s[i] == "."
+    dot = -1
+    while i < n
+      break if s[i] == "/"
+      dot = i if s[i] == "."
+      i += 1
     end
-    ""
+    return "" if dot == -1
+
+    s[dot, i - dot]
   end
 
-  def self.dirname(path)
-    s = path.to_s
-    i = s.length - 1
-    while i >= 0
+  # `rb_file_dirname_n` at CRuby's default level of 1. The last separator run
+  # that has a component after it ends the directory part, so `"a//b"` answers
+  # `"a"` and a trailing run is stripped first (`"a/b/"` answers `"a"`). Two or
+  # more leading separators are read from the last of them, so `"//a"` is
+  # `"/a"` and `"///"` is `"/"` [V].
+  def self.dirname(*args)
+    unless args.length == 1 || args.length == 2
+      raise ArgumentError, "wrong number of arguments (given " + args.length.to_s +
+                           ", expected 1..2)"
+    end
+    return __unsupported__("File.dirname(path, level) (the level argument is not modeled)") \
+      if args.length == 2
+
+    s = __path(args[0])
+    n = s.length
+    root = 0
+    root += 1 while root < n && s[root] == "/"
+    start = root > 1 ? root - 1 : 0
+    last = -1
+    i = root
+    while i < n
       if s[i] == "/"
-        return "/" if i.zero?
-        return s[0, i]
+        k = i
+        k += 1 while k < n && s[k] == "/"
+        break if k >= n
+        last = i
+        i = k
+      else
+        i += 1
       end
-      i -= 1
     end
-    "."
+    p = last == -1 ? root : last
+    return "." if p == start
+
+    s[start, p - start]
   end
 
+  # `rb_file_join`. Every element is a path (`FilePathStringValue`), a nested
+  # Array is joined first — so `File.join(["a", ["b"]])` is `"a/b"` — and an
+  # Array that contains itself (at any depth) is `ArgumentError: recursive
+  # array`. A separator run is never doubled: an element that starts with `/`
+  # replaces the separators already collected, and one that does not starts a
+  # new component.
   def self.join(*parts)
-    parts.map { |x| x.to_s }.join("/")
+    __join(parts, [])
+  end
+
+  def self.__join(parts, ancestors)
+    return "" if parts.empty?
+
+    result = ""
+    i = 0
+    while i < parts.length
+      tmp = parts[i]
+      if tmp.is_a?(Array)
+        if tmp.equal?(parts) || __join_ancestor?(ancestors, tmp)
+          raise ArgumentError, "recursive array"
+        end
+
+        ancestors.push(parts)
+        tmp = __join(tmp, ancestors)
+        ancestors.pop
+      elsif tmp.is_a?(String)
+        # `rb_file_join` calls `StringValueCStr` on a String element, which names
+        # the NUL a "string"; a converted one goes through `__path` instead and
+        # names it a "path" [V].
+        raise ArgumentError, "string contains null byte" if tmp.include?("\0")
+      else
+        tmp = __path(tmp)
+      end
+      if i == 0
+        result = tmp
+      elsif !tmp.empty? && tmp[0] == "/"
+        result = __chomp_seps(result) + tmp
+      elsif result.empty? || result[result.length - 1] != "/"
+        result = result + "/" + tmp
+      else
+        result = result + tmp
+      end
+      i += 1
+    end
+    result
+  end
+
+  def self.__join_ancestor?(ancestors, ary)
+    i = 0
+    while i < ancestors.length
+      return true if ancestors[i].equal?(ary)
+      i += 1
+    end
+    false
+  end
+
+  # `chompdirsep`: `s` without its trailing separator run.
+  def self.__chomp_seps(s)
+    i = s.length
+    i -= 1 while i > 0 && s[i - 1] == "/"
+    i == s.length ? s : s[0, i]
   end
 
   def self.method_missing(name, *args, **kw, &blk)
