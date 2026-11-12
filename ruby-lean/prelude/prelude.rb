@@ -1744,6 +1744,47 @@ module Kernel
   def __check_convert(obj, meth)
     __conv_callable?(obj, meth) ? obj.send(meth) : nil
   end
+
+  # `StringValue` (`rb_str_to_str`), the **demanding** conversion —
+  # `String.try_convert` above is the checking one (`rb_check_string_type`).
+  # They differ on exactly one answer: a `to_str` that returns nil means "no
+  # conversion" to `try_convert` and is a `TypeError` here. Both messages are
+  # CRuby's [V]: no callable `to_str` at all is "no implicit conversion of X
+  # into String", while a `to_str` that answers a non-String is "can't convert
+  # X to String (X#to_str gives Y)".
+  def __str_value(obj)
+    return obj if obj.is_a?(String)
+    unless __conv_callable?(obj, :to_str)
+      raise TypeError, "no implicit conversion of " + __conv_desc(obj) + " into String"
+    end
+
+    r = obj.send(:to_str)
+    return r if r.is_a?(String)
+
+    raise TypeError, "can't convert " + obj.class.to_s + " to String (" +
+                     obj.class.to_s + "#to_str gives " + r.class.to_s + ")"
+  end
+
+  # `rb_get_path` (file.c): the String a filesystem operation will use as a
+  # path. A String is the path; anything else is asked for `to_path`, and the
+  # answer — or the object itself when `to_path` is not callable, which is
+  # `rb_check_funcall_default`'s default argument — goes through
+  # `StringValue`. So an object with only `to_str` is a path, `Pathname` and
+  # every other `to_path` object are paths, and an Integer is the `TypeError`
+  # CRuby raises; `to_path` wins when an object answers both. The same
+  # conversion enforces `rb_get_path_check_convert`'s NUL rule: a path
+  # containing a NUL byte is `ArgumentError`, not a path [V].
+  def __file_path(obj)
+    if obj.is_a?(String)
+      s = obj
+    elsif __conv_callable?(obj, :to_path)
+      s = __str_value(obj.send(:to_path))
+    else
+      s = __str_value(obj)
+    end
+    raise ArgumentError, "path name contains null byte" if s.index("\0")
+    s
+  end
 end
 
 class String
@@ -2081,11 +2122,26 @@ end
 class File
   SEPARATOR = "/"
 
-  def self.basename(path, suffix = nil)
-    s = path.to_s
-    parts = s.split("/")
-    base = parts.empty? ? (s.empty? ? "" : "/") : parts[parts.length - 1]
+  # `File.basename(path [, suffix])`. The **suffix** is converted first, as
+  # `rb_file_s_basename` does: `StringValue`, so a bad suffix is reported
+  # before a bad path, and an explicit `nil` suffix is a `TypeError` rather
+  # than "no suffix" — the arity is taken here too, so the message is CRuby's
+  # `1..2` range. The path then goes through `__file_path`, which is where
+  # `to_path`/`to_str` are honored and every other value is rejected.
+  def self.basename(*args)
+    if args.length < 1 || args.length > 2
+      raise ArgumentError,
+            "wrong number of arguments (given " + args.length.to_s + ", expected 1..2)"
+    end
+    suffix = args.length == 2 ? __str_value(args[1]) : nil
+    base = __last_component(__file_path(args[0]))
     return base if suffix.nil?
+    # `StringValueCStr(fext)` asks the suffix for bytes only where there **is**
+    # a last component to strip it from, so a NUL is an `ArgumentError` for
+    # "a" and not for "/" (whose last component is empty).
+    unless base.empty? || base == "/"
+      raise ArgumentError, "string contains null byte" if suffix.index("\0")
+    end
     return base if suffix == base
     if suffix == ".*"
       i = base.length - 1
@@ -2099,8 +2155,15 @@ class File
     end
   end
 
+  # The last component of a resolved path, as `ruby_enc_find_basename` finds it
+  # (trailing separators dropped; a path of nothing but separators is "/").
+  def self.__last_component(s)
+    parts = s.split("/")
+    parts.empty? ? (s.empty? ? "" : "/") : parts[parts.length - 1]
+  end
+
   def self.extname(path)
-    b = basename(path)
+    b = __last_component(__file_path(path))
     i = b.length - 1
     while i > 0
       return b[i, b.length - i] if b[i] == "."
@@ -2110,7 +2173,7 @@ class File
   end
 
   def self.dirname(path)
-    s = path.to_s
+    s = __file_path(path)
     i = s.length - 1
     while i >= 0
       if s[i] == "/"
@@ -2122,8 +2185,32 @@ class File
     "."
   end
 
+  # `File.join(*paths)` converts each argument with `rb_file_join`'s rule: a
+  # String is a path, an `Array` is **flattened** (and a self-referential one
+  # raises `ArgumentError: recursive array`), and every other value goes
+  # through `__file_path`. Flattening is not modeled, so an Array part gates by
+  # name instead of being rejected the way a non-path scalar is — CRuby does
+  # accept it, so answering `TypeError` for it would be a wrong answer.
   def self.join(*parts)
-    parts.map { |x| x.to_s }.join("/")
+    out = ""
+    i = 0
+    while i < parts.length
+      out = out + "/" if i > 0
+      out = out + __join_part(parts[i])
+      i += 1
+    end
+    out
+  end
+
+  def self.__join_part(x)
+    return __unsupported__("File.join: array parts are not modeled") if x.is_a?(Array)
+    # A String part is checked with `StringValueCStr` in place ("string contains
+    # null byte"); every other part is a path (`"path name contains null byte"`).
+    if x.is_a?(String)
+      raise ArgumentError, "string contains null byte" if x.index("\0")
+      return x
+    end
+    __file_path(x)
   end
 
   def self.method_missing(name, *args, **kw, &blk)
