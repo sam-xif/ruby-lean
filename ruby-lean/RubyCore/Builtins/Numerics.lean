@@ -1,4 +1,5 @@
 import RubyCore.Builtins.Complex
+import RubyCore.Numeric.FloatMod
 
 /-!
 Integer and Float rules.
@@ -136,9 +137,11 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
           if y == 0 then .err Boot.zeroDivisionErrorId "divided by 0" m
           else .ok (.int (Int.fmod x y)) m)  -- sign follows divisor [V]
         (fun x y =>
-          -- Float modulo: `x - y * (x/y).floor`, sign follows the divisor (Ruby).
-          if y == 0 then .unsupported "Float modulo by zero"
-          else .ok (.flt (x - y * (x / y).floor)) m)
+          -- CRuby's `flodivmod` with only the remainder wanted: `fmod`, then the
+          -- divisor's sign. `x - y * (x/y).floor` is not the same number.
+          match floDivmod x y false with
+          | none => .err Boot.zeroDivisionErrorId "divided by 0" m
+          | some (_, md) => .ok (.flt md) m)
   | "Integer#**" =>
     -- `**` coerces like the rest, so a non-numeric argument that answered
     -- nothing gets the coercion TypeError rather than a gate. Negative Integer
@@ -374,12 +377,17 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
         match (match b with | .flt y => some y | .int i => some (Float.ofInt i) | _ => none) with
         | none => coerceFailed (owner bid) m b     -- coerces
         | some c =>
-          if c == 0.0 then .err Boot.zeroDivisionErrorId "divided by 0" m
-          else
-            -- floored division, so the remainder takes the divisor's sign [V]
-            let q := (a / c).floor
-            let (v, m) := allocArr m #[.int (floatTruncBits q), .flt (a - q * c)]
-            .ok v m
+          -- floored division, so the remainder takes the divisor's sign [V]
+          match floDivmod a c true with
+          | none => .err Boot.zeroDivisionErrorId "divided by 0" m
+          -- CRuby converts the quotient with `dbl2ival`, which raises
+          -- `FloatDomainError`; that class is not modeled, so this declines.
+          | some (q, md) =>
+            if q.isNaN || q.isInf then
+              .unsupported "Float#divmod with a NaN or Infinity quotient (FloatDomainError)"
+            else
+              let (v, m) := allocArr m #[.int (floatTruncBits q), .flt md]
+              .ok v m
       | _, _ => .unsupported "Float#divmod"
   | "Float#abs" =>
     match recv with | .flt x => .ok (.flt x.abs) m | _ => .unsupported "abs"

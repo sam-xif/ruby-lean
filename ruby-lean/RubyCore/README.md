@@ -28,7 +28,7 @@ Libraries the semantics uses:
 
 | Directory | Contents |
 |---|---|
-| `Numeric/` | `Float#to_s`, the Mersenne Twister behind `Random`, `Rational`, `Complex` |
+| `Numeric/` | `Float#to_s`, the `fmod` behind `Float#%` and `Float#divmod`, the Mersenne Twister behind `Random`, `Rational`, `Complex` |
 | `Regex/` | A regular-expression parser and matcher |
 | `Generated/` | Files written by scripts: the prelude as Lean terms, the names of CRuby's built-in methods, Unicode character classes. Do not edit; run `make gen`. `BootedHeap.lean`, the heap the prelude boot produces, is also written here, but as a build artifact that is not committed |
 | `Sorbet/` | Reads `sig` declarations out of a program without running it |
