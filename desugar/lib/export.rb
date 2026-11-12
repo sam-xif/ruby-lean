@@ -38,6 +38,10 @@ module Export
   # unlike a send, it is unaffected by constructor or constant redefinition.
   # L279/C40: additive `imag` and its `flt_bits` component preserve native
   # imaginary construction, exact fractions, signed zero and per-site identity.
+  # #141: a float literal exports as `["flt_bits", <UInt64>]` too, so no decimal
+  # to binary64 conversion happens in the model; `["flt", number]` is still
+  # accepted by the decoder, and `VERSION` is unchanged because the node shape
+  # only gains a head the decoder already knew.
   # L288/C41: optional fifth for slot retains one-target multiple assignment.
   # Four-slot for nodes remain valid and unchanged.
   VERSION = 5
@@ -61,10 +65,22 @@ module Export
         site = "#{literals[0]}:#{literals[1]}"
         literals[1] += 1
         return ["rat", x[1], x[2], site] if x[0] == :rat
-        # JSON numbers lose -0.0 in Lean. Imaginary components are native
-        # literals, so preserve their bits without an overridable unary send.
-        component = x[1][0] == :flt ? ["flt_bits", [x[1][1]].pack("G").unpack1("Q>")] : jsonable(x[1], literals)
-        return ["imag", component, site]
+        # An imaginary component is a native literal, so it keeps its exact
+        # identity and signed zero; `jsonable` carries a float's bits for it.
+        return ["imag", jsonable(x[1], literals), site]
+      end
+      # A float literal carries its IEEE-754 bits, not a decimal number. Lean's
+      # decimal-to-binary64 conversion (`OfScientific.ofScientific`) truncates the
+      # mantissa to 64 bits before its final rounding, so a literal can decode one
+      # ulp away from CRuby's `strtod` (#141); the bits are exact, and the model's
+      # decoder reads them with `Float.ofBits`. `["flt", number]` remains valid
+      # input for a document written before this: the decoder still reads it.
+      if x[0] == :flt
+        f = x[1]
+        raise ArgumentError, "flt payload not Float: #{f.inspect}" unless f.is_a?(Float)
+        raise ArgumentError, "non-finite Float in RubyCore: #{f}" unless f.finite?
+
+        return ["flt_bits", [f].pack("G").unpack1("Q>")]
       end
       # J52: the regex-literal lowering (`::Regexp.new("src", opts)`, desugar
       # C33) exports as its own head — in CRuby the literal consults no
@@ -82,9 +98,6 @@ module Export
         x.map { |e| jsonable(e, literals) }
       end
     when nil, true, false, Integer, String then x
-    when Float
-      raise ArgumentError, "non-finite Float in RubyCore: #{x}" unless x.finite?
-      x
     else
       raise ArgumentError, "unexpected value in RubyCore S-expr: #{x.inspect}"
     end

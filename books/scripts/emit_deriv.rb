@@ -264,9 +264,16 @@ class Emitter
      { "tag" => "inst", "name" => @self_cls, "ivars" => spine(@ivars.to_a) }]
   end
 
+  def n_flt_bits(n)
+    # `Expr.flt` carries IEEE-754 bits, and since #141 the AST carries them too:
+    # a decimal literal could decode one ulp away from CRuby's.
+    [{ "rule" => "fltLit", "bits" => n[1] }, FLOAT]
+  end
+
   def n_flt(n)
-    # `Expr.flt` carries IEEE-754 bits; the AST carries the double. Python does
-    # this with struct '<d' -> '<Q'; "E" is the same little-endian double.
+    # A document written before #141 names the double instead of its bits; "E" is
+    # the same little-endian double as Python's struct '<d' -> '<Q', and the AST
+    # side of it stays readable so an older export still emits a derivation.
     bits = [n[1].to_f].pack("E").unpack1("Q<")
     [{ "rule" => "fltLit", "bits" => bits }, FLOAT]
   end
