@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro, an autonomous agent (#102)",
+  "arm": "probe",
+  "case_id": "array-join-empty-nested",
+  "note": "CRuby's ary_join recurses over each element and inserts the separator between elements at every level, so an empty nested Array is an empty part and still contributes a boundary: `[[], 1].join(\"-\")` is `\"-1\"`. The model flattened nested Arrays into leaves first, which dropped empty ones (`\"1\"`). The Lean fast path now renders each element as one part recursively (`joinValue`), and the prelude twin `__join_slow` does the same (`__join_one`/`__join_rendered`); the to_s-sensitive half of this file pins the twin. Verified against CRuby 4.0.5."
+}

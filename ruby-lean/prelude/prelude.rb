@@ -1527,37 +1527,41 @@ class Array
         else
           return __unsupported__("Array#join with a non-String separator")
         end
-    parts = []
-    __join_collect(parts)
     out = ""
     i = 0
-    while i < parts.length
+    each do |e|
       out += s unless i.zero?
-      out += parts[i]
+      out += __join_one(e, s)
       i += 1
     end
     out
   end
 
-  # `ary_join_one`: a nested Array is joined recursively — and "nested" is
-  # `rb_check_array_type`, not `is_a?(Array)`, so an element answering `to_ary`
-  # is joined too (`[Pair.new].join(",")` is `"7,8"`, not `"#<Pair:0x…>"`). Found
-  # by probing L133's other sites; `to_ary` is tried **before** `to_s`, which is
-  # why it cannot be left to `__as_string`.
-  def __join_collect(parts)
+  # Each element of this Array is one part. A nested Array is joined with the
+  # same separator and contributes that whole result as one part, so an empty
+  # nested Array is an empty part and still gets a separator boundary — CRuby's
+  # `[[], 1].join("-")` is `"-1"`, not `"1"`.
+  #
+  # "Nested" is `rb_check_array_type`, not `is_a?(Array)`, so an element
+  # answering `to_ary` is joined too (`[Pair.new].join(",")` is `"7,8"`, not
+  # `"#<Pair:0x…>"`). `to_ary` is tried **before** `to_s`, which is why it
+  # cannot be left to `__as_string`.
+  def __join_one(e, sep)
+    return "" if e.nil?
+
+    sub = String === e ? nil : __check_array_type(e)
+    sub.nil? ? e.__as_string : sub.__join_rendered(sep)
+  end
+
+  def __join_rendered(sep)
+    out = ""
+    i = 0
     each do |e|
-      if e.nil?
-        parts.push("")
-      else
-        sub = String === e ? nil : __check_array_type(e)
-        if sub.nil?
-          parts.push(e.__as_string)
-        else
-          sub.__join_collect(parts)
-        end
-      end
+      out += sep unless i.zero?
+      out += __join_one(e, sep)
+      i += 1
     end
-    nil
+    out
   end
 end
 
