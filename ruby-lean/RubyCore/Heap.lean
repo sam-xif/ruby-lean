@@ -104,7 +104,7 @@ structure MethodDef where
       the same reason. -/
   declared : List String := []
   /-- Defined by the **prelude** (the core library written in RubyCore itself,
-      `prelude/prelude.rb`) rather than by the program under test. Such a method
+      `prelude/core/`) rather than by the program under test. Such a method
       *is* the model of the CRuby builtin of the same name, so it suppresses the
       "unmodeled builtin would shadow" gate for its own name. -/
   fromPrelude : Bool := false

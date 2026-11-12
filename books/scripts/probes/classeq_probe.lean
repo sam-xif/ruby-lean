@@ -21,11 +21,10 @@ things of a row on `.clsOf n`, and both are heap facts about the class object's
    (`isA` reads the heap and writes nothing) *provided* the receiver's
    `classPayload?` is `isSome`, which is `classRecv`'s own clause.
 
-**The hazard is clause 1, and it is not hypothetical.** `prelude/prelude.rb:44`
-defines `Object#===` in **Ruby**, so it is a `fromPrelude` method — and `Object` is
-on every class object's dispatch chain. The row is only witnessable if `Module`
-comes *first*, and that is an ordering fact about `ancestors`, not something the
-type language can promise. This reports the whole resolution so the answer is read
+**The hazard is clause 1, and it is not hypothetical.** `Object#===` is a row
+on every class object's dispatch chain, so the row is only witnessable if
+`Module` comes *first*, and that is an ordering fact about `ancestors`, not
+something the type language can promise. This reports the whole resolution so the answer is read
 rather than assumed — the same move `names_probe` made for the declaration rows and
 `consts_probe` for the constant table, both of which changed a clause.
 

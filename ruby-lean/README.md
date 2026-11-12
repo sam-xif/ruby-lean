@@ -11,7 +11,7 @@ as a library.
 | Path | Contents |
 |---|---|
 | `RubyCore/` | The model |
-| `prelude/prelude.rb` | The part of Ruby's core library that the model implements in Ruby: `Enumerable`, `Comparable` and about a hundred other methods |
+| `prelude/core/` | The part of Ruby's core library that the model implements in Ruby: `Enumerable`, `Comparable` and about a hundred other methods, split by topic |
 | `prelude/features/` | Libraries that load on `require`: `json`, `uri`, `forwardable`, `pathname`, and a model of `sorbet-runtime` |
 | `scripts/` | Generators for the files under `RubyCore/Generated/`, and the check of `require` against CRuby |
 | `Json/` | A copy of Lean's JSON library, so that the executables do not link all of Lean |
