@@ -5,9 +5,8 @@
 # `version.rb:351` calls `URI.decode_www_form_component(spec)` and that is the
 # **only** use of `URI` anywhere in the slice's eight files. It is a pure string
 # function, so it is modeled; everything else on `URI` routes to
-# `method_missing` and gates by name, for the same reason `File` does — defining
-# the constant without that guard would turn `URI.parse` from an honest
-# Unsupported into a NoMethodError.
+# `method_missing` and gates by name — defining the constant without that guard
+# would turn `URI.parse` from an honest Unsupported into a NoMethodError.
 #
 # One real limit, and it is the byte-string limit again: a `%XX` above 0x7F is a
 # *byte* of a multi-byte character (`caf%C3%A9` is `café`), and the model has no

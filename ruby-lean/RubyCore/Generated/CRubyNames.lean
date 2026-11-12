@@ -294,8 +294,11 @@ def crubyMainSingletonNames : List String := [
   "define_method", "include", "inspect", "private", "public", "ruby2_keywords", "to_s", "using"
 ]
 /-- Singleton (class-side) method names each bootstrap class defines in
-    CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]): a send to a class
-    object resolving past these must gate. -/
+    CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]), plus the class-side
+    surface of the non-bootstrap classes dispatch guards by name (the
+    filesystem's `File`/`IO`/`Dir` and `Pathname`): a send to a class object
+    resolving past these must gate, and a name absent from them is not Ruby
+    and raises a real `NoMethodError`. -/
 def crubySingletonNames : List (String × List String) := [
   ("BasicObject", [
 
@@ -413,6 +416,28 @@ def crubySingletonNames : List (String × List String) := [
   ]),
   ("ScriptError", [
 
+  ]),
+  ("File", [
+    "absolute_path", "absolute_path?", "atime", "basename", "birthtime", "blockdev?", "chardev?", "chmod",
+    "chown", "ctime", "delete", "directory?", "dirname", "empty?", "executable?", "executable_real?",
+    "exist?", "expand_path", "extname", "file?", "fnmatch", "fnmatch?", "ftype", "grpowned?",
+    "identical?", "join", "lchmod", "lchown", "link", "lstat", "lutime", "mkfifo",
+    "mtime", "owned?", "path", "pipe?", "readable?", "readable_real?", "readlink", "realdirpath",
+    "realpath", "rename", "setgid?", "setuid?", "size", "size?", "socket?", "split",
+    "stat", "sticky?", "symlink", "symlink?", "truncate", "umask", "unlink", "utime",
+    "world_readable?", "world_writable?", "writable?", "writable_real?", "zero?"
+  ]),
+  ("IO", [
+    "binread", "binwrite", "copy_stream", "for_fd", "foreach", "new", "open", "pipe",
+    "popen", "read", "readlines", "select", "sysopen", "try_convert", "write"
+  ]),
+  ("Dir", [
+    "[]", "chdir", "children", "chroot", "delete", "each_child", "empty?", "entries",
+    "exist?", "fchdir", "for_fd", "foreach", "getwd", "glob", "home", "mkdir",
+    "open", "pwd", "rmdir", "unlink"
+  ]),
+  ("Pathname", [
+    "getwd", "glob", "pwd"
   ])
 ]
 

@@ -26,6 +26,15 @@ end
 # The Lean model uses these for dispatch fidelity (shadow detection and
 # genuine-NoMethodError classification), not behavior.
 
+# Classes the model does not boot as core classes, but whose **class-side**
+# surface dispatch must know: the virtual filesystem's `File`/`IO`/`Dir` and the
+# pure path wrapper `Pathname`. Their singleton tables go into
+# `crubySingletonNames`, so a lookup miss can tell a real class method the model
+# declines (`File.mtime`, a named Unsupported) from a name that is not Ruby at
+# all (`File.zzz`, an ordinary `NoMethodError`). Only the singleton side is
+# emitted: their instance surfaces are still declined wholesale.
+GUARDED = { "File" => File, "IO" => IO, "Dir" => Dir, "Pathname" => Pathname }.freeze
+
 # Constants that exist only in some builds of the same CRuby release. They are
 # left out so that this table is the same on every platform: `Integer::GMP_VERSION`
 # is defined only when CRuby was compiled against GMP.
@@ -76,11 +85,20 @@ FOLD = {
   "ScriptError" => [ScriptError]
 }.freeze
 
+# Every constant this script defines. They are filtered out of the constant
+# tables below: a toplevel constant lands on Object, which is one of the tables.
+SCRIPT_CONSTANTS = (%i[FOLD GUARDED BUILD_DEPENDENT NAME_LINES TABLE_ROW MAIN_SINGLETON] +
+                    [:SCRIPT_CONSTANTS]).freeze
+
 # A lambda, not a toplevel def — a def here would land on Object and leak
-# into the very tables we are snapshotting. Same reason FOLD is filtered
-# out of the constants list below.
+# into the very tables we are snapshotting.
 NAME_LINES = lambda do |names, indent|
   names.each_slice(8).map { |sl| indent + sl.map { |s| s.to_s.inspect }.join(", ") }.join(",\n")
+end
+
+# One row of a name table, sorted and wrapped.
+TABLE_ROW = lambda do |name, meths|
+  "  (\"#{name}\", [\n#{NAME_LINES.call(meths.uniq.sort, "    ")}\n  ])"
 end
 
 puts <<~HEADER
@@ -126,21 +144,27 @@ puts "]"
 
 puts <<~MID
   /-- Singleton (class-side) method names each bootstrap class defines in
-      CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]): a send to a class
-      object resolving past these must gate. -/
+      CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]), plus the class-side
+      surface of the non-bootstrap classes dispatch guards by name (the
+      filesystem's `File`/`IO`/`Dir` and `Pathname`): a send to a class object
+      resolving past these must gate, and a name absent from them is not Ruby
+      and raises a real `NoMethodError`. -/
   def crubySingletonNames : List (String × List String) := [
 MID
 sentries = FOLD.map do |name, mods|
-  meths = mods.first.singleton_class
-              .then { |sc| sc.instance_methods(false) + sc.private_instance_methods(false) }.uniq.sort
-  "  (\"#{name}\", [\n#{NAME_LINES.call(meths, "    ")}\n  ])"
+  TABLE_ROW.call(name, mods.first.singleton_class
+    .then { |sc| sc.instance_methods(false) + sc.private_instance_methods(false) })
+end
+sentries += GUARDED.map do |name, cls|
+  TABLE_ROW.call(name, cls.singleton_class
+    .then { |sc| sc.instance_methods(false) + sc.private_instance_methods(false) })
 end
 puts sentries.join(",\n")
 
 puts "]\n\n/-- Known constants in modeled namespaces; absence is a gate, not NameError. -/"
 puts "def crubyNamespaceConstants : List (String × List String) := ["
 puts FOLD.map { |name, mods|
-  names = mods.first.constants(false) - %i[FOLD NAME_LINES MAIN_SINGLETON BUILD_DEPENDENT] - BUILD_DEPENDENT
+  names = mods.first.constants(false) - SCRIPT_CONSTANTS - BUILD_DEPENDENT
   "  (#{name.inspect}, [#{names.map(&:to_s).sort.map(&:inspect).join(", ")}])"
 }.join(",\n")
 
@@ -161,7 +185,7 @@ puts <<~MID
   def crubyToplevelConstants : List String := [
 MID
 puts NAME_LINES.call(
-  (Object.constants - %i[FOLD NAME_LINES MAIN_SINGLETON BUILD_DEPENDENT]).map(&:to_s).sort, "  "
+  (Object.constants - SCRIPT_CONSTANTS).map(&:to_s).sort, "  "
 )
 puts "]"
 
