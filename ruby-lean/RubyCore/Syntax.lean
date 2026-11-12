@@ -357,6 +357,9 @@ partial def expr (j : Json) : M Expr := do
   let head ← asStr hd
   match head, a with
   | "int",   #[_, n] => .int <$> asInt n
+  -- A float literal names its IEEE-754 bits (`flt_bits`); a document written before
+  -- #141 names the double instead (`flt`), which decodes through Lean's own
+  -- decimal conversion. Both are accepted; nothing emits `flt` any more.
   | "flt",   #[_, x] => (fun f => Expr.flt f.toBits) <$> asFloat x
   | "flt_bits", #[_, x] => do
     let bits ← asInt x

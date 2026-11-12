@@ -33,6 +33,22 @@ class TestExport < Minitest::Test
     assert_equal ["imag", ["int", 2], "program:0"], export("2i")["ast"]
   end
 
+  def test_a_float_literal_carries_its_bits
+    assert_equal ["flt_bits", [1.5].pack("G").unpack1("Q>")], export("1.5")["ast"]
+  end
+
+  def test_a_float_literal_carries_the_bits_cruby_reads
+    # `403355592039198e57` is a decimal CRuby's `strtod` reads as 0x4ecd38a52cc78863.
+    # Lean's `OfScientific.ofScientific` truncates the mantissa to 64 bits before its
+    # final rounding and lands one ulp below it (0x…862), so a JSON number would decode
+    # to a different double than CRuby's literal (#141). The bits cannot move.
+    assert_equal ["flt_bits", 0x4ecd38a52cc78863], export("403355592039198e57")["ast"]
+  end
+
+  def test_a_negative_zero_keeps_its_sign
+    assert_equal ["flt_bits", 0x8000000000000000], JSON.parse(Export.json([:flt, -0.0]))["ast"]
+  end
+
   def test_a_regexp_literal_has_its_own_node
     assert_equal ["regexp_lit", "a", 1], export("/a/i")["ast"]
   end
@@ -43,6 +59,10 @@ class TestExport < Minitest::Test
 
   def test_a_float_that_is_not_finite_is_refused
     assert_raises(ArgumentError) { Export.json([:flt, Float::INFINITY]) }
+  end
+
+  def test_a_float_payload_that_is_not_a_float_is_refused
+    assert_raises(ArgumentError) { Export.json([:flt, 1]) }
   end
 
   def test_an_unexpected_value_is_refused

@@ -156,11 +156,12 @@ class Desugar
 
   private
 
-  # A `-0.0` literal must not become a bare `[:flt, -0.0]`: the RubyCore JSON export
-  # encodes floats as JSON numbers, and JSON/Lean's `JsonNumber` cannot carry a
-  # negative zero (mantissa is a signless `Int 0`), so the sign would be lost and
-  # `(-0.0).inspect` would wrongly print `0.0`. Emit it as `-@` of `+0.0` instead,
-  # which round-trips through the model's (correct) `Float#-@`.
+  # A `-0.0` literal is emitted as `-@` of `+0.0` rather than a bare `[:flt, -0.0]`.
+  # The detour dates from when the export wrote a float as a JSON number, which
+  # cannot carry a negative zero; the export now carries a float's bits (#141), so
+  # the sign survives either way. The desugared form stays as it is because it is
+  # the pinned normal form (desugar/test/test_variants.rb), and the model's
+  # `Float#-@` it relies on is correct.
   def float_lit(v)
     if v == 0.0 && (1.0 / v).negative?
       [:send, [:flt, 0.0], "-@", [], nil]

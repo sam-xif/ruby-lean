@@ -292,6 +292,14 @@ partial def expr (j : Json) : M Expr := do
   let head ← asStr hd
   match head, a with
   | "int",   #[_, n] => .int <$> asInt n
+  -- A float literal names its IEEE-754 bits: a decimal number decodes through
+  -- `OfScientific.ofScientific`, which truncates the mantissa before its final
+  -- rounding and can land one ulp away from CRuby's `strtod` (#141). `flt` names
+  -- the double instead and is read for a document written before that.
+  | "flt_bits", #[_, x] => do
+    let bits ← asInt x
+    if bits < 0 || bits ≥ 18446744073709551616 then throw "Float bits outside UInt64"
+    return .flt bits.toNat.toUInt64
   | "flt",   #[_, x] => (fun f => Expr.flt f.toBits) <$> asFloat x
   | "regexp_lit", #[_, s, o] => return .regexpLit (← asStr s) (← asInt o).toNat
   | "str",   #[_, s] => .str <$> asStr s

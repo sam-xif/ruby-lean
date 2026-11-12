@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro, an autonomous agent (issue #141)",
+  "arm": "hand",
+  "case_id": "float-literal-double-round",
+  "first_reconciled": "2026-11-12 (#141), lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: '4.0335559203919798e+71\\n[true, false]\\n' vs '4.03355592039198e+71\\n[false, true]\\n'",
+  "note": "A decimal literal went through Lean's OfScientific.ofScientific, which truncates the mantissa to 64 bits before its final rounding, so it could decode one ulp away from CRuby's strtod: the model answered 4.0335559203919798e+71 where CRuby answers 4.03355592039198e+71, and collapsed two literals CRuby distinguishes into one double. The literal now carries its bits."
+}

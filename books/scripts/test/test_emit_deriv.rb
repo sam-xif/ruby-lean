@@ -79,6 +79,17 @@ class TestEmitDeriv < Minitest::Test
     end
   end
 
+  # A float literal reaches the emitter as its bits (#141); a document written
+  # before that names the double instead, and both read.
+  def test_a_float_literal_reads_its_bits_or_its_value
+    bits = [1.5].pack("E").unpack1("Q<")
+    [["flt_bits", bits], ["flt", 1.5]].each do |ast|
+      out = emit({ "ast" => ast }, { "sigs" => [] })
+      assert_equal "ok", out["status"], out["why"]
+      assert_equal({ "rule" => "fltLit", "bits" => bits }, out["deriv"])
+    end
+  end
+
   def test_a_program_too_deep_to_walk_blocks
     deep = ["int", 1]
     100_000.times { deep = ["array", [deep]] }
