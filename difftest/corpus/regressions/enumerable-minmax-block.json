@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed for #128 (guard, not campaign output)",
+  "arm": "hand",
+  "case_id": "enumerable-minmax-block",
+  "observed_then": "disagree",
+  "diff_then": "stdout: '[[1, 5], []]\\n[[5, 5], []]\\n[[nil, nil], []]\\n[[1, 2], []]\\n...' vs '[[1, 5], [[3, 1], [4, 1], [1, 1], [4, 3], [5, 1], [5, 4]]]\\n[[5, 5], []]\\n[[nil, nil], []]\\n[[1, 2], [[2, 1]]]\\n...'",
+  "note": "#128: `Enumerable#minmax` accepted a comparison block and never called it, answering the pair under the default `<=>` (`[1, 2, 3].minmax { |a, b| b <=> a }` was [1, 3], not [3, 1]). The block is CRuby's comparison over consecutive elements, so the program logs every comparison and pins the sequence for even and odd lengths, the empty and one-element cases, a trailing element, equal pairs, a hash's pairs, an Enumerator, and a comparison whose answer depends on how often it has run. Exact program agrees with CRuby 4.0.5.",
+  "fixed_in": "Enumerable#minmax runs its block in CRuby's pairwise order (#128)"
+}
