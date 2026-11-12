@@ -393,9 +393,16 @@ module Enumerable
     end
   end
 
+  # `Enumerable#take` converts its count with `NUM2LONG` (`__num2long`) and then
+  # refuses a negative one: `[1].take(-1)` is `ArgumentError: attempt to take
+  # negative size`, while `take(1.5)` is `take(1)` and `take(nil)` is the
+  # `TypeError` `rb_to_int` raises for nil [V].
   def take(n)
+    n = __num2long(n)
+    raise ArgumentError, "attempt to take negative size" if n < 0
+
     r = []
-    return r if n <= 0
+    return r if n == 0
     each { |x|
       r.push(x)
       break if r.length == n
@@ -413,7 +420,12 @@ module Enumerable
     r
   end
 
+  # The same conversion as `#take`, with its own message for a negative count:
+  # `[1].drop(-1)` is `ArgumentError: attempt to drop negative size` [V].
   def drop(n)
+    n = __num2long(n)
+    raise ArgumentError, "attempt to drop negative size" if n < 0
+
     r = []
     i = 0
     each { |x|
@@ -434,9 +446,15 @@ module Enumerable
     r
   end
 
+  # An `Enumerable#each_slice` size is `NUM2LONG` as well, and a size that is not
+  # positive is `ArgumentError: invalid slice size` — the argument used to be
+  # compared with `0` untouched, so `each_slice(1.5)` answered one slice for the
+  # whole receiver and a negative size was declined rather than raised [V].
   def each_slice(n)
     return __unsupported__("Enumerator: Enumerable#each_slice without a block") unless block_given?
-    return __unsupported__("Enumerable#each_slice with n <= 0 (ArgumentError)") if n <= 0
+
+    n = __num2long(n)
+    raise ArgumentError, "invalid slice size" if n <= 0
     buf = []
     each { |x|
       buf.push(x)
@@ -449,9 +467,13 @@ module Enumerable
     self
   end
 
+  # `#each_cons` shares the conversion and the rule but not the message: a size
+  # that is not positive is `ArgumentError: invalid size` [V].
   def each_cons(n)
     return __unsupported__("Enumerator: Enumerable#each_cons without a block") unless block_given?
-    return __unsupported__("Enumerable#each_cons with n <= 0 (ArgumentError)") if n <= 0
+
+    n = __num2long(n)
+    raise ArgumentError, "invalid size" if n <= 0
     buf = []
     each { |x|
       buf.push(x)
@@ -1743,6 +1765,55 @@ module Kernel
   # answered" alike — which is every conversion but `rb_convert_type_with_id`.
   def __check_convert(obj, meth)
     __conv_callable?(obj, meth) ? obj.send(meth) : nil
+  end
+
+  # `NUM2LONG` over the count or size argument of an `Enumerable` method
+  # (`rb_num2long`): an Integer, a Float truncated toward zero, or an object's
+  # `to_int`, and then a **C `long`** range check [V]. `take`, `drop`,
+  # `each_slice` and `each_cons` all convert their count this way and then
+  # validate it; comparing the raw argument with `<=` instead answered a
+  # negative count where CRuby raises, never truncated a fractional one, and
+  # raised `NoMethodError` for `<` on a non-number rather than `TypeError`.
+  #
+  # The failure messages, each its own wording in CRuby: `nil` says "from nil to
+  # integer", lowercase, where every other object says "of X into Integer"; a
+  # `to_int` that answers a non-Integer names the answer ("... gives NilClass");
+  # an Integer beyond the `long` range is "bignum too big to convert into
+  # 'long'"; and a Float is "float <value> out of range of integer" with the
+  # value at `%.10g`, a format this model cannot render, so a finite Float
+  # outside the range declines instead of guessing its digits.
+  def __num2long(arg)
+    if Integer === arg
+      i = arg
+    elsif Float === arg
+      # The Float fast path tests the range itself, before `to_int` (which
+      # raises `FloatDomainError` for these), and spells each infinity [V].
+      raise RangeError, "float NaN out of range of integer" if arg.nan?
+      raise RangeError, "float Inf out of range of integer" if arg == Float::INFINITY
+      raise RangeError, "float -Inf out of range of integer" if arg == -Float::INFINITY
+
+      i = arg.to_i
+      return i if i >= -9223372036854775808 && i <= 9223372036854775807
+
+      return __unsupported__(
+        "NUM2LONG of a Float outside the long range (CRuby prints it at %.10g)"
+      )
+    else
+      i = __check_convert(arg, :to_int)
+      unless Integer === i
+        if __conv_callable?(arg, :to_int)
+          raise TypeError, "can't convert " + arg.class.to_s + " to Integer (" +
+                           arg.class.to_s + "#to_int gives " + i.class.to_s + ")"
+        end
+        raise TypeError, "no implicit conversion from nil to integer" if arg.nil?
+
+        raise TypeError, "no implicit conversion of " + __conv_desc(arg) + " into Integer"
+      end
+    end
+    raise RangeError, "bignum too big to convert into 'long'" \
+      if i < -9223372036854775808 || i > 9223372036854775807
+
+    i
   end
 end
 
