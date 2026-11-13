@@ -19,10 +19,11 @@ end
 #
 #   "$(brew --prefix ruby)/bin/ruby" scripts/gen_cruby_names.rb > RubyCore/Generated/CRubyNames.lean
 #
-# Emits, for each bootstrap class of the L0 Lean model, the method names
-# CRuby defines directly on it (instance + private instance), folding in the
-# modules the L0 ancestor chain omits (Kernel→Object, Comparable/Numeric→
-# numerics/strings/symbols, Enumerable→Array/Hash), plus Object.constants.
+# Emits, for each class of the L0 Lean model — its bootstrap classes and the
+# ones its prelude defines — the method names CRuby defines directly on it
+# (instance + private instance), folding in the modules the L0 ancestor chain
+# omits (Kernel→Object, Comparable/Numeric→numerics/strings/symbols,
+# Enumerable→Array/Hash), plus Object.constants.
 # The Lean model uses these for dispatch fidelity (shadow detection and
 # genuine-NoMethodError classification), not behavior.
 
@@ -30,6 +31,14 @@ end
 # left out so that this table is the same on every platform: `Integer::GMP_VERSION`
 # is defined only when CRuby was compiled against GMP.
 BUILD_DEPENDENT = %i[GMP_VERSION].freeze
+
+# `Pathname` is booted as a C extension (pathname.so) but the stdlib's
+# `pathname.rb` reopens it with `find` and `rmtree` on top. Snapshot the union:
+# a program that has required pathname must get a named gate for a selector the
+# model does not model, not a `NoMethodError` that only the un-required state
+# would justify. `load`, not `require`: the booted extension already answers
+# `require "pathname"`, so a require would be a no-op and never read the `.rb`.
+load "pathname.rb"
 
 FOLD = {
   "BasicObject" => [BasicObject],
@@ -54,11 +63,6 @@ FOLD = {
   "Proc" => [Proc],
   "Range" => [Range, Enumerable],
   "Random" => [Random],
-  # Stdlib classes the model defines in its *prelude* rather than in CRuby's C
-  # boot. They ship with every CRuby, so their selectors have to be classified
-  # exactly like a builtin's: a real one gates, an invented one is a
-  # NoMethodError.
-  "Pathname" => [Pathname],
   "Exception" => [Exception],
   # Exception subclasses in the bootstrap heap: each may add its own methods
   # (e.g. NameError#receiver, NoMethodError#args) that dispatch must know
@@ -78,7 +82,12 @@ FOLD = {
   "StopIteration" => [StopIteration],
   "UncaughtThrowError" => [UncaughtThrowError],
   "NotImplementedError" => [NotImplementedError],
-  "ScriptError" => [ScriptError]
+  "ScriptError" => [ScriptError],
+  # Classes the model defines in its *prelude* rather than in CRuby's C boot,
+  # but which CRuby ships as part of the language's own stdlib. Their selectors
+  # are classified like a builtin's: a real one gates, an invented one is a
+  # NoMethodError.
+  "Pathname" => [Pathname]
 }.freeze
 
 # A lambda, not a toplevel def — a def here would land on Object and leak
@@ -131,8 +140,8 @@ puts NAME_LINES.call(MAIN_SINGLETON.uniq.sort, "  ")
 puts "]"
 
 puts <<~MID
-  /-- Singleton (class-side) method names each bootstrap class defines in
-      CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]): a send to a class
+  /-- Singleton (class-side) method names each class of the L0 model defines
+      in CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]): a send to a class
       object resolving past these must gate. -/
   def crubySingletonNames : List (String × List String) := [
 MID

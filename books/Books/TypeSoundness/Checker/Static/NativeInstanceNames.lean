@@ -67,7 +67,7 @@ def nativeInstanceNames : List String := [
   "reject", "reject!", "relative?", "relative_path_from", "remainder", "remove_class_variable", "remove_const", "remove_instance_variable", "remove_method",
   "rename", "repeated_combination", "repeated_permutation", "replace", "require", "require_relative", "respond_to?", "respond_to_missing?",
   "result", "reverse", "reverse!", "reverse_each", "rfind", "rindex", "rjust",
-  "rmdir", "root?", "rotate", "rotate!", "round", "rpartition", "rstrip", "rstrip!", "ruby2_keywords",
+  "rmdir", "rmtree", "root?", "rotate", "rotate!", "round", "rpartition", "rstrip", "rstrip!", "ruby2_keywords",
   "same_paths?", "sample", "scan", "scrub", "scrub!", "select", "select!", "send",
   "set_backtrace", "set_temporary_name", "set_trace_func", "setbyte", "setgid?", "setuid?", "shift", "shuffle", "shuffle!",
   "singleton_class", "singleton_class?", "singleton_method", "singleton_method_added", "singleton_method_removed", "singleton_method_undefined", "singleton_methods",
