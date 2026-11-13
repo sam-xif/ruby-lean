@@ -2081,11 +2081,64 @@ end
 class File
   SEPARATOR = "/"
 
-  def self.basename(path, suffix = nil)
-    s = path.to_s
+  # CRuby resolves a path argument through `FilePathValue` (`rb_get_path`): a
+  # String stands, otherwise `to_path` and failing that `to_str` must answer a
+  # String, and anything else is `TypeError: no implicit conversion of X into
+  # String`. Coercing with `to_s` made the model **answer** (`.` for
+  # `File.dirname(123)`) where CRuby raises, so a program outside the domain ran
+  # to a value here and to an exception there. Raise CRuby's exception instead.
+  # An object whose class has no faithful name (an anonymous class prints a
+  # native address) gates: a message the model cannot reproduce is a wrong
+  # answer, not a refusal.
+  def self.__path_arg__(value)
+    return value if value.is_a?(String)
+    return self.__string_from__(value.to_path) if value.respond_to?(:to_path)
+    return self.__string_from__(value.to_str) if value.respond_to?(:to_str)
+    self.__path_type_error__(value)
+  end
+
+  # `StringValue` is the narrower conversion: a String or `to_str`, never
+  # `to_path`. `File.basename`'s suffix uses it, so a Pathname suffix refuses.
+  def self.__string_arg__(value)
+    return value if value.is_a?(String)
+    return self.__string_from__(value.to_str) if value.respond_to?(:to_str)
+    self.__path_type_error__(value)
+  end
+
+  # A conversion that answered a non-String is named by *its* class, not the
+  # original object's (`to_path = 123` is "no implicit conversion of Integer").
+  def self.__string_from__(value)
+    return value if value.is_a?(String)
+    self.__path_type_error__(value)
+  end
+
+  def self.__path_type_error__(value)
+    name =
+      if value.nil?
+        "nil"
+      elsif value == true
+        "true"
+      elsif value == false
+        "false"
+      else
+        value.class.to_s
+      end
+    __unsupported__("File path argument of class " + name) if name.start_with?("#<")
+    raise TypeError, "no implicit conversion of " + name + " into String"
+  end
+
+  # The default for `basename`'s suffix, so that an omitted suffix differs from
+  # an explicit `nil` (CRuby raises `TypeError` for the latter).
+  def self.__no_suffix__
+    @__no_suffix__ ||= Object.new
+  end
+
+  def self.basename(path, suffix = __no_suffix__)
+    s = self.__path_arg__(path)
     parts = s.split("/")
     base = parts.empty? ? (s.empty? ? "" : "/") : parts[parts.length - 1]
-    return base if suffix.nil?
+    return base if suffix.equal?(__no_suffix__)
+    suffix = self.__string_arg__(suffix)
     return base if suffix == base
     if suffix == ".*"
       i = base.length - 1
@@ -2100,7 +2153,7 @@ class File
   end
 
   def self.extname(path)
-    b = basename(path)
+    b = basename(self.__path_arg__(path))
     i = b.length - 1
     while i > 0
       return b[i, b.length - i] if b[i] == "."
@@ -2110,7 +2163,7 @@ class File
   end
 
   def self.dirname(path)
-    s = path.to_s
+    s = self.__path_arg__(path)
     i = s.length - 1
     while i >= 0
       if s[i] == "/"
@@ -2123,7 +2176,50 @@ class File
   end
 
   def self.join(*parts)
-    parts.map { |x| x.to_s }.join("/")
+    self.__join_parts__(parts, [])
+  end
+
+  # `File.join` joins each nested array to a String first and then joins the
+  # results, so `join([[], []])` is "/" (two empty strings), not "". CRuby
+  # raises `ArgumentError: recursive array` instead of looping forever on a
+  # cycle.
+  def self.__join_parts__(parts, stack)
+    result = ""
+    i = 0
+    while i < parts.length
+      x = parts[i]
+      name =
+        if x.is_a?(Array)
+          raise ArgumentError, "recursive array" if self.__on_path_stack__(stack, x)
+          self.__join_parts__(x, stack + [x])
+        else
+          self.__path_arg__(x)
+        end
+      if i > 0
+        if name.start_with?("/")
+          # CRuby drops every trailing separator of the accumulated result and
+          # then appends the name with its own leading separators intact, so
+          # `join("a/", "/b")` is "a/b" but `join("a//", "//b")` keeps two.
+          j = result.length
+          j -= 1 while j > 0 && result[j - 1] == "/"
+          result = result[0, j]
+        elsif !result.end_with?("/")
+          result += "/"
+        end
+      end
+      result += name
+      i += 1
+    end
+    result
+  end
+
+  def self.__on_path_stack__(stack, candidate)
+    i = 0
+    while i < stack.length
+      return true if stack[i].equal?(candidate)
+      i += 1
+    end
+    false
   end
 
   def self.method_missing(name, *args, **kw, &blk)

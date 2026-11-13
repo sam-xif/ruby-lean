@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_in": "File path helpers convert their arguments the way CRuby's FilePathValue/StringValue do (#57)",
+  "filed_by": "hand, Jiro (agent), for #57",
+  "arm": "hand",
+  "case_id": "file-path-argument-conversion",
+  "first_reconciled": "2026-11-13, lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'dirname(123) => \".\"' vs 'dirname(123) => TypeError: no implicit conversion of Integer into String'",
+  "note": "#57: `File.basename`/`dirname`/`extname`/`join` coerced every path with `to_s`, so a non-String argument answered a value where CRuby raises TypeError. The helpers now resolve a path through `to_path`, then `to_str`, and raise CRuby's byte-exact `no implicit conversion of X into String` otherwise (an anonymous class, whose name carries a native address, gates instead); `basename`'s suffix uses the narrower `StringValue`, and an omitted suffix now differs from an explicit nil. `join` joins nested arrays to Strings first, follows CRuby's separator rule, and raises `ArgumentError: recursive array` on a cycle. The String cases and the modeled Pathname inputs are unchanged."
+}
