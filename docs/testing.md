@@ -28,7 +28,7 @@ build.
 | Target | Programs | Fails when |
 |---|---|---|
 | `make conformance` | The 1287 programs of CRuby's `bootstraptest` suite | The model and CRuby disagree on any program; or fewer programs agree, or more are unsupported, than the recorded baseline |
-| `make conformance` | 219 minimized reproducers of every disagreement found in the past (`difftest/corpus/regressions/`) | Any disagrees |
+| `make conformance` | 224 minimized reproducers of every disagreement found in the past (`difftest/corpus/regressions/`) | Any disagrees |
 | `make conformance` | Hand-written adversarial programs for blocks and jumps, dispatch, evaluation order, exceptions, keyword arguments, metaprogramming and namespaces (`difftest/corpus/tier3/`) | Any disagrees |
 | `make soundness` | The 268 typed programs of `books/corpus/` | Any disagrees |
 | `make feature-loading` | `require`: scope, caching, re-entry and retry after a failed load | The model and CRuby differ |

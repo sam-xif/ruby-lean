@@ -14,6 +14,7 @@ def nativeQueryRows : List (String × List String) :=
    ("String", ["===", "to_s"]), ("Symbol", ["===", "to_s"]),
    ("Array", ["to_s"]), ("Hash", ["to_s"]), ("Proc", ["===", "to_s"]),
    ("Range", ["===", "to_s"]), ("Exception", ["to_s"]),
+   ("Pathname", ["===", "to_s"]),
    ("UncaughtThrowError", ["to_s"])]
 
 def nativeQueryHasB (cn mn : String) : Bool :=

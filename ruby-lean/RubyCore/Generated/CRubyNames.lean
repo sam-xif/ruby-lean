@@ -15,9 +15,10 @@ Numeric→Integer/Float, Enumerable→Array/Hash.
 -/
 namespace RubyCore
 
-/-- Method names each bootstrap class defines directly in CRuby
+/-- Method names each class of the L0 model defines directly in CRuby
     (instance_methods(false) ∪ private_instance_methods(false), modules
-    folded as above). -/
+    folded as above); the prelude-defined classes are listed with the
+    bootstrap ones. -/
 def crubyMethodNames : List (String × List String) := [
   ("BasicObject", [
     "!", "!=", "==", "__id__", "__send__", "equal?", "initialize", "instance_eval",
@@ -286,6 +287,22 @@ def crubyMethodNames : List (String × List String) := [
   ]),
   ("ScriptError", [
 
+  ]),
+  ("Pathname", [
+    "+", "/", "<=>", "==", "===", "absolute?", "add_trailing_separator", "ascend",
+    "atime", "basename", "binread", "binwrite", "birthtime", "blockdev?", "chardev?", "children",
+    "chmod", "chop_basename", "chown", "cleanpath", "cleanpath_aggressive", "cleanpath_conservative", "ctime", "del_trailing_separator",
+    "delete", "descend", "directory?", "dirname", "each_child", "each_entry", "each_filename", "each_line",
+    "empty?", "entries", "eql?", "executable?", "executable_real?", "exist?", "expand_path", "extname",
+    "file?", "find", "fnmatch", "fnmatch?", "freeze", "ftype", "glob", "grpowned?",
+    "has_trailing_separator?", "hash", "initialize", "inspect", "join", "lchmod", "lchown", "lstat",
+    "lutime", "make_link", "make_symlink", "mkdir", "mkpath", "mountpoint?", "mtime", "open",
+    "opendir", "owned?", "parent", "path", "pipe?", "plus", "prepend_prefix", "read",
+    "readable?", "readable_real?", "readlines", "readlink", "realdirpath", "realpath", "relative?", "relative_path_from",
+    "rename", "rmdir", "rmtree", "root?", "same_paths?", "setgid?", "setuid?", "size",
+    "size?", "socket?", "split", "split_names", "stat", "sticky?", "sub", "sub_ext",
+    "symlink?", "sysopen", "to_path", "to_s", "truncate", "unlink", "utime", "world_readable?",
+    "world_writable?", "writable?", "writable_real?", "write", "zero?"
   ])
 ]
 
@@ -293,8 +310,8 @@ def crubyMethodNames : List (String × List String) := [
 def crubyMainSingletonNames : List String := [
   "define_method", "include", "inspect", "private", "public", "ruby2_keywords", "to_s", "using"
 ]
-/-- Singleton (class-side) method names each bootstrap class defines in
-    CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]): a send to a class
+/-- Singleton (class-side) method names each class of the L0 model defines
+    in CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]): a send to a class
     object resolving past these must gate. -/
 def crubySingletonNames : List (String × List String) := [
   ("BasicObject", [
@@ -413,6 +430,9 @@ def crubySingletonNames : List (String × List String) := [
   ]),
   ("ScriptError", [
 
+  ]),
+  ("Pathname", [
+    "getwd", "glob", "mktmpdir", "pwd"
   ])
 ]
 
@@ -456,7 +476,8 @@ def crubyNamespaceConstants : List (String × List String) := [
   ("StopIteration", []),
   ("UncaughtThrowError", []),
   ("NotImplementedError", []),
-  ("ScriptError", [])
+  ("ScriptError", []),
+  ("Pathname", ["SEPARATOR_PAT", "VERSION"])
 ]
 
 /-- Constants a require may define, curated separately from the oracle's

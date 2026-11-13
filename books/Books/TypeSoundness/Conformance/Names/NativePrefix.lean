@@ -8,6 +8,9 @@ set_option autoImplicit false
 namespace Checker.Soundness
 open RubyCore Checker
 
+-- The projection is ~650 selectors over ~43 classes, so `decide` walking it
+-- needs more recursion depth than the default.
+set_option maxRecDepth 4000 in
 private theorem instance_covered : crubyMethodNames.all
     (fun p => p.2.all nativeInstanceNames.contains) = true := by decide +kernel
 
