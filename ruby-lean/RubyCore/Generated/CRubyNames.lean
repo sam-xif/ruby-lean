@@ -15,9 +15,10 @@ Numeric→Integer/Float, Enumerable→Array/Hash.
 -/
 namespace RubyCore
 
-/-- Method names each bootstrap class defines directly in CRuby
+/-- Method names each class of the L0 model defines directly in CRuby
     (instance_methods(false) ∪ private_instance_methods(false), modules
-    folded as above). -/
+    folded as above); the prelude-defined classes are listed with the
+    bootstrap ones. -/
 def crubyMethodNames : List (String × List String) := [
   ("BasicObject", [
     "!", "!=", "==", "__id__", "__send__", "equal?", "initialize", "instance_eval",
@@ -235,6 +236,22 @@ def crubyMethodNames : List (String × List String) := [
   ("Random", [
     "==", "initialize_copy", "left", "marshal_dump", "marshal_load", "state"
   ]),
+  ("Pathname", [
+    "+", "/", "<=>", "==", "===", "absolute?", "add_trailing_separator", "ascend",
+    "atime", "basename", "binread", "binwrite", "birthtime", "blockdev?", "chardev?", "children",
+    "chmod", "chop_basename", "chown", "cleanpath", "cleanpath_aggressive", "cleanpath_conservative", "ctime", "del_trailing_separator",
+    "delete", "descend", "directory?", "dirname", "each_child", "each_entry", "each_filename", "each_line",
+    "empty?", "entries", "eql?", "executable?", "executable_real?", "exist?", "expand_path", "extname",
+    "file?", "fnmatch", "fnmatch?", "freeze", "ftype", "glob", "grpowned?", "has_trailing_separator?",
+    "hash", "initialize", "inspect", "join", "lchmod", "lchown", "lstat", "lutime",
+    "make_link", "make_symlink", "mkdir", "mkpath", "mountpoint?", "mtime", "open", "opendir",
+    "owned?", "parent", "path", "pipe?", "plus", "prepend_prefix", "read", "readable?",
+    "readable_real?", "readlines", "readlink", "realdirpath", "realpath", "relative?", "relative_path_from", "rename",
+    "rmdir", "root?", "same_paths?", "setgid?", "setuid?", "size", "size?", "socket?",
+    "split", "split_names", "stat", "sticky?", "sub", "sub_ext", "symlink?", "sysopen",
+    "to_path", "to_s", "truncate", "unlink", "utime", "world_readable?", "world_writable?", "writable?",
+    "writable_real?", "write", "zero?"
+  ]),
   ("Exception", [
     "==", "backtrace", "backtrace_locations", "cause", "detailed_message", "exception", "full_message", "initialize",
     "inspect", "message", "method_missing", "respond_to?", "respond_to_missing?", "set_backtrace", "to_s"
@@ -363,6 +380,9 @@ def crubySingletonNames : List (String × List String) := [
   ("Random", [
     "bytes", "left", "new_seed", "rand", "seed", "srand", "state", "urandom"
   ]),
+  ("Pathname", [
+    "getwd", "glob", "pwd"
+  ]),
   ("Exception", [
     "exception", "to_tty?"
   ]),
@@ -440,6 +460,7 @@ def crubyNamespaceConstants : List (String × List String) := [
   ("Proc", []),
   ("Range", []),
   ("Random", ["Base", "Formatter"]),
+  ("Pathname", ["SEPARATOR_PAT", "VERSION"]),
   ("Exception", []),
   ("StandardError", []),
   ("RuntimeError", []),

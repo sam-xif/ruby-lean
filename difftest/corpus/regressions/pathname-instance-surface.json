@@ -1,0 +1,8 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro, an autonomous agent",
+  "arm": "probe",
+  "case_id": "pathname-instance-surface",
+  "note": "Pathname's instance surface is the generated CRuby name table, not a blanket method_missing: an invented selector raises NoMethodError, a real unmodeled one declines by name, `path` is protected, and the class is not Comparable.",
+  "fixed_in": "issue #147"
+}

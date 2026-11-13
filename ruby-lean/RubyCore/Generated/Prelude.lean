@@ -8603,8 +8603,7 @@ def core_45 : Expr :=
     "Pathname"
     none
     (RubyCore.Expr.seq
-      [RubyCore.Expr.send none "include" [RubyCore.Expr.const "Comparable"] none,
-       RubyCore.Expr.def'
+      [RubyCore.Expr.def'
          "initialize"
          [RubyCore.Param.req "path"]
          (RubyCore.Expr.vasgn
@@ -8745,33 +8744,8 @@ def core_45 : Expr :=
            "empty?"
            []
            none),
-       RubyCore.Expr.def'
-         "method_missing"
-         [RubyCore.Param.req "name",
-          RubyCore.Param.rest (some "args"),
-          RubyCore.Param.kwrest (some "kw"),
-          RubyCore.Param.block (some "blk")]
-         (RubyCore.Expr.send
-           none
-           "__unsupported__"
-           [RubyCore.Expr.send
-              (some (RubyCore.Expr.send
-                 (some (RubyCore.Expr.str "Pathname#"))
-                 "+"
-                 [RubyCore.Expr.send
-                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "name"))
-                    "to_s"
-                    []
-                    none]
-                 none))
-              "+"
-              [RubyCore.Expr.str " (only the pure path operations are modeled)"]
-              none]
-           none),
-       RubyCore.Expr.def'
-         "respond_to_missing?"
-         [RubyCore.Param.req "name", RubyCore.Param.opt "include_private" (RubyCore.Expr.fls)]
-         (RubyCore.Expr.tru)])
+       RubyCore.Expr.def' "path" [] (RubyCore.Expr.var (RubyCore.VarKind.ivar) "@path"),
+       RubyCore.Expr.send none "protected" [RubyCore.Expr.sym "path"] none])
 
 def core_46 : Expr :=
   RubyCore.Expr.module'

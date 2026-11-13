@@ -54,6 +54,11 @@ FOLD = {
   "Proc" => [Proc],
   "Range" => [Range, Enumerable],
   "Random" => [Random],
+  # Stdlib classes the model defines in its *prelude* rather than in CRuby's C
+  # boot. They ship with every CRuby, so their selectors have to be classified
+  # exactly like a builtin's: a real one gates, an invented one is a
+  # NoMethodError.
+  "Pathname" => [Pathname],
   "Exception" => [Exception],
   # Exception subclasses in the bootstrap heap: each may add its own methods
   # (e.g. NameError#receiver, NoMethodError#args) that dispatch must know
@@ -101,9 +106,10 @@ puts <<~HEADER
   -/
   namespace RubyCore
 
-  /-- Method names each bootstrap class defines directly in CRuby
+  /-- Method names each class of the L0 model defines directly in CRuby
       (instance_methods(false) ∪ private_instance_methods(false), modules
-      folded as above). -/
+      folded as above); the prelude-defined classes are listed with the
+      bootstrap ones. -/
   def crubyMethodNames : List (String × List String) := [
 HEADER
 

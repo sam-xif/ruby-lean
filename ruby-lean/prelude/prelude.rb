@@ -2014,9 +2014,19 @@ end
 # `to_s`, `basename`, `dirname` and Homebrew's own `stem` — all pure string
 # operations on the path, with no filesystem access anywhere in the slice. So
 # `Pathname` is a wrapper over a String with exactly those, plus the
-# `extname`/`sub`/`==`/`inspect` that fall out; anything else routes to
-# `method_missing` and gates by name, the same guard `File` and `URI` use, so
-# `Pathname#exist?` refuses rather than answering.
+# `extname`/`sub`/`==`/`inspect` that fall out.
+#
+# The class body carries **no `method_missing`**. The CRuby name table
+# (`Generated/CRubyNames.lean`) records Pathname's real instance selectors, so
+# lookup a miss classifies the same way a builtin's does: a real unmodeled
+# method (`realpath`, `stat`, …) declines as `unmodeled method Pathname#…`,
+# while an invented one (`zzz_does_not_exist`) raises CRuby's byte-exact
+# `NoMethodError` [V]. `respond_to?` follows the same tables instead of
+# answering `true` for every name.
+#
+# `Pathname` is **not** `Comparable`: neither CRuby's nor this one. Including it
+# here made `<`/`>`/`between?` answer where CRuby raises `NoMethodError` — a
+# wrong answer, not a gate [V].
 #
 # `Pathname#stem`, which `Version.detect` also calls, is deliberately **not**
 # here: it is Homebrew's own extension (`extend/pathname.rb:187`), not Ruby's, so
@@ -2024,8 +2034,6 @@ end
 # running the same program without Homebrew's boot path — cannot. It belongs in
 # the difftest harness's stub set, alongside `blank?`.
 class Pathname
-  include Comparable
-
   def initialize(path)
     @path = path.to_s
   end
@@ -2054,13 +2062,11 @@ class Pathname
 
   def empty? = @path.empty?
 
-  def method_missing(name, *args, **kw, &blk)
-    __unsupported__("Pathname#" + name.to_s + " (only the pure path operations are modeled)")
-  end
-
-  def respond_to_missing?(name, include_private = false)
-    true
-  end
+  # `path` is **protected** in CRuby: a plain `p.path` raises `NoMethodError:
+  # protected method 'path' called for an instance of Pathname`, and only
+  # `send(:path)` answers [V].
+  def path = @path
+  protected :path
 end
 
 module Kernel
