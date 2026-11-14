@@ -142,6 +142,43 @@ def parseFloatPrefix (str : String) : Float :=
     else mant / Float.ofNat (10 ^ (-expo).toNat)
   if neg then -scaled else scaled
 
+/-- `String#upcase` (`down = false`) and `String#downcase` (`down = true`).
+
+    CRuby maps a binary String over ASCII only and a UTF-8 String over Unicode,
+    so the encoding picks the mapping: `String.toUpper`/`toLower` is the ASCII
+    one, the generated tables the other.
+
+    The argument is the optional selector: `:ascii` is the ASCII mapping, and
+    `:turkic` and `:fold` are the default mapping with a delta the generator
+    records. The argument errors are CRuby's, message and all [V]. -/
+def caseMapping (down : Bool) (recv : Value) (args : List Value) (m : Machine) : BRes :=
+  let h := m.heap
+  match strPayload? h recv with
+  | none => .unsupported (if down then "downcase" else "upcase")
+  | some s =>
+    let ascii := if down then s.toLower else s.toUpper
+    -- A binary String is mapped over ASCII only, whatever the selector asks for.
+    let pick (utf : String) : String := if isBinaryStr h recv then ascii else utf
+    match args with
+    | [] => okStrFrom m recv (pick (if down then unicodeLower s else unicodeUpper s))
+    | [opt] =>
+      match opt with
+      | .sym sel =>
+        if sel == "ascii" then okStrFrom m recv ascii
+        else if sel == "turkic" then
+          okStrFrom m recv (pick (if down then unicodeLowerTurkic s else unicodeUpperTurkic s))
+        else if sel == "fold" then
+          if down then okStrFrom m recv (pick (unicodeLowerFold s))
+          else .err Boot.argumentErrorId "option :fold only allowed for downcasing" m
+        else .err Boot.argumentErrorId "invalid option" m
+      | _ => .err Boot.argumentErrorId "invalid option" m
+    | _ =>
+      -- A second option is refused before either is validated, and `:turkic` is
+      -- the one first option that changes the message [V]
+      match args.head? with
+      | some (.sym "turkic") => .err Boot.argumentErrorId "invalid second option" m
+      | _ => .err Boot.argumentErrorId "too many options" m
+
 /-- String, Symbol and Proc rules. -/
 def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
@@ -345,14 +382,8 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match strPayload? h recv with
     | some s => okStrFrom m recv (String.ofList s.toList.reverse)
     | none => .unsupported "reverse"
-  | "String#upcase" =>
-    match strPayload? h recv with
-    | some s => okStrFrom m recv s.toUpper
-    | none => .unsupported "upcase"
-  | "String#downcase" =>
-    match strPayload? h recv with
-    | some s => okStrFrom m recv s.toLower
-    | none => .unsupported "downcase"
+  | "String#upcase" => caseMapping false recv args m
+  | "String#downcase" => caseMapping true recv args m
   | "String#strip" =>
     match strPayload? h recv with
     | some s =>
