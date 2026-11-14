@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, issue #57",
+  "arm": "probe",
+  "case_id": "file-join-elements",
+  "note": "File.join stringified every element with to_s, so an array answered as one inspect-ed element and a separator run was never collapsed. It now follows rb_file_join: nested Arrays join recursively (identity cycle -> ArgumentError), non-String leaves go through rb_get_path, and a separator is written only where the result lacks one."
+}
