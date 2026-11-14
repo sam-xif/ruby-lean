@@ -1512,9 +1512,15 @@ class Array
 
   def __to_s_slow = __inspect_slow
 
-  # `join` renders each element with `to_s`, flattens nested arrays, and renders
-  # nil as the empty string [V].
-  def __join_slow(sep = nil)
+  # `join` renders each element with `to_s`, recurses into nested arrays, and
+  # renders nil as the empty string [V].
+  #
+  # `depth` is a gate, not an answer: an array nested deeper than 100 — the same
+  # fuel `joinImpl` gave its flattening walk — is refused rather than reached by
+  # an unbounded recursion the machine would have to run out of steps on. A
+  # self-referential array is the case that hits it.
+  def __join_slow(sep = nil, depth = 0)
+    return __unsupported__("Array#join nested more than 100 arrays deep") if depth > 100
     # The separator goes through `StringValue` (`to_str`), **not** `to_s`: a String
     # is used verbatim, so `["a"].join("-")` is unaffected by a redefined
     # `String#to_s` [V]. Calling `to_s` here made that program raise `TypeError:
@@ -1527,14 +1533,18 @@ class Array
         else
           return __unsupported__("Array#join with a non-String separator")
         end
-    parts = []
-    __join_collect(parts)
+    # `ary_join_1` appends the separator **before** every element after the
+    # first, at every level, so a nested array's position keeps its boundary
+    # even when the array itself renders nothing: `[1, [], 2].join("-")` is
+    # `"1--2"`, not `"1-2"`. Collecting the rendered elements into a flat list
+    # of parts and intercalating it loses that boundary, because an empty
+    # nested array pushes no part at all.
     out = ""
-    i = 0
-    while i < parts.length
-      out += s unless i.zero?
-      out += parts[i]
-      i += 1
+    first = true
+    each do |e|
+      out += s unless first
+      out += __join_part(e, s, depth)
+      first = false
     end
     out
   end
@@ -1544,20 +1554,10 @@ class Array
   # is joined too (`[Pair.new].join(",")` is `"7,8"`, not `"#<Pair:0x…>"`). Found
   # by probing L133's other sites; `to_ary` is tried **before** `to_s`, which is
   # why it cannot be left to `__as_string`.
-  def __join_collect(parts)
-    each do |e|
-      if e.nil?
-        parts.push("")
-      else
-        sub = String === e ? nil : __check_array_type(e)
-        if sub.nil?
-          parts.push(e.__as_string)
-        else
-          sub.__join_collect(parts)
-        end
-      end
-    end
-    nil
+  def __join_part(e, s, depth)
+    return "" if e.nil?
+    sub = String === e ? nil : __check_array_type(e)
+    sub.nil? ? e.__as_string : sub.__join_slow(s, depth + 1)
   end
 end
 
