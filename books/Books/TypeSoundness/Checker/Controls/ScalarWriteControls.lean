@@ -19,8 +19,11 @@ def callHint (cn : String) (ty : Ty) (d : Deriv) : Deriv :=
 #guard validateD (.seq [cls "Tag" (.sym "new"), call "Tag" (.sym "old")])
   (.seq [hint "Tag" .sym (.symLit "new"), callHint "Tag" .sym (.symLit "old")])
 #guard validateD (cls "FloatBox" (.flt 0)) (hint "FloatBox" .float (.fltLit 0))
--- nil is refused like Boolean: a nil-typed field may be absent, so the receiver could be
--- frozen (`Guards/ScalarWrite.lean`).
+-- nil is refused too, but for safety rather than for distinguishability like Boolean: a
+-- nil-typed field may be absent, so the receiver of the write may be frozen with no fields,
+-- and the model's FrozenError message runs the receiver's own `inspect` — user code, which
+-- can raise a TypeError. `Controls/ScalarWriteControls.nilFieldFrozenInspect` runs that
+-- program, and `Guards/ScalarWrite.lean` states the consequence.
 #guard !validateD (cls "NilBox" .nil) (hint "NilBox" .nilT .nilLit)
 #guard !validateD (cls "FlagBox" .fls) (hint "FlagBox" .bool .flsLit)
 #guard !validateD (cls "Counter" (.str "bad"))

@@ -22,6 +22,7 @@ theorem bool_write_not_framed {m : Machine} {o : ObjId} {x : String}
 #guard isAName bootMachine.heap (.bool true) "TrueClass"
 #guard !isAName bootMachine.heap (.bool false) "TrueClass"
 #guard !scalarWriteB .bool
+#guard !scalarWriteB .nilT
 
 #guard match Interp.run 500 (evalFrom bootMachine Checker.ScalarWriteControls.aliases) with
   | .value (.int 9) _ => true
@@ -37,5 +38,23 @@ def frozenProgram : Checker.Expr := .seq [ScalarWriteProgram.declaration,
   | .uncaught exc m => isA m.heap exc Boot.frozenErrorId && !Semantics.isTypeError m.heap exc
   | _ => false
 #guard primitiveErrorB bootMachine.heap Boot.frozenErrorId
+
+/- A nil-typed field is the one scalar domain whose write reaches a frozen receiver with no
+fields (`StateOk.frozenFields`: a frozen object has none, and a nil-typed field may be
+absent). The model builds the `FrozenError` message from the receiver's own `inspect`, which
+is user code, so the write can end in a `TypeError` — a type error, not the tolerated
+non-type outcome above. This is why `scalarWriteB` excludes nil for safety rather than for
+distinguishability (`Guards/ScalarWrite.lean`), and why widening it needs a hypothesis about
+the receiver's class. -/
+def nilFieldFrozenInspect : Checker.Expr := .seq [
+  .class' "NilBox" none (.seq [
+    .def' "set" [] (.vasgn .ivar "@value" .nil),
+    .def' "inspect" [] (.send none "raise" [.const "TypeError", .str "boom"] none)]),
+  .vasgn .lvar "box" (.send (some (.const "NilBox")) "new" [] none),
+  .send (some (.var .lvar "box")) "freeze" [] none,
+  .send (some (.var .lvar "box")) "set" [] none]
+#guard match Interp.run 400 (evalFrom bootMachine nilFieldFrozenInspect) with
+  | .uncaught exc m => isA m.heap exc Boot.typeErrorId && Semantics.isTypeError m.heap exc
+  | _ => false
 #print axioms bool_write_not_framed
 end Checker.Soundness.Typed.ScalarWriteControls
