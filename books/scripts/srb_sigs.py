@@ -29,15 +29,30 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
 
+class MissingSorbet(Exception):
+    """`find_sorbet()` could not name an executable Sorbet binary."""
+
+
 def find_sorbet() -> str:
-    """The Sorbet binary: `$SORBET` if set, else the one inside the installed
-    `sorbet-static` gem (which RubyGems locates), else `srb` on PATH."""
-    if os.environ.get("SORBET"):
-        return os.environ["SORBET"]
+    """The Sorbet binary the pipeline uses. This is the one place that decides,
+    so `scripts/check-prereqs.sh` reports the same binary this reads sigs with.
+
+    `$SORBET`, when set, is an explicit instruction and must name an executable
+    file (or a name on PATH that resolves to one): a typo or a stale path fails
+    here rather than silently grading with a different Sorbet, because the binary
+    decides which programs reach the validator. Otherwise the binary inside the
+    installed `sorbet-static` gem (which RubyGems locates), else `srb` on PATH."""
+    explicit = os.environ.get("SORBET")
+    if explicit:
+        resolved = explicit if os.path.isfile(explicit) else shutil.which(explicit)
+        if resolved is None or not os.access(resolved, os.X_OK):
+            raise MissingSorbet(f"$SORBET is {explicit!r}, which is not an executable file")
+        return resolved
     ruby = os.environ.get("RUBY", "ruby")
     try:
         p = subprocess.run(
@@ -54,11 +69,16 @@ def find_sorbet() -> str:
             timeout=30,
             check=False,
         )
-        if p.returncode == 0 and os.path.exists(p.stdout):
+        if p.returncode == 0 and os.access(p.stdout, os.X_OK):
             return p.stdout
     except (OSError, subprocess.SubprocessError):
         pass
-    return "srb"
+    on_path = shutil.which("srb")
+    if on_path:
+        return on_path
+    raise MissingSorbet(
+        "no executable `sorbet-static` gem binary and no `srb` on PATH (run: make deps)"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -304,12 +324,27 @@ def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("file")
+    ap.add_argument("file", nargs="?")
     ap.add_argument("--untyped", choices=["exclude", "any"], default="exclude")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument(
+        "--which-sorbet",
+        action="store_true",
+        help="print the Sorbet binary find_sorbet() picks and exit (used by scripts/check-prereqs.sh)",
+    )
     args = ap.parse_args(argv)
 
-    binary = find_sorbet()
+    try:
+        binary = find_sorbet()
+    except MissingSorbet as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    if args.which_sorbet:
+        print(binary)
+        return 0
+    if args.file is None:
+        ap.error("a source file is required unless --which-sorbet is given")
+
     # Two passes: the symbol table (which srb prints even for a file with type errors),
     # and a plain check whose diagnostics are the rung's `expect_sorbet` answer.
     table = run(args.file, binary, ["-p", "symbol-table"])

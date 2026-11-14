@@ -5,6 +5,8 @@
 #   scripts/check-prereqs.sh
 set -uo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 ok=0
 have() { command -v "$1" >/dev/null 2>&1; }
 say()  { printf '  %-10s %s\n' "$1" "$2"; }
@@ -30,31 +32,33 @@ else
   bad "ruby" "brew install ruby   (then put it on PATH, or set \$RUBY)"
 fi
 
-# 3. Sorbet — reads the signatures of a typed program. The pipeline uses the
-#    binary inside the `sorbet-static` gem, so the gem is enough; `srb` need not
-#    be on PATH. $SORBET overrides it.
-SORBET_BIN="${SORBET:-}"
-if [[ -z "$SORBET_BIN" && -n "$RUBY_BIN" ]]; then
-  SORBET_BIN="$("$RUBY_BIN" -e 'print File.join(Gem::Specification.find_by_name("sorbet-static").full_gem_path, "libexec", "sorbet")' 2>/dev/null || true)"
-fi
-if [[ -n "$SORBET_BIN" && -x "$SORBET_BIN" ]] || have srb; then
-  say "sorbet" "${SORBET_BIN:-$(command -v srb)}"
-else
-  bad "sorbet" "make deps   (installs the gems pinned in Gemfile.lock)"
-fi
-
-# 4. uv — runs the differential tests in their own environment.
-if have uv; then
-  say "uv" "$(uv --version)"
-else
-  bad "uv" "brew install uv   (or: curl -LsSf https://astral.sh/uv/install.sh | sh)"
-fi
-
-# 5. Python — drives the corpus pipeline.
+# 3. Python — drives the corpus pipeline, and locates Sorbet (below) through it.
 if have python3; then
   say "python3" "$(python3 --version)  (3.12+ required by difftest)"
 else
   bad "python3" "install Python 3.12 or newer"
+fi
+
+# 4. Sorbet — reads the signatures of a typed program. Where the binary lives is
+#    decided in one place, `books/scripts/srb_sigs.py`'s `find_sorbet()`:
+#    `$SORBET` when it names an executable file, else the binary inside the
+#    `sorbet-static` gem (which RubyGems locates), else `srb` on PATH. This check
+#    reports that same binary, so it cannot drift from the one the gate uses.
+SORBET_BIN=""
+if have python3; then
+  SORBET_BIN="$(python3 "$ROOT/books/scripts/srb_sigs.py" --which-sorbet 2>&1)"
+fi
+if [[ -n "$SORBET_BIN" && -x "$SORBET_BIN" ]]; then
+  say "sorbet" "$SORBET_BIN"
+else
+  bad "sorbet" "${SORBET_BIN:-python3 is needed to locate Sorbet; make deps installs the pinned one}"
+fi
+
+# 5. uv — runs the differential tests in their own environment.
+if have uv; then
+  say "uv" "$(uv --version)"
+else
+  bad "uv" "brew install uv   (or: curl -LsSf https://astral.sh/uv/install.sh | sh)"
 fi
 
 echo
