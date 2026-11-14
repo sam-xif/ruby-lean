@@ -2026,8 +2026,62 @@ end
 class Pathname
   include Comparable
 
+  # CRuby's `Pathname#initialize` is `File.path(path).dup` under a method-level
+  # `rescue TypeError` that rewrites the message, and `File.path` is
+  # `rb_get_path`: a String is used as is, and everything else goes through
+  # `rb_check_funcall_default(obj, to_path, ..., obj)` followed by
+  # `StringValue`, which is `to_str`. That is one chain, not three alternatives:
+  #
+  #   * `to_path` is asked through `__conv_callable?`, `rb_check_funcall`'s
+  #     callability rule — so a `method_missing` that serves `to_path` counts,
+  #     and a custom `respond_to?` is not what decides it;
+  #   * when `to_path` is not callable the default is the **argument itself**, so
+  #     an object with only `to_str` still converts;
+  #   * a non-String `to_path` answer is not refused: `StringValue` converts it
+  #     further through `to_str`, so `to_path` returning a `to_str`-able object
+  #     is the inner String;
+  #   * the `rescue TypeError` is CRuby's, and it covers any TypeError escaping
+  #     the conversion — including one raised inside `to_path` or `to_str` —
+  #     which is why the message here is always the `Pathname.new requires ...`
+  #     one.
+  #
+  # Coercing with `to_s` answered where CRuby raises, and read a different path
+  # when `to_path` and `to_s` disagree.
   def initialize(path)
-    @path = path.to_s
+    @path = begin
+      converted = path
+      unless converted.is_a?(String)
+        # `rb_check_funcall_default(path, :to_path, path)`: the argument itself is
+        # the default answer, so an object with only `to_str` still converts. A
+        # user `to_path` is called as written — a `NoMethodError` from inside it
+        # escapes, as CRuby lets it — and when the answer comes from a user
+        # `method_missing` that delegates to `super`, `check_funcall_missing`
+        # reads that `NoMethodError` as "not callable" and answers the default.
+        probed = path
+        if __conv_callable?(path, :to_path)
+          if path.__user_defines?(:to_path)
+            probed = path.send(:to_path)
+          else
+            begin
+              probed = path.send(:to_path)
+            rescue NoMethodError
+              probed = path
+            end
+          end
+        end
+        # `StringValue(probed)`: a non-String `to_path` answer converts through
+        # `to_str`, and a `to_str` that answers a non-String is the TypeError
+        # `String.try_convert` already reports.
+        converted = String.try_convert(probed)
+        if converted.nil?
+          raise TypeError, "no implicit conversion of " + probed.class.to_s + " into String"
+        end
+      end
+      raise ArgumentError, "path name contains null byte" if converted.include?("\0")
+      converted.dup
+    rescue TypeError
+      raise TypeError, "Pathname.new requires a String, #to_path or #to_str"
+    end
   end
 
   def to_s = @path

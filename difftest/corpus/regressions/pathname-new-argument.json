@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro (issue #93)",
+  "arm": "hand",
+  "case_id": "pathname-new-argument",
+  "note": "Pathname.new coerced every argument with `to_s`, so non-Strings answered where CRuby raises TypeError and an object with a distinct to_path produced the wrong path. It now runs CRuby's `File.path` conversion — `rb_get_path_check_to_string` then `StringValue` — and rewrites any TypeError with CRuby's `Pathname.new requires a String, #to_path or #to_str`, keeping a null byte an ArgumentError. Compared with CRuby 4.0.5."
+}

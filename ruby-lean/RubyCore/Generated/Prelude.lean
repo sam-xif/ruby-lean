@@ -8610,10 +8610,131 @@ def core_45 : Expr :=
          (RubyCore.Expr.vasgn
            (RubyCore.VarKind.ivar)
            "@path"
-           (RubyCore.Expr.send
-             (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"))
-             "to_s"
-             []
+           (RubyCore.Expr.begin'
+             (RubyCore.Expr.seq
+               [RubyCore.Expr.vasgn
+                  (RubyCore.VarKind.lvar)
+                  "converted"
+                  (RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"),
+                RubyCore.Expr.if'
+                  (RubyCore.Expr.send
+                    (some (RubyCore.Expr.send
+                       (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "converted"))
+                       "is_a?"
+                       [RubyCore.Expr.const "String"]
+                       none))
+                    "!"
+                    []
+                    none)
+                  (RubyCore.Expr.seq
+                    [RubyCore.Expr.vasgn
+                       (RubyCore.VarKind.lvar)
+                       "probed"
+                       (RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"),
+                     RubyCore.Expr.if'
+                       (RubyCore.Expr.send
+                         none
+                         "__conv_callable?"
+                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "path",
+                          RubyCore.Expr.sym "to_path"]
+                         none)
+                       (RubyCore.Expr.if'
+                         (RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"))
+                           "__user_defines?"
+                           [RubyCore.Expr.sym "to_path"]
+                           none)
+                         (RubyCore.Expr.vasgn
+                           (RubyCore.VarKind.lvar)
+                           "probed"
+                           (RubyCore.Expr.send
+                             (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"))
+                             "send"
+                             [RubyCore.Expr.sym "to_path"]
+                             none))
+                         (some (RubyCore.Expr.begin'
+                            (RubyCore.Expr.vasgn
+                              (RubyCore.VarKind.lvar)
+                              "probed"
+                              (RubyCore.Expr.send
+                                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"))
+                                "send"
+                                [RubyCore.Expr.sym "to_path"]
+                                none))
+                            [([RubyCore.Expr.const "NoMethodError"],
+                              none,
+                              RubyCore.Expr.vasgn
+                                (RubyCore.VarKind.lvar)
+                                "probed"
+                                (RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"))]
+                            none
+                            none)))
+                       none,
+                     RubyCore.Expr.vasgn
+                       (RubyCore.VarKind.lvar)
+                       "converted"
+                       (RubyCore.Expr.send
+                         (some (RubyCore.Expr.const "String"))
+                         "try_convert"
+                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "probed"]
+                         none),
+                     RubyCore.Expr.if'
+                       (RubyCore.Expr.send
+                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "converted"))
+                         "nil?"
+                         []
+                         none)
+                       (RubyCore.Expr.send
+                         none
+                         "raise"
+                         [RubyCore.Expr.const "TypeError",
+                          RubyCore.Expr.send
+                            (some (RubyCore.Expr.send
+                               (some (RubyCore.Expr.str "no implicit conversion of "))
+                               "+"
+                               [RubyCore.Expr.send
+                                  (some (RubyCore.Expr.send
+                                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "probed"))
+                                     "class"
+                                     []
+                                     none))
+                                  "to_s"
+                                  []
+                                  none]
+                               none))
+                            "+"
+                            [RubyCore.Expr.str " into String"]
+                            none]
+                         none)
+                       none])
+                  none,
+                RubyCore.Expr.if'
+                  (RubyCore.Expr.send
+                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "converted"))
+                    "include?"
+                    [RubyCore.Expr.str "\x00"]
+                    none)
+                  (RubyCore.Expr.send
+                    none
+                    "raise"
+                    [RubyCore.Expr.const "ArgumentError",
+                     RubyCore.Expr.str "path name contains null byte"]
+                    none)
+                  none,
+                RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "converted"))
+                  "dup"
+                  []
+                  none])
+             [([RubyCore.Expr.const "TypeError"],
+               none,
+               RubyCore.Expr.send
+                 none
+                 "raise"
+                 [RubyCore.Expr.const "TypeError",
+                  RubyCore.Expr.str "Pathname.new requires a String, #to_path or #to_str"]
+                 none)]
+             none
              none)),
        RubyCore.Expr.def' "to_s" [] (RubyCore.Expr.var (RubyCore.VarKind.ivar) "@path"),
        RubyCore.Expr.def' "to_path" [] (RubyCore.Expr.var (RubyCore.VarKind.ivar) "@path"),
