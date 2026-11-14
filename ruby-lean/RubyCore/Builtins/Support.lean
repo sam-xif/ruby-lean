@@ -736,11 +736,20 @@ def toAryDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
       if xs.any (anyToAryDeep h 100) then some "__ary_flatten_slow" else none
     | _, _ => none
   else if bid == "Array#join" then
-    -- `ary_join_one` recurses into a nested Array, and asks `rb_check_array_type`
-    -- what "nested" means — so an element answering `to_ary` is joined rather
-    -- than rendered. The same question as `flatten`, one builtin over.
+    -- Two reasons to dispatch instead of answering. `ary_join_one` recurses into
+    -- a nested Array and asks `rb_check_array_type` what "nested" means, so an
+    -- element answering `to_ary` is joined rather than rendered (the same
+    -- question as `flatten`, one builtin over). And the separator goes *before*
+    -- every element after the first **at each level**, so an empty nested array
+    -- keeps the boundary its position earned: `[1, [], 2].join("-")` is
+    -- `"1--2"`. A flat list of rendered parts cannot express that — an empty
+    -- nested array contributes no part — so `joinImpl` answers only a receiver
+    -- with no nested Array, and the prelude's recursive walk answers the rest.
     match arrPayload? h recv with
-    | some xs => if xs.any (anyToAryDeep h 100) then some "__join_slow" else none
+    | some xs =>
+      if xs.any (fun x => (arrPayload? h x).isSome) || xs.any (anyToAryDeep h 100) then
+        some "__join_slow"
+      else none
     | none => none
   else if bid == "Object#puts" then
     -- `rb_io_puts` tries `rb_check_array_type` on every argument before

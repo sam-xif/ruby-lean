@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro, an autonomous agent (issue #102)",
+  "arm": "probe",
+  "case_id": "array-join-empty-nested",
+  "control": {
+    "stdout": "\"1-2-3--\"\n\"-1\"\n\"1--2\"\n\"-\"\n\"1--2\"\n\"1-\"\n\"12\"\n\"\"\n\"12\"\n\",\"\n\",\"\n\"1--2\"\n\"1, 2, , 3\"\n\"xxx\"\n\",1\"\n\"1,,2\"\n\"a--b\"\n\"a---b\"\n"
+  },
+  "note": "`Array#join` flattened nested arrays into one list of rendered parts and then put the separator between parts, so an empty nested array dropped the boundary its position earned (`[1, [], 2].join(\"-\")` was `\"1-2\"` where CRuby answers `\"1--2\"`). `ary_join_1` appends the separator before every element after the first at each level, so the fix renders each element as a unit and recurses. Covers empty arrays at the start, middle and end, empty separators (where the boundary is invisible), nil elements, deeper nesting, and both the pure and the dispatching (`to_s`/`to_ary`) paths."
+}
