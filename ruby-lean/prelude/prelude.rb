@@ -1849,6 +1849,25 @@ module Kernel
     raise TypeError, "can't convert " + obj.class.to_s + " to Array (" +
                      obj.class.to_s + "#to_ary gives " + r.class.to_s + ")"
   end
+
+  # `StringValue` (`rb_convert_type_with_id`), the conversion every path helper
+  # in `File` runs its argument through. `to_str` is dispatched through
+  # `__conv_callable?`, so a `method_missing`-served one converts; a `to_str`
+  # that answers a non-String is named in the message, against the `into` of the
+  # nothing-answered case [V]. Nil, true and false are named literally there.
+  def __to_string_value(obj)
+    return obj if obj.is_a?(String)
+
+    unless __conv_callable?(obj, :to_str)
+      raise TypeError, "no implicit conversion of " + __conv_desc(obj) + " into String"
+    end
+
+    r = obj.to_str
+    return r if r.is_a?(String)
+
+    raise TypeError, "can't convert " + obj.class.to_s + " to String (" +
+                     obj.class.to_s + "#to_str gives " + r.class.to_s + ")"
+  end
 end
 
 class Array
@@ -2086,8 +2105,34 @@ end
 class File
   SEPARATOR = "/"
 
+  # `rb_get_path` (`file.c`), which every path helper below runs on each of its
+  # path arguments. A String is itself; otherwise `to_path` is asked with
+  # `rb_check_funcall_default`, whose default is the object **itself**, and the
+  # answer then goes through `StringValue` — so an object with no `to_path`
+  # still reaches `to_str` and the message names it. `StringValue` is
+  # `__to_string_value`: `no implicit conversion of X into String` when nothing
+  # answers, `can't convert X to String (X#to_str gives Y)` when a non-String
+  # does. The conversion **dispatches**, so a `method_missing`-served `to_path`
+  # converts, the same rule `String.try_convert` follows for `to_str`.
+  #
+  # `rb_get_path_check_convert` additionally refuses a null byte and a path in a
+  # non-ASCII-compatible encoding; the model has neither, and this does not
+  # pretend to.
+  def self.__path_string(obj)
+    return obj if obj.is_a?(String)
+
+    p = __conv_callable?(obj, :to_path) ? obj.to_path : obj
+    return p if p.is_a?(String)
+
+    __to_string_value(p)
+  end
+
   def self.basename(path, suffix = nil)
-    s = path.to_s
+    s = __path_string(path)
+    __basename_string(s, suffix.nil? ? nil : __path_string(suffix))
+  end
+
+  def self.__basename_string(s, suffix)
     parts = s.split("/")
     base = parts.empty? ? (s.empty? ? "" : "/") : parts[parts.length - 1]
     return base if suffix.nil?
@@ -2105,7 +2150,7 @@ class File
   end
 
   def self.extname(path)
-    b = basename(path)
+    b = __basename_string(__path_string(path), nil)
     i = b.length - 1
     while i > 0
       return b[i, b.length - i] if b[i] == "."
@@ -2115,7 +2160,7 @@ class File
   end
 
   def self.dirname(path)
-    s = path.to_s
+    s = __path_string(path)
     i = s.length - 1
     while i >= 0
       if s[i] == "/"
@@ -2127,8 +2172,74 @@ class File
     "."
   end
 
+  # `rb_file_join` (`file.c`). Three rules, none of them `to_s`:
+  #
+  #   * an element that is an **Array** is joined recursively, and a cycle in
+  #     that nesting is `ArgumentError: recursive array` — `rb_exec_recursive`
+  #     guards the ancestor chain, so the same array twice is fine and an array
+  #     inside itself is not;
+  #   * every other element is `FilePathStringValue`, i.e. `__path_string`, so a
+  #     non-String is refused rather than stringified;
+  #   * the separator is written only where it is missing
+  #     (`chompdirsep`/`isdirsep`): an element starting with `/` drops the
+  #     trailing separators already in the result, and an element not starting
+  #     with one gets a `/` only when the result does not already end in one.
   def self.join(*parts)
-    parts.map { |x| x.to_s }.join("/")
+    __join(parts, [])
+  end
+
+  def self.__join(parts, ancestors)
+    return "" if parts.length == 0
+
+    result = ""
+    i = 0
+    while i < parts.length
+      part = parts[i]
+      if part.is_a?(Array)
+        raise ArgumentError, "recursive array" if __join_cycle?(part, parts, ancestors)
+
+        part = __join(part, ancestors + [parts])
+      else
+        part = __path_string(part)
+      end
+
+      if i.zero?
+        result = part
+      else
+        tail = __join_tail_length(result)
+        if part.start_with?("/")
+          result = result[0, tail].to_s
+        elsif tail == result.length
+          result = result + "/"
+        end
+        result = result + part
+      end
+      i += 1
+    end
+    result
+  end
+
+  # `rb_exec_recursive`'s guard for one element: the array being joined and the
+  # ones above it, by **identity** (`equal?`), not by `==`.
+  def self.__join_cycle?(part, parts, ancestors)
+    return true if part.equal?(parts)
+
+    j = 0
+    while j < ancestors.length
+      return true if ancestors[j].equal?(part)
+      j += 1
+    end
+    false
+  end
+
+  # `chompdirsep`: where the result's trailing run of separators starts, or its
+  # length when it does not end in one.
+  def self.__join_tail_length(s)
+    i = s.length - 1
+    while i >= 0 && s[i] == "/"
+      i -= 1
+    end
+    i + 1
   end
 end
 

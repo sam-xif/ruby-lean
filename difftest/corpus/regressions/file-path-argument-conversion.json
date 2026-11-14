@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, issue #57",
+  "arm": "probe",
+  "case_id": "file-path-argument-conversion",
+  "note": "File.dirname/basename/extname/join coerced every path argument with to_s, so File.dirname(123) answered \".\" where CRuby raises TypeError. Each argument now goes through rb_get_path: String, or a dispatched to_path, or StringValue (to_str), and otherwise TypeError naming the offender."
+}
