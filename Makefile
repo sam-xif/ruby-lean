@@ -43,7 +43,7 @@ BOOTSTRAP := desugar/corpus/bootstraptest
 
 .PHONY: help all check prereqs ci-sync deps lean lean-exes desugar difftest run \
         books metatheory soundness comparator lint format \
-        gen gen-check desugar-test desugar-coverage desugar-unit emitter-unit difftest-test \
+        gen gen-check lake-cache-check desugar-test desugar-coverage desugar-unit emitter-unit difftest-test \
         conformance feature-loading book-checks check-not-weakened \
         wasm playground playground-serve docs docs-serve clean distclean
 
@@ -173,6 +173,41 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	python3 books/scripts/generate_audited_checker.py --check || fail=1; \
 	exit $$fail
 
+# ── The Lean build cache ────────────────────────────────────────────────────
+# CI caches the two Lake build trees (`ruby-lean/.lake`, `books/.lake`), and the
+# proofs job saves them even when the run is cancelled part-way through `make
+# books`. A tree in the store can therefore hold a `.olean` that a killed
+# compiler left half written, and Lake trusts the build trace it restores over
+# the contents of the file: the next run dies ~410 modules into the books with
+# `invalid header` instead of rebuilding that module (issue #119).
+#
+# So a tree is trusted only when the run that wrote it finished. Every target
+# that writes a tree removes the `COMPLETE` mark first and writes it back after
+# the build, unless the build was killed: a killed build exits with 128 or more
+# (130 for SIGINT, 143 for SIGTERM), where a failed build of these packages
+# exits with 1. An unmarked tree is discarded instead of trusted, which costs
+# one run's modules rather than poisoning every run that restores it. A build
+# that ends on its own marks the tree even when it reports an error, because
+# then it finished writing every `.olean` it started.
+#
+# Only CI discards, because only CI restores a tree from outside this checkout;
+# a local tree is only ever written by the developer's own runs, so an
+# interrupted one stays incremental. `CI=1 make books` exercises the discard.
+LAKE_MARK := COMPLETE
+
+# $(call lake_check,<tree>): CI only, discard a tree no run finished writing.
+lake_check = @if [ -n "$$CI" ] && [ -d $(CURDIR)/$(1)/.lake ] && [ ! -f $(CURDIR)/$(1)/.lake/$(LAKE_MARK) ]; then echo "  discarding $(1)/.lake: the run that wrote it did not finish"; rm -rf $(CURDIR)/$(1)/.lake; fi
+
+# $(call lake_build,<tree>,<command>): write <tree>, and mark it unless the
+# command was killed.
+lake_build = @rm -f $(CURDIR)/$(1)/.lake/$(LAKE_MARK); { $(2); status=$$?; if [ $$status -lt 128 ] && [ -d $(CURDIR)/$(1)/.lake ]; then touch $(CURDIR)/$(1)/.lake/$(LAKE_MARK); fi; exit $$status; }
+
+# A prerequisite of every target that builds, so a tree is checked before the
+# first command that reads it.
+lake-cache-check:
+	$(call lake_check,$(PKG))
+	$(call lake_check,books)
+
 # ── Lean ─────────────────────────────────────────────────────────────────────
 # Lake owns Lean incrementality, so these always run it (a no-op build takes
 # well under a second). `lean-exes` is the narrow one: the model's executable
@@ -180,15 +215,17 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 # checker lives in books/, which uses ruby-lean/ as a library, so the two Lakes
 # run one after the other and never share ruby-lean/.lake. The binaries are file
 # targets on top so that the wasm rules rebuild only when Lake relinked one.
+# Both trees are cached, so both are checked and marked here and in the targets
+# below that write them.
 
 CHECKER_BIN := books/.lake/build/bin
 
-lean-exes: $(PRELUDE_LEAN) $(BOOTED_LEAN) ## Just the rubycore and validate-one executables
-	cd $(PKG) && $(LAKE) build --log-level=error rubycore
-	cd books && $(LAKE) build --log-level=error validate-one
+lean-exes: lake-cache-check $(PRELUDE_LEAN) $(BOOTED_LEAN) ## Just the rubycore and validate-one executables
+	$(call lake_build,$(PKG),cd $(PKG) && $(LAKE) build --log-level=error rubycore)
+	$(call lake_build,books,cd books && $(LAKE) build --log-level=error validate-one)
 
 lean: lean-exes ## Build the model's package (the checker and the proofs are `make books`)
-	cd $(PKG) && $(LAKE) build
+	$(call lake_build,$(PKG),cd $(PKG) && $(LAKE) build)
 
 $(LEAN_BIN)/rubycore $(CHECKER_BIN)/validate-one: lean-exes ;
 
@@ -197,16 +234,16 @@ $(LEAN_BIN)/rubycore $(CHECKER_BIN)/validate-one: lean-exes ;
 # wait for `lean-exes`: two Lakes never build ruby-lean/.lake at once.
 
 books: lean-exes ## Build every proof book: every file under books/Books/
-	cd books && $(LAKE) build
+	$(call lake_build,books,cd books && $(LAKE) build)
 
 metatheory: lean-exes ## The model's metatheory: build it, audit its axioms, check the booted heap's assumptions
-	cd books && ./scripts/check-metatheory.sh
+	$(call lake_build,books,cd books && ./scripts/check-metatheory.sh)
 
-soundness: $(PRELUDE_LEAN) $(BOOTED_LEAN) $(STAMP)/uv deps ## The checker's soundness theorem, its controls, and the checker on the corpus
-	cd books && ./scripts/check-soundness.sh
+soundness: lake-cache-check $(PRELUDE_LEAN) $(BOOTED_LEAN) $(STAMP)/uv deps ## The checker's soundness theorem, its controls, and the checker on the corpus
+	$(call lake_build,books,cd books && ./scripts/check-soundness.sh)
 
 comparator: lean-exes ## Re-check the soundness theorem with leanprover/comparator (fetches and builds it)
-	cd books && ./scripts/run-comparator.sh
+	$(call lake_build,books,cd books && ./scripts/run-comparator.sh)
 
 # ── Desugarer and bin/ruby-lean ──────────────────────────────────────────────
 

@@ -112,6 +112,21 @@ whenever the model has changed. The proof books import it, so build them with
 fresh checkout. `Books/Metatheory/Heap/BootedHeap.lean` proves the file equal to
 the boot.
 
+## The build cache
+
+CI caches `ruby-lean/.lake` and `books/.lake`, and it saves them even when a run
+is cancelled part-way through a build, so a cached tree can hold a `.olean` that
+a killed compiler left half written. Lake trusts the build trace it restores
+over the contents of the file, so a run that restored such a tree died reading
+it (`invalid header`) instead of rebuilding the module.
+
+Each tree therefore carries a `COMPLETE` mark. A target that writes a tree
+removes it first and writes it back afterwards, unless the build was killed
+(exit status 128 or more), so a tree the run did not finish stays unmarked. In
+CI, an unmarked tree is discarded rather than trusted: one run's modules are
+rebuilt, and no run restores a half-written file. Locally the mark is written
+the same way but never checked, so an interrupted build stays incremental.
+
 ## Adding Ruby to the model
 
 1. **Find what is missing.** `bin/ruby-lean --compare prog.rb` prints why a
