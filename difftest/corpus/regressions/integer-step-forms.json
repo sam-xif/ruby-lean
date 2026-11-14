@@ -1,0 +1,6 @@
+{
+  "status": "fixed",
+  "filed_by": "issued #104, fixed by hand",
+  "case_id": "integer-step-forms",
+  "note": "Integer#step required two positional arguments and kept an Integer receiver when an argument was a Float. It now scans the arguments and keywords as num_step does, promotes the whole loop on a Float (ruby_float_step_size's tolerance and last-value clamp included), and takes the generic comparison loop for Rational."
+}
