@@ -371,6 +371,47 @@ macro_rules
         | refine withIndex_frame _ _ _ _ _ _ _ (fun _ => ?_)
         | split)
 
+/-! ### The two `Array#[]=` shapes
+
+Both subscript shapes of one write read the heap (`numIndex`, `arrayPayload?`,
+`mayDispatchToAry`) and write one object, so each frames.
+
+`aryAsetRange` renders a `RangeError` message through `toSP`, and `rangeSplice`
+is heap-projection only (it reads `numIndex`, which depends on the heap and
+nothing else), so the proof is `pushRootK_heap` and then a case split on the one
+heap-only scrutinee both sides share. -/
+
+@[rootFrameLem] theorem arrayAsetInt_frame (K : List Kont) (m : Machine) (o : ObjId)
+    (xs : Array Value) (iv v : Value) :
+    arrayAsetInt (pushRootK K m) o xs iv v
+      = bRootPush K (arrayAsetInt m o xs iv v) := by
+  unfold arrayAsetInt
+  root_simp
+  root_hof
+  all_goals (repeat' first
+    | rfl
+    | (simp_all [rootFrameLem, pushRootK, bRootPush]; done)
+    | intro _
+    | split)
+
+@[rootFrameLem] theorem arraySpliceValue_frame (K : List Kont) (m : Machine) (v : Value) :
+    arraySpliceValue (pushRootK K m).heap v = arraySpliceValue m.heap v := by
+  cases v <;> simp only [arraySpliceValue, pushRootK_heap] <;>
+    (repeat' first | rfl | split)
+
+@[rootFrameLem] theorem aryAsetRange_frame (K : List Kont) (m : Machine) (o : ObjId)
+    (xs : Array Value) (lo hi : Value) (excl : Bool) (rng v : Value) :
+    aryAsetRange (pushRootK K m) o xs lo hi excl rng v
+      = bRootPush K (aryAsetRange m o xs lo hi excl rng v) := by
+  unfold aryAsetRange
+  simp only [pushRootK_heap, rootFrameLem]
+  cases h : rangeSplice m.heap xs.size lo hi excl with
+  | err c msg => rfl
+  | gate w => rfl
+  | tooSmall => cases toSP m rng <;> rfl
+  | ok beg count =>
+    cases hs : arraySpliceValue m.heap v <;> simp only [hs] <;> rfl
+
 /-! ## The rest of the `Builtins` mid-level
 
 The four continuation-taking helpers (`withIndex`, `numBin`, `numCmp`, `binArg`) get no lemma

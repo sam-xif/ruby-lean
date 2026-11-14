@@ -78,19 +78,15 @@ def runCollections (bid : String) (recv : Value) (args : List Value) (m : Machin
     | _, _ => .unsupported "[]"
   | "Array#[]=" =>
     match recv, arrPayload? h recv, args with
-    | .ref o, some xs, [iv, v] =>
-      withIndex m iv "Array#[]= non-int index" fun i =>
-      if (h.get o).frozen then frozenErr m recv "Array"
-      else
-        let idx := if i < 0 then i + xs.size else i
-        if idx < 0 then
-          .err Boot.indexErrorId
-            s!"index {i} too small for array; minimum: -{xs.size}" m
-        else
-          let xs := if idx.toNat ≥ xs.size
-            then (xs ++ Array.replicate (idx.toNat - xs.size + 1) Value.nil).set! idx.toNat v
-            else xs.set! idx.toNat v
-          .ok v { m with heap := h.set o { h.get o with payload := .arr xs } }
+    | .ref o, some xs, [idx, v] =>
+      match idx with
+      | .ref ro =>
+        match (h.get ro).payload with
+        | .range lo hi excl =>
+          if (h.get o).frozen then frozenErr m recv "Array"
+          else aryAsetRange m o xs lo hi excl (.ref ro) v
+        | _ => arrayAsetInt m o xs idx v
+      | _ => arrayAsetInt m o xs idx v
     | _, some _, _ => .unsupported "Array#[]= non-int index"
     | _, _, _ => .unsupported "[]="
   | "Array#<<" | "Array#push" =>
