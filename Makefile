@@ -150,22 +150,31 @@ $(BOOTED_LEAN): $(BOOTED_SRC)
 	cd $(PKG) && $(GENBOOTED) > RubyCore/Generated/BootedHeap.lean.tmp
 	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
 
+NATIVE_NAMES := books/Books/TypeSoundness/Checker/Static/NativeInstanceNames.lean
+
 gen: ## Regenerate every generated Lean source
 	cd $(PKG) && $(RUBY) scripts/gen_prelude.rb      > RubyCore/Generated/PreludeJson.lean
 	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp && mv RubyCore/Generated/Prelude.lean.tmp RubyCore/Generated/Prelude.lean
-	cd $(PKG) && $(RUBY) scripts/gen_cruby_names.rb  > RubyCore/Generated/CRubyNames.lean
+	cd $(PKG) && $(RUBY) scripts/gen_cruby_names.rb --native-instance-names ../$(NATIVE_NAMES) > RubyCore/Generated/CRubyNames.lean
 	cd $(PKG) && $(RUBY) scripts/gen_unicode.rb --verify > RubyCore/Generated/Unicode.lean
 	python3 books/scripts/generate_audited_checker.py
 
 gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	@set -e; fail=0; \
-	for g in prelude:PreludeJson cruby_names:CRubyNames unicode:Unicode; do \
+	for g in prelude:PreludeJson unicode:Unicode; do \
 	  s=$${g%%:*}; f=$${g##*:}; \
 	  (cd $(PKG) && $(RUBY) scripts/gen_$$s.rb) > $(STAMP)/$$f.lean; \
 	  if cmp -s $(STAMP)/$$f.lean $(GENERATED)/$$f.lean; then echo "  fresh  RubyCore/Generated/$$f.lean"; \
 	  else echo "  STALE  RubyCore/Generated/$$f.lean  (run: make gen)"; \
 	    diff $(GENERATED)/$$f.lean $(STAMP)/$$f.lean | head -40 | cut -c1-600; fail=1; fi; \
 	done; \
+	(cd $(PKG) && $(RUBY) scripts/gen_cruby_names.rb --native-instance-names $(CURDIR)/$(STAMP)/NativeInstanceNames.lean) > $(STAMP)/CRubyNames.lean; \
+	if cmp -s $(STAMP)/CRubyNames.lean $(GENERATED)/CRubyNames.lean; then echo "  fresh  RubyCore/Generated/CRubyNames.lean"; \
+	else echo "  STALE  RubyCore/Generated/CRubyNames.lean  (run: make gen)"; \
+	  diff $(GENERATED)/CRubyNames.lean $(STAMP)/CRubyNames.lean | head -40 | cut -c1-600; fail=1; fi; \
+	if cmp -s $(STAMP)/NativeInstanceNames.lean $(NATIVE_NAMES); then echo "  fresh  $(NATIVE_NAMES)"; \
+	else echo "  STALE  $(NATIVE_NAMES)  (run: make gen)"; \
+	  diff $(NATIVE_NAMES) $(STAMP)/NativeInstanceNames.lean | head -40 | cut -c1-600; fail=1; fi; \
 	(cd $(PKG) && $(GENPRELUDE)) > $(STAMP)/Prelude.lean; \
 	if cmp -s $(STAMP)/Prelude.lean $(PRELUDE_LEAN); then echo "  fresh  RubyCore/Generated/Prelude.lean"; \
 	else echo "  STALE  RubyCore/Generated/Prelude.lean  (run: make gen)"; \

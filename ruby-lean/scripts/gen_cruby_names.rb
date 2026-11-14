@@ -25,6 +25,18 @@ end
 # numerics/strings/symbols, Enumerable→Array/Hash), plus Object.constants.
 # The Lean model uses these for dispatch fidelity (shadow detection and
 # genuine-NoMethodError classification), not behavior.
+#
+# `--native-instance-names PATH` also writes the checker's projection of the
+# same snapshot: the union of every per-class list in `crubyMethodNames`. The
+# checker cannot import the model, so it keeps that copy; deriving both from one
+# oracle run is what keeps them from drifting (issue #55).
+
+native_instance_path = nil
+if (flag = ARGV.index("--native-instance-names"))
+  native_instance_path = ARGV.fetch(flag + 1) do
+    abort "--native-instance-names requires a path"
+  end
+end
 
 # Classes the model does not boot as core classes, but whose **class-side**
 # surface dispatch must know: the virtual filesystem's `File`/`IO`/`Dir` and the
@@ -130,9 +142,12 @@ HEADER
 MAIN_SINGLETON = TOPLEVEL_BINDING.receiver.singleton_class
                                  .then { |sc| sc.instance_methods(false) + sc.private_instance_methods(false) }
 
-entries = FOLD.map do |name, mods|
+instance_methods = FOLD.map do |name, mods|
   meths = mods.flat_map { |m| m.instance_methods(false) + m.private_instance_methods(false) }
-  meths = meths.uniq.sort
+  [name, meths.uniq.sort]
+end
+
+entries = instance_methods.map do |name, meths|
   "  (\"#{name}\", [\n#{NAME_LINES.call(meths, "    ")}\n  ])"
 end
 puts entries.join(",\n")
@@ -220,3 +235,31 @@ puts <<~FOOTER
 
   end RubyCore
 FOOTER
+
+if native_instance_path
+  names = instance_methods.flat_map { |_, meths| meths }.uniq.sort
+  oracle = RUBY_DESCRIPTION.split.first(2).join(" ")
+  File.write(native_instance_path, [
+    "/-",
+    "GENERATED from the CRuby oracle (#{oracle}) by `scripts/gen_cruby_names.rb` — do not hand-edit.",
+    "Regenerate with `make gen`.",
+    "",
+    "Instance selector projection of `RubyCore/Generated/CRubyNames.lean`: the union of",
+    "every per-class list in `crubyMethodNames`. The checker imports only this data,",
+    "never the interpreter; `Books/TypeSoundness/Conformance/Names/NativePrefix.lean`",
+    "kernel-checks it against the model.",
+    "-/",
+    "namespace Checker",
+    "",
+    "/-- Every CRuby instance-method name the checker must treat as possibly native. -/",
+    "def nativeInstanceNames : List String := [",
+    NAME_LINES.call(names, "  "),
+    "]",
+    "",
+    "/-- Sufficient for any inherited native prefix; own calls still use their empty prefix.",
+    "This deliberately declines inherited native selector names until a narrower prefix guard. -/",
+    "def nativeInstanceFreeB (name : String) : Bool := !nativeInstanceNames.contains name",
+    "",
+    "end Checker"
+  ].join("\n") + "\n")
+end

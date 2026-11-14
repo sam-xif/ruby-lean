@@ -64,7 +64,8 @@ never optional.
    with the command the check prints, in the same commit as the change that
    moved it, and never to hide a regression.
 6. **Regenerate, do not edit, generated files** (`ruby-lean/RubyCore/Generated/`,
-   `books/Books/TypeSoundness/Checker/Audit/`): `make gen`.
+   `books/Books/TypeSoundness/Checker/Audit/`,
+   `books/Books/TypeSoundness/Checker/Static/NativeInstanceNames.lean`): `make gen`.
 7. **Fix a lint finding; do not suppress it.** No `noqa`, `rubocop:disable`,
    `shellcheck disable` or test skip. New code in `desugar/`, `books/scripts/`
    or `difftest/` comes with unit tests, or its suite's coverage falls.
