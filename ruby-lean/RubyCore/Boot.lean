@@ -56,7 +56,7 @@ def boot : Except String Machine :=
     -- (`File.mtime`, `Dir.mkdir`) gates by name and a name no Ruby defines
     -- (`File.zzz_does_not_exist`) raises CRuby's `NoMethodError`.
     let fsSingleton : List (ObjId × List String) :=
-      [ (Boot.fileId, ["read", "write", "exist?", "file?", "directory?", "size"]),
+      [ (Boot.fileId, ["read", "write", "exist?", "file?", "directory?", "size", "open"]),
         (Boot.dirId, ["exist?"]),
         (Boot.ioId, ["read", "write"]) ]
     let initial := fsSingleton.foldl (fun m (cls, names) =>
