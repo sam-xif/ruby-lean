@@ -71,20 +71,38 @@ which object the loop works on. -/
     `raise_to`. None of that is written out here: the kernel computes it. -/
 def entry (b n : Int) : Machine := (stepN 61 (start (program b n))).getD default
 
+/-- The `Power` instance in the entry heap: the only object carrying both
+    `@base` and `@steps`. The id is read off the booted program, so adding a
+    bootstrap class or a fixture object cannot leave it stale. -/
+def powerObjId : Nat :=
+  let h := (entry 0 0).heap
+  (h.objs.findIdx? fun o =>
+    (match (h.get o.klass).payload with | .cls c => c.name == "Power" | _ => false) &&
+      o.ivars.any (fun p => p.1 == "@base") &&
+      o.ivars.any (fun p => p.1 == "@steps")).getD 0
+
+/- Fail the build, naming `powerObjId`, if the search no longer finds the
+   instance; without this its `getD 0` would silently substitute object 0. -/
+#guard
+  let h := (entry 0 0).heap
+  let o := h.objs.getD powerObjId default
+  (match (h.get o.klass).payload with | .cls c => c.name == "Power" | _ => false) &&
+    o.ivars.any (fun p => p.1 == "@base") && o.ivars.any (fun p => p.1 == "@steps")
+
 /-- The machine at the loop test when the loop's variables hold these values.
     Everything the loop does not touch is taken from `entry`; what it does
     touch is spelled out — the locals of `raise_to`'s frame (frame 3) and the
-    instance variables of the `Power` object (object 114), whose `revision`
+    instance variables of the `Power` object (`powerObjId`), whose `revision`
     counts the writes it has received. -/
 def loopHead (b n : Int) (result square left : Int) (steps : Nat) : Machine :=
   let m := entry b n
   let f := m.frames.getD 3 default
-  let o := m.heap.objs.getD 114 default
+  let o := m.heap.objs.getD powerObjId default
   { m with
     frames := m.frames.set! 3 { f with locals :=
       [("left", .int left), ("square", .int square), ("result", .int result),
        ("exponent", .int n)] }
-    heap := { m.heap with objs := m.heap.objs.set! 114 { o with
+    heap := { m.heap with objs := m.heap.objs.set! powerObjId { o with
       ivars := [("@steps", .int steps), ("@base", .int b)], revision := steps + 2 } } }
 
 /-- `left > 0` has been evaluated to `t` and the `while` is about to act on it. -/
@@ -147,11 +165,30 @@ def outcome (b n r s e : Int) (c : Nat) : Value × Machine :=
   | .done v m => (v, m)
   | _ => default
 
+/-- The result Array the program returns, read off the run rather than pinned,
+    so an additive boot change cannot leave its id stale. -/
+def resultObjId (b n r s e : Int) (c : Nat) : Nat :=
+  match (outcome b n r s e c).1 with
+  | .ref o => o
+  | _ => 0
+
+/- Fail the build, naming `resultObjId`, if the result id does not name the
+   Array of the run's final result and step count. -/
+#guard
+  match (outcome 0 0 0 0 0 0).1 with
+  | .ref o =>
+    o == resultObjId 0 0 0 0 0 0 &&
+      (match ((outcome 0 0 0 0 0 0).2.heap.get o).payload with
+       | .arr xs => (match xs.toList with | [.int a, .int b] => a == 0 && b == 0 | _ => false)
+       | _ => false)
+  | _ => false
+
 theorem finish (b n r s e : Int) (c : Nat) :
     stepFn (final b n r s e c) = .done (outcome b n r s e c).1 (outcome b n r s e c).2 := by
   kernel_rfl
 
-theorem outcome_value (b n r s e : Int) (c : Nat) : (outcome b n r s e c).1 = .ref 115 := by
+theorem outcome_value (b n r s e : Int) (c : Nat) :
+    (outcome b n r s e c).1 = .ref (resultObjId b n r s e c) := by
   kernel_rfl
 
 /-- What `puts answer` wrote: the decimal digits of `result` and a newline. -/
@@ -161,7 +198,8 @@ theorem outcome_out (b n r s e : Int) (c : Nat) :
 
 /-- The value is an Array of the final `result` and `@steps`. -/
 theorem outcome_array (b n r s e : Int) (c : Nat) :
-    ((outcome b n r s e c).2.heap.get 115).payload = .arr #[.int r, .int c] := by kernel_rfl
+    ((outcome b n r s e c).2.heap.get (resultObjId b n r s e c)).payload =
+      .arr #[.int r, .int c] := by kernel_rfl
 
 /-! ## 3. Arithmetic -/
 
@@ -291,7 +329,8 @@ theorem fast_power_correct (b n : Int) :
   let r := b ^ n.toNat
   let c := bitLength n.toNat
   refine ⟨(outcome b n r s' e' c).1, (outcome b n r s' e' c).2, ⟨_, boot_ok _, ?_⟩, ?_,
-    115, outcome_value b n r s' e' c, outcome_array b n r s' e' c⟩
+    resultObjId b n r s' e' c, outcome_value b n r s' e' c,
+      outcome_array b n r s' e' c⟩
   · exact .of_reaches
       ((Reaches.of_stepN (setup b n)).trans <| hloop.trans (.of_stepN (leave b n r s' e' c)))
       (finish b n r s' e' c)
