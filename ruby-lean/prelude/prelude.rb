@@ -2029,8 +2029,30 @@ end
 class Pathname
   include Comparable
 
+  # CRuby's constructor is `@path = File.path(path).dup`. `File.path` takes a
+  # String as it is, converts anything else through `#to_path` and then
+  # `#to_str` — never `#to_s` — raises `TypeError` when the result is still not
+  # a String, and raises `ArgumentError` for a path holding a null byte.
+  # `Pathname#initialize` re-raises that `TypeError` with its own message. The
+  # `dup` is CRuby's: mutating the argument afterwards leaves the path alone.
+  #
+  # The question asked of the argument is `rb_check_funcall`'s, not
+  # `respond_to?`'s: a `#to_path` served by `method_missing` is still called, and
+  # a `#to_path` that answers nil does **not** fall back to `#to_str` (only an
+  # absent one does), so it is `__conv_callable?` that decides, as in
+  # `String.try_convert`.
   def initialize(path)
-    @path = path.to_s
+    s = if path.is_a?(String)
+          path
+        elsif __conv_callable?(path, :to_path)
+          path.to_path
+        elsif __conv_callable?(path, :to_str)
+          path.to_str
+        end
+    raise TypeError, "Pathname.new requires a String, #to_path or #to_str" unless s.is_a?(String)
+    raise ArgumentError, "path name contains null byte" if s.include?("\0")
+
+    @path = s.dup
   end
 
   def to_s = @path

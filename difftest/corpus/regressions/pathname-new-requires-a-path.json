@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_by": "the prelude's `Pathname#initialize`, which now converts the way `File.path` does (issue #93)",
+  "filed_by": "hand, while fixing issue #93",
+  "arm": "hand",
+  "case_id": "pathname-new-requires-a-path",
+  "first_reconciled": "2026-11-15 (issue #93), lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'integer => \"#<Pathname:123>\"' vs 'integer => TypeError: Pathname.new requires a String, #to_path or #to_str'; 'to_path wins => \"/from-to-s\"' vs '\"/from-to-path\"'",
+  "note": "`Pathname.new` called `to_s` on whatever it was given. CRuby's constructor is `File.path(path).dup`, so it takes a String as it is, converts through `#to_path` and then `#to_str`, raises `TypeError: Pathname.new requires a String, #to_path or #to_str` when the result is still not a String, and raises `ArgumentError: path name contains null byte` for a NUL. Two wrong answers follow from the `to_s` coercion: an object that has both `#to_path` and a different `#to_s` gets the wrong path, and a value CRuby rejects becomes a `Pathname` (`TypeError` is in the family the validator excludes, so this is a wrong answer, not a gate). Pinned here: the six rejection shapes, `#to_path` preferred over `#to_str`, no fallback from a bad or nil `#to_path` to a good `#to_str`, the funcall rule that calls a `#to_path` served by `method_missing` and believes a custom `respond_to_missing?` that denies it, the NUL message from a direct path and from `#to_path`, and the `dup` that keeps a later mutation of the argument out of the path."
+}
