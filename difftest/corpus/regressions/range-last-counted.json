@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro, an autonomous agent (#110)",
+  "arm": "hand",
+  "case_id": "range-last-counted",
+  "observed_then": "disagree",
+  "diff_then": "exception: (ArgumentError, \"wrong number of arguments (given 1, expected 0)\") vs [4, 5]",
+  "fixed_in": "prelude Range#last (2026-11-15)",
+  "note": "`Range#last` was registered as a zero-arity builtin, so the counted form CRuby defines raised `ArgumentError: wrong number of arguments (given 1, expected 0)` — an answer where the model must decline (issue #110). The bare form on an endless range also answered `nil` where CRuby raises `RangeError: cannot get the last element of endless range`. Both forms are now prelude Ruby: the bare one checks for an endless range, the counted one walks back from the end so an over-large count is the whole range, a beginless range still has a last n, and a descending range is empty. Non-Integer counts (`NUM2LONG` coercion) and non-Integer endpoints (which need `succ` iteration) are declined rather than approximated. Compared with CRuby 4.0.5."
+}

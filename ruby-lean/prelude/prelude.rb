@@ -750,6 +750,52 @@ class Range
     n < 0 ? 0 : n
   end
   alias count size
+
+  # `Range#last` is two methods under one name, and the *counted* one is not
+  # `#end`: CRuby walks back from the end, answering up to `n` elements [V].
+  #
+  #   * the **bare** form is `#end`, with one correction: an endless range has
+  #     no last element, so CRuby raises `RangeError: cannot get the last
+  #     element of endless range` where an unguarded `#end` answers `nil` [V].
+  #     A **beginless** range is fine here (`(nil..5).last` is `5`);
+  #   * the **counted** form clamps at the beginning, so an over-large `n` is the
+  #     whole range (`(1..5).last(9)` is `[1, 2, 3, 4, 5]`), a beginless range
+  #     still has a last `n` (`(nil..5).last(2)` is `[4, 5]`), and a range that
+  #     counts down is empty (`(5..1).last(2)` is `[]`) [V];
+  #   * `n` is coerced by `NUM2LONG`, so a negative count is its own
+  #     `ArgumentError: negative array size`, and a second argument is CRuby's
+  #     `wrong number of arguments (given 2, expected 1)` — the method's arity is
+  #     the splat's, `-1` [V].
+  #
+  # Corners the model cannot reproduce word for word are declined rather than
+  # approximated: a non-Integer count (CRuby answers `(1..5).last(2.7)` through
+  # `NUM2LONG`), and a non-Integer endpoint, whose last element needs `succ`
+  # iteration (CRuby raises `can't iterate from Float` there).
+  def last(*a)
+    hi = self.end
+    raise RangeError, "cannot get the last element of endless range" if hi.nil?
+    return hi if a.empty?
+    unless a.length == 1
+      raise ArgumentError, "wrong number of arguments (given #{a.length}, expected 1)"
+    end
+    n = a[0]
+    return __unsupported__("Range#last(n) with a non-Integer count") unless n.is_a?(Integer)
+    raise ArgumentError, "negative array size" if n < 0
+    lo = self.begin
+    unless hi.is_a?(Integer) && (lo.nil? || lo.is_a?(Integer))
+      return __unsupported__("Range#last(n) over a non-Integer range")
+    end
+    fin = exclude_end? ? hi - 1 : hi
+    first = fin - n + 1
+    first = lo if !lo.nil? && first < lo
+    r = []
+    i = first
+    while i <= fin
+      r.push(i)
+      i = i + 1
+    end
+    r
+  end
 end
 
 # ─── Integer ────────────────────────────────────────────────────────────────
