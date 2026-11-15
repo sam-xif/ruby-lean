@@ -878,9 +878,70 @@ class Integer
     self
   end
 
-  def step(limit, by)
+  # `num_step` in CRuby's numeric.c: `step(to = nil, by = 1)`, which the
+  # keywords `to:` and `by:` also set. A missing step is 1, a positional nil
+  # step is a TypeError (the keyword `by: nil` is not), and giving the same
+  # argument twice is an ArgumentError. Any of the three numbers being a Float
+  # promotes the whole sequence, receiver included, to Float.
+  def step(*args, **kw)
+    unknown = []
+    kw.each_key { |k| unknown.push(k) unless k == :to || k == :by }
+    if unknown.length == 1
+      raise ArgumentError, "unknown keyword: " + unknown[0].inspect
+    elsif unknown.length > 1
+      raise ArgumentError, "unknown keywords: " + unknown.map { |k| k.inspect }.join(", ")
+    end
+    if args.length > 2
+      raise ArgumentError, "wrong number of arguments (given #{args.length}, expected 0..2)"
+    end
+    raise ArgumentError, "to is given twice" if kw.key?(:to) && args.length > 0
+    raise ArgumentError, "step is given twice" if kw.key?(:by) && args.length > 1
+    limit = kw.key?(:to) ? kw[:to] : (args.length > 0 ? args[0] : nil)
+    if kw.key?(:by)
+      by = kw[:by]
+    else
+      by = args.length > 1 ? args[1] : nil
+      raise TypeError, "step must be numeric" if args.length > 1 && by.nil?
+    end
+    by = 1 if by.nil?
+    raise ArgumentError, "step can't be 0" if by == 0
     return __unsupported__("Enumerator: Integer#step without a block") unless block_given?
-    return __unsupported__("Integer#step with a zero step (ArgumentError)") if by == 0
+    return __unsupported__("Integer#step without a limit (an infinite sequence)") if limit.nil?
+    # A Float anywhere promotes the sequence (ruby_float_step). The endpoint
+    # arithmetic has no exact model for NaN or an infinity, and an infinite
+    # limit never terminates, so those decline rather than guess.
+    if by.is_a?(Float) || limit.is_a?(Float)
+      nan = (by.is_a?(Float) && by.nan?) || (limit.is_a?(Float) && limit.nan?)
+      return __unsupported__("Integer#step over a NaN limit or step") if nan
+      inf = (by.is_a?(Float) && (by == Float::INFINITY || by == -Float::INFINITY)) ||
+            (limit.is_a?(Float) && (limit == Float::INFINITY || limit == -Float::INFINITY))
+      return __unsupported__("Integer#step over an infinite limit or step") if inf
+      beg = self.to_f
+      fin = limit.to_f
+      unit = by.to_f
+      # ruby_float_step_size: the count is the quotient, nudged by the rounding
+      # error the sequence accumulates, not a comparison of summed values.
+      # 2.220446049250313e-16 is DBL_EPSILON.
+      n = (fin - beg) / unit
+      return self if n < 0
+      err = (beg.abs + fin.abs + (fin - beg).abs) / unit.abs * 2.220446049250313e-16
+      err = 0.5 if err > 0.5
+      n = (n + err).floor
+      d = (n + 1) * unit + beg
+      if beg < fin
+        n = n + 1 if d <= fin
+      elsif beg > fin
+        n = n + 1 if d >= fin
+      end
+      i = 0
+      while i <= n
+        value = i * unit + beg
+        value = fin if (unit >= 0 ? fin < value : value < fin)
+        yield(value)
+        i = i + 1
+      end
+      return self
+    end
     i = self
     if by > 0
       while i <= limit

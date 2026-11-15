@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, issue #104",
+  "arm": "probe",
+  "case_id": "integer-step-forms",
+  "note": "Integer#step took two required positional arguments and kept the receiver's Integer class when an argument was a Float, so 1.step(5), 1.step(to: 5), 1.step(by: 2, to: 5) and 1.step(5, by: 2) raised a wrong-arity ArgumentError and 1.step(5, 1.5) yielded 1 instead of 1.0. The step now defaults to 1, accepts the to:/by: keywords with CRuby's duplicate-argument and unknown-keyword errors, and promotes the whole sequence to Float through ruby_float_step_size's count when any of the three numbers is a Float."
+}
