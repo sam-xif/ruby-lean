@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro, an autonomous agent (#108)",
+  "arm": "probe",
+  "case_id": "integer-counted-rounding",
+  "note": "A negative count rounds to a power of ten. The quotient is Ruby's floor division, so the remainder is never negative: `floor` is the quotient itself, `ceil` and `truncate` step it up, and `round` is half away from zero \u2014 at the halfway point a negative receiver stays on the floor (`-195.round(-1)` is -200) while a positive one steps up (`195.round(-1)` is 200). The model read the remainder as a signed one and stepped a negative receiver *down*, so every negative receiver with a negative count was off by one power of ten in `round` at and past the halfway point, and `truncate` answered the floor (`-195.truncate(-1)` was -200). Verified against CRuby 4.0.5 over n in -1000..1000 and counts -1..-4 for all four methods."
+}
