@@ -2008,7 +2008,7 @@ class Regexp
   end
 end
 
-# ─── Pathname — the pure path half ─────────────────────────────────────────
+# ─── Pathname — the pure path half, plus what the shape asks for ───────────
 #
 # `Version.detect` wraps its argument in `Pathname(spec)` and then asks it for
 # `to_s`, `basename`, `dirname` and Homebrew's own `stem` — all pure string
@@ -2016,7 +2016,9 @@ end
 # `Pathname` is a wrapper over a String with exactly those, plus the
 # `extname`/`sub`/`==`/`inspect` that fall out; anything else on an *instance*
 # routes to `method_missing` and gates by name, the same guard `URI` uses, so
-# `Pathname#exist?` refuses rather than answering. The class-side surface needs
+# `Pathname#exist?` refuses rather than answering. `empty?` is the one shape that
+# is not a path-string question: CRuby asks the filesystem, so it is defined over
+# the step-1 VFS builtins below. The class-side surface needs
 # no guard: `Pathname.glob` and its siblings are a lookup miss that dispatch
 # resolves against the generated CRuby name tables, so a real one gates by name
 # and a name no Ruby defines raises the ordinary `NoMethodError`.
@@ -2055,7 +2057,23 @@ class Pathname
 
   def sub(*args, &blk) = Pathname.new(@path.sub(*args, &blk))
 
-  def empty? = @path.empty?
+  # CRuby 4.0's `Pathname#empty?` is
+  #
+  #     FileTest.directory?(@path) ? Dir.empty?(@path) : File.empty?(@path)
+  #
+  # so it asks the filesystem, and a path that does not exist answers `false`
+  # (`File.empty?` is `File.zero?`, which is false for a missing path) — it is
+  # not a question about the path String, which is why `Pathname.new("")` is
+  # `false` and not `true`. Directory emptiness needs `Dir.empty?`, which the
+  # model does not have (VFS step 3), so that shape gates by name instead of
+  # answering the path's own non-emptiness.
+  def empty?
+    return false unless File.exist?(@path)
+    if File.directory?(@path)
+      __unsupported__("Pathname#empty?: directory emptiness needs Dir.empty? (gated at VFS step 3)")
+    end
+    File.size(@path).zero?
+  end
 
   def method_missing(name, *args, **kw, &blk)
     __unsupported__("Pathname#" + name.to_s + " (only the pure path operations are modeled)")
