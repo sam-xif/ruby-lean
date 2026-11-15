@@ -1168,11 +1168,15 @@ module Kernel
     # here), and are named literally rather than by class [V].
     unless arg.nil? || arg.equal?(true) || arg.equal?(false)
       if arg.__user_defines?(:to_i) || arg.__user_defines?(:method_missing)
-        u = arg.to_i
+        called, u = __conv_call(arg, :to_i)
         return u if Integer === u
 
-        raise TypeError, "can't convert " + arg.class.to_s + " to Integer (" +
-                         arg.class.to_s + "#to_i gives " + u.class.to_s + ")"
+        # An answered nil is named; a name nothing supplied is not (the
+        # default miss), and falls through to `into Integer` below.
+        if called
+          raise TypeError, "can't convert " + arg.class.to_s + " to Integer (" +
+                           arg.class.to_s + "#to_i gives " + u.class.to_s + ")"
+        end
       end
     end
     raise TypeError, "can't convert " + __conv_desc(arg) + " into Integer"
@@ -1279,11 +1283,11 @@ module Kernel
       return t.gsub("_", "").to_f
     end
 
-    t = __check_convert(arg, :to_f)
+    called, t = __conv_call(arg, :to_f)
     return t if Float === t
 
     unless arg.nil? || arg.equal?(true) || arg.equal?(false)
-      if arg.__user_defines?(:to_f) || arg.__user_defines?(:method_missing)
+      if called && (arg.__user_defines?(:to_f) || arg.__user_defines?(:method_missing))
         raise TypeError, "can't convert " + arg.class.to_s + " to Float (" +
                          arg.class.to_s + "#to_f gives " + t.class.to_s + ")"
       end
@@ -1739,10 +1743,50 @@ module Kernel
     false
   end
 
-  # `rb_check_funcall`, for the callers that treat "answered nil" and "nothing
+  # `rb_check_funcall`, answering `[called, value]`. `called` is false only when
+  # the name is not callable at all (CRuby's `Qundef`); the conversion sites that
+  # name an answer ("#to_str gives NilClass") need that apart from an answered
+  # nil. `__conv_callable?` answers the callability question; this decides what a
+  # miss in the call *means*, which is the half the old `__check_convert`
+  # shortcut got wrong:
+  #
+  #   * a name the object's class defines: the body runs, and a `NoMethodError`
+  #     from inside it escapes, as `rb_vm_call_kw` lets it;
+  #   * a user `respond_to?`/`respond_to_missing?` that claims the name and a
+  #     user `method_missing` behind it: the claim is believed and a
+  #     `NoMethodError` escapes — `check_funcall_failed` re-raises when
+  #     `respond` or `respond_to_missing` is true [V];
+  #   * a user `method_missing` reached with no such claim: its `NoMethodError`
+  #     is the **default miss**, which `check_funcall_missing` rescues and reads
+  #     as "not callable". This is the case that made `String.try_convert` raise
+  #     instead of answer nil for a `method_missing` that ends in `super`;
+  #   * anything else: nothing can answer. A claim without a supplier is still
+  #     `Qundef` (the default `method_missing` is not entered), so an answered
+  #     nil is distinguished from a miss only by `called`.
+  def __conv_call(obj, meth)
+    return [true, obj.send(meth)] if obj.__user_defines?(meth)
+
+    if obj.__user_defines?(:respond_to?) || obj.__user_defines?(:respond_to_missing?)
+      return [false, nil] unless __conv_callable?(obj, meth)
+      return [true, obj.send(meth)] if obj.__user_defines?(:method_missing)
+    else
+      return [false, nil] unless obj.__user_defines?(:method_missing)
+    end
+
+    # Only the implicit `method_missing` arm (or a claim with no user
+    # `method_missing` behind it) reaches here, and there a `NoMethodError` is
+    # the default miss. A real method would have been taken by the first arm.
+    begin
+      [true, obj.send(meth)]
+    rescue NoMethodError
+      [false, nil]
+    end
+  end
+
+  # `rb_check_funcall` for the callers that treat "answered nil" and "nothing
   # answered" alike — which is every conversion but `rb_convert_type_with_id`.
   def __check_convert(obj, meth)
-    __conv_callable?(obj, meth) ? obj.send(meth) : nil
+    __conv_call(obj, meth)[1]
   end
 end
 
@@ -1839,11 +1883,11 @@ module Kernel
   def __to_array_type(obj)
     return obj if obj.is_a?(Array)
 
-    unless __conv_callable?(obj, :to_ary)
+    called, r = __conv_call(obj, :to_ary)
+    unless called
       raise TypeError, "no implicit conversion of " + __conv_desc(obj) + " into Array"
     end
 
-    r = obj.to_ary
     return r if r.is_a?(Array)
 
     raise TypeError, "can't convert " + obj.class.to_s + " to Array (" +

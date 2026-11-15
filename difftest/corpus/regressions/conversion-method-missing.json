@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_by": "#152",
+  "filed_by": "hand-filed while fixing #152",
+  "arm": "hand",
+  "case_id": "conversion-method-missing",
+  "first_reconciled": "2026-11-15, lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: \"String.try_convert => NoMethodError: undefined method 'to_str' for an instance of OnlyFoo\" vs \"String.try_convert => nil\" (and the whole conversion table)",
+  "note": "`rb_check_funcall` reads a `NoMethodError` from a user `method_missing` as the default miss and answers `Qundef`; `__conv_callable?` treated any user `method_missing` as serving every name, so `__check_convert` called the name and let the `NoMethodError` escape. The readings are per-arm: a user `respond_to?` or `respond_to_missing?` claim re-raises (`check_funcall_failed`), and a `NoMethodError` from a real method escapes as before."
+}
