@@ -2086,8 +2086,48 @@ end
 class File
   SEPARATOR = "/"
 
-  def self.basename(path, suffix = nil)
-    s = path.to_s
+  # `rb_get_path`, the conversion every `File` path argument goes through:
+  # `to_path` is asked first (a `method_missing` that serves it counts, hence
+  # `__conv_callable?` rather than `respond_to?`), `StringValue` is applied to
+  # whatever it answered, and an object with no `to_path` goes to
+  # `StringValue` itself. Nothing here calls `to_s`: that is what made
+  # `File.dirname(123)` answer `"."` where CRuby raises `TypeError` [V].
+  def self.__path_str(obj)
+    return obj if obj.is_a?(String)
+    return __str_value(obj.to_path) if __conv_callable?(obj, :to_path)
+
+    __str_value(obj)
+  end
+
+  # `StringValue` (`rb_str_to_str`): a String is itself, `to_str` is asked next,
+  # and a non-String answer names both the receiver and the method it came
+  # from — `to`, not the `into` of the nothing-answered case [V].
+  def self.__str_value(obj)
+    return obj if obj.is_a?(String)
+    unless __conv_callable?(obj, :to_str)
+      raise TypeError, "no implicit conversion of " + __conv_desc(obj) + " into String"
+    end
+
+    r = obj.to_str
+    return r if r.is_a?(String)
+
+    raise TypeError, "can't convert " + obj.class.to_s + " to String (" +
+                     obj.class.to_s + "#to_str gives " + r.class.to_s + ")"
+  end
+
+  # `rb_file_s_basename`. The arity and the suffix conversion are written out
+  # so that `File.basename("a/b", nil)` is the `TypeError` CRuby raises: an
+  # optional parameter cannot tell an absent suffix from an explicit nil. The
+  # suffix is converted **before** the path, which is the order CRuby checks
+  # them in.
+  def self.basename(*args)
+    n = args.length
+    if n < 1 || n > 2
+      raise ArgumentError, "wrong number of arguments (given " + n.to_s + ", expected 1..2)"
+    end
+
+    suffix = n == 2 ? __str_value(args[1]) : nil
+    s = __path_str(args[0])
     parts = s.split("/")
     base = parts.empty? ? (s.empty? ? "" : "/") : parts[parts.length - 1]
     return base if suffix.nil?
@@ -2115,7 +2155,7 @@ class File
   end
 
   def self.dirname(path)
-    s = path.to_s
+    s = __path_str(path)
     i = s.length - 1
     while i >= 0
       if s[i] == "/"
@@ -2127,8 +2167,62 @@ class File
     "."
   end
 
+  # `rb_file_join`. Nested Arrays are flattened and a self-referential one is
+  # `ArgumentError: recursive array`; every other element is converted with
+  # `__path_str`. The boundary between two pieces is not `join("/")`: when the
+  # next piece starts with a separator the trailing run of the result is
+  # *removed* (`File.join("a//", "//b")` is `"a//b"`), and when the result
+  # does not end in one a single `/` is added — even when the result is empty,
+  # which is why `File.join([], "a")` is `"/a"` [V].
   def self.join(*parts)
-    parts.map { |x| x.to_s }.join("/")
+    __join(parts, [])
+  end
+
+  def self.__join(parts, outer)
+    out = ""
+    i = 0
+    while i < parts.length
+      piece = parts[i]
+      if piece.is_a?(Array)
+        raise ArgumentError, "recursive array" if __join_cycle?(outer, piece)
+
+        piece = __join(piece, outer + [piece])
+      else
+        piece = __path_str(piece)
+      end
+      if i.zero?
+        out = piece
+      else
+        tail = __join_tail(out)
+        if piece[0] == "/"
+          out = out[0, tail]
+        elsif tail == out.length
+          out += "/"
+        end
+        out += piece
+      end
+      i += 1
+    end
+    out
+  end
+
+  # `rb_exec_recursive`'s cycle test: the same Array object again anywhere up
+  # the nesting chain, by identity and not by `==`.
+  def self.__join_cycle?(outer, piece)
+    i = 0
+    while i < outer.length
+      return true if outer[i].equal?(piece)
+      i += 1
+    end
+    false
+  end
+
+  # `chompdirsep`: where a trailing run of separators starts, or the length
+  # when the string does not end in one.
+  def self.__join_tail(s)
+    i = s.length
+    i -= 1 while i > 0 && s[i - 1] == "/"
+    i
   end
 end
 
