@@ -152,7 +152,8 @@ so a later file may reopen a class an earlier one defined.
 * A whole optional library belongs in `ruby-lean/prelude/features/`; features
   execute on `require`, not at boot.
 * A new core topic file goes into `CORE` in `gen_prelude.rb` at the position the
-  load order needs, and into `PRELUDE_SRC` in the `Makefile`.
+  load order needs. The `Makefile` picks up every file under `prelude/core/`
+  through a wildcard, so it needs no edit.
 * Run `make gen`, then `make conformance` (and `make books` if the model or the
   generated prelude changed). `make gen-check` must report every generated file
   fresh.

@@ -11,8 +11,8 @@ require "export"
 
 # Core boot is split by topic under prelude/core/. The order is the load order
 # and is part of the model: a later file may reopen a class or use a constant
-# that an earlier one defined. Add a new file here and to PRELUDE_SRC in the
-# Makefile; see prelude/README.md.
+# that an earlier one defined. Add a new file here (the Makefile's PRELUDE_SRC
+# picks up every file under prelude/core/); see prelude/README.md.
 CORE = %w[
   object comparable enumerable range integer hash kernel_conversions repr
   conversions pathname file encoding struct

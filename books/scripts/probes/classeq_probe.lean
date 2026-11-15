@@ -24,9 +24,10 @@ things of a row on `.clsOf n`, and both are heap facts about the class object's
 **The hazard is clause 1, and it is not hypothetical.** `Object#===` is a row
 on every class object's dispatch chain, so the row is only witnessable if
 `Module` comes *first*, and that is an ordering fact about `ancestors`, not
-something the type language can promise. This reports the whole resolution so the answer is read
-rather than assumed — the same move `names_probe` made for the declaration rows and
-`consts_probe` for the constant table, both of which changed a clause.
+something the type language can promise. This reports the whole resolution so
+the answer is read rather than assumed — the same move `names_probe` made for
+the declaration rows and `consts_probe` for the constant table, both of which
+changed a clause.
 
     lake env lean --run scripts/probes/classeq_probe.lean
       -- exit 0 iff every keyable class object resolves `===` to the `Module#===`

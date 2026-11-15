@@ -30,7 +30,8 @@ Pathname stays in core, not `features/`: the pinned CRuby 4.0.5 boots
 
 The order in `gen_prelude.rb`'s `CORE` list is the load order and is part of the
 model: a later file may reopen a class or use a constant an earlier one defined.
-When you add a file, add it to that list and to `PRELUDE_SRC` in the `Makefile`.
+When you add a file, add it to that list; the `Makefile`'s `PRELUDE_SRC` picks
+up every file under `core/` through a wildcard.
 
 ## Rules for authoring
 
@@ -65,7 +66,7 @@ These are the constraints the ratchet depends on.
 1. Put it in the file for the class or protocol it belongs to. Define it close
    to the other methods of that class, not at the end of the file.
 2. If it belongs to a class that has no file yet, add `core/<topic>.rb` in the
-   position the load order needs, then add it to `CORE` and `PRELUDE_SRC`.
+   position the load order needs, then add it to `CORE`.
 3. If it is a whole optional library, add `features/<name>.rb`; features load on
    `require` and are not part of core boot.
 4. Run `make gen`, then `make conformance` (and `make books` if the model or the
