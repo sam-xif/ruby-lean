@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_by": "#158 — `Kernel#Integer` probes in `rb_convert_to_integer`'s order",
+  "filed_by": "hand-filed while fixing #158",
+  "arm": "hand",
+  "case_id": "integer-conversion-order",
+  "first_reconciled": "2026-11-15, lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'both => 42' vs 'both => 7'; 'bad-to-int => ArgumentError: invalid value for Integer(): #<BothBad:0x…>' vs '7'",
+  "note": "`rb_convert_to_integer` asks `to_str` **after** `to_int` in the default (base 0) form, and **instead of** every other probe when a base is given; the prelude asked `to_str` first in both, so an object defining both conversions went through its String (`Kernel#Integer` answered 42 where CRuby answers 7, and raised `invalid value for Integer()` where CRuby answers from `to_int`). Two more rules of the same function are pinned here: the `to_int` probe runs under `rb_protect`, so a raise from it — of any class — is ignored and the conversion continues to `to_str`/`to_i`; and `exception: false` is CRuby's `raise_exception` flag, which answers nil for a bad literal and for a non-String under a base, but does not swallow a `to_str` conversion mismatch or an invalid radix, and does not turn a raising `to_i` into an answer. `Integer(StrBad.new)` also names the converted String (`\"zz\"`), not the object."
+}

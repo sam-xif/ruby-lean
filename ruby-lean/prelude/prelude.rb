@@ -1106,74 +1106,124 @@ module Kernel
   # happy path — `arg.to_s.strip`, then digits — which was wrong twice over:
   #
   #   * a non-String argument is not stringified at all. It is **converted**:
-  #     `to_str` (so a String-like is parsed), then `to_int`, then `to_i`, and
+  #     `to_int`, then `to_str` (so a String-like is parsed), then `to_i`, and
   #     only if none of those answers an Integer does it raise
   #     `TypeError: can't convert X into Integer`. So `Integer(obj)` for an object
   #     with a `to_i` **answers a number** where this raised, and the error class
   #     was wrong for everything else (`ArgumentError` is what an unparseable
   #     *String* gets);
+  #
+  #     `to_int` comes **first** in the default (base 0) form, and `to_str` first
+  #     in the base form, because those are the two arms of CRuby's
+  #     `rb_convert_to_integer`: with a base it asks `rb_check_string_type` before
+  #     anything else and refuses a non-String ("base specified for non string
+  #     value"), while without one it is `rb_check_to_int`, then
+  #     `rb_check_string_type`, then `to_i`. An object defining both conversions
+  #     therefore converts through `to_int` by default and through its String when
+  #     a base is given [V];
   #   * the default base is **0**, not 10 — which means "look at the prefix", so
   #     `Integer("0xff")` is 255, `Integer("010")` is **8**, and `Integer("1_000")`
   #     is 1000 [V]. All three raised.
   #
   # `vulns/identify.rb` uses the base-16 form to decode a percent-escape.
   #
-  # `exception: false` answers **nil** instead of raising, for both failure classes
-  # [V]. It is a real keyword parameter rather than a gate because without one the
-  # keyword arrives as a positional Hash (Ruby 3's rule for a method that declares
-  # no keywords) and is read as the *base*.
+  # `exception: false` answers **nil** instead of raising, for the failure classes
+  # CRuby's `raise_exception` flag covers [V]. It is a real keyword parameter
+  # rather than a gate because without one the keyword arrives as a positional
+  # Hash (Ruby 3's rule for a method that declares no keywords) and is read as the
+  # *base*. The flag is threaded through rather than implemented as a `rescue`
+  # around the whole conversion, because the arms differ: `rb_check_string_type`
+  # and `rb_cstr_parse_inum`'s radix check raise either way, so a `to_str` that
+  # answers a non-String is a `TypeError` even with `exception: false`.
   def Integer(arg, base = nil, exception: true)
-    return __integer(arg, base) if exception
-
-    begin
-      __integer(arg, base)
-    rescue ArgumentError, TypeError
-      nil
-    end
+    __integer(arg, base, exception)
   end
 
-  def __integer(arg, base)
-    # `rb_check_string_type` first: a String (or a `to_str`) is *parsed*, and it is
-    # the only argument a base may accompany [V].
-    str = String === arg ? arg : __check_convert(arg, :to_str)
-    return __parse_int(str, base.nil? ? 0 : base, arg) if String === str
+  def __integer(arg, base, raising)
+    unless base.nil?
+      # With a base, `rb_convert_to_integer` asks `rb_check_string_type` before
+      # every other arm, and a base is the only thing a non-String may not
+      # accompany: `to_str` is parsed, everything else is refused [V].
+      str = String.try_convert(arg)
+      return __parse_int(str, base, str, raising) unless str.nil?
 
-    raise ArgumentError, "base specified for non string value" unless base.nil?
+      raise ArgumentError, "base specified for non string value" if raising
+
+      return nil
+    end
+
+    # Base 0: `to_int` is asked **before** `to_str`, so an object defining both
+    # converts through its `to_int`. A String is still parsed first, as CRuby
+    # type-tests the argument before calling anything [V].
     return arg if Integer === arg
 
     if Float === arg
       # `Integer(2.9)` is 2 and `Integer(-2.9)` is -2 — truncation toward zero,
       # which is `Float#to_i`. NaN/Infinity raise `FloatDomainError`, a class this
-      # model does not have, so they refuse rather than answer something else.
-      return __unsupported__("Integer() of a NaN or Infinity (FloatDomainError is not modeled)") \
-        if arg.nan? || arg == Float::INFINITY || arg == -Float::INFINITY
+      # model does not have, so they refuse rather than answer something else —
+      # except under `exception: false`, which CRuby answers nil for.
+      if arg.nan? || arg == Float::INFINITY || arg == -Float::INFINITY
+        return nil unless raising
+
+        return __unsupported__("Integer() of a NaN or Infinity (FloatDomainError is not modeled)")
+      end
 
       return arg.to_i
     end
 
-    __to_integer(arg)
+    return __parse_int(arg, 0, arg, raising) if String === arg
+
+    __to_integer(arg, raising)
   end
 
-  # The `to_int`-then-`to_i` half, with CRuby's two different failure messages.
-  # `to_int` goes through `rb_check_funcall` (so a custom `respond_to?` can refuse
-  # it, and a `method_missing` can serve it) and a non-Integer answer is simply
-  # **ignored**; `to_i` then decides, and *its* non-Integer answer is named in the
+  # The `to_int`-then-`to_str`-then-`to_i` remainder, with CRuby's two different
+  # failure messages. `to_int` goes through `rb_check_funcall` (so a custom
+  # `respond_to?` can refuse it, and a `method_missing` can serve it) and a
+  # non-Integer answer is simply **ignored**; a `to_str` answer is parsed with the
+  # default base; `to_i` then decides, and *its* non-Integer answer is named in the
   # message — "can't convert X to Integer (X#to_i gives Y)", with `to`, against the
   # `into` of the no-method case [V].
-  def __to_integer(arg)
-    t = __check_convert(arg, :to_int)
+  def __to_integer(arg, raising)
+    # `rb_protect(rb_check_to_int)`: an exception raised by the `to_int` probe —
+    # of any class, even a non-StandardError — is **swallowed** and the
+    # conversion carries on without it [V]. `Integer(obj)` with a `to_int` that
+    # raises answers from `to_i`, and a `method_missing` that ends in `super`
+    # reads as "not convertible" rather than escaping its `NoMethodError`.
+    t = begin
+      __check_convert(arg, :to_int)
+    rescue Exception
+      nil
+    end
     return t if Integer === t
+
+    # `rb_check_string_type`, not the lenient `__check_convert`: a `to_str` that
+    # answers a non-String is a mismatch naming `to_str`, not a value to ignore
+    # (`String.try_convert` is the same rule) [V].
+    str = String.try_convert(arg)
+    return __parse_int(str, 0, str, raising) unless str.nil?
 
     # nil/true/false have no `to_i` (nil's is a builtin CRuby does not consult
     # here), and are named literally rather than by class [V].
-    unless arg.nil? || arg.equal?(true) || arg.equal?(false)
-      if arg.__user_defines?(:to_i) || arg.__user_defines?(:method_missing)
-        u = arg.to_i
-        return u if Integer === u
+    answers_to_i = !arg.nil? && !arg.equal?(true) && !arg.equal?(false) &&
+                   (arg.__user_defines?(:to_i) || arg.__user_defines?(:method_missing))
 
-        raise TypeError, "can't convert " + arg.class.to_s + " to Integer (" +
-                         arg.class.to_s + "#to_i gives " + u.class.to_s + ")"
+    unless raising
+      # `rb_protect(rb_check_to_i)`, which answers nil for a miss, a non-Integer
+      # answer and a raise alike [V].
+      u = begin
+        answers_to_i ? arg.to_i : nil
+      rescue Exception
+        nil
       end
+      return Integer === u ? u : nil
+    end
+
+    if answers_to_i
+      u = arg.to_i
+      return u if Integer === u
+
+      raise TypeError, "can't convert " + arg.class.to_s + " to Integer (" +
+                       arg.class.to_s + "#to_i gives " + u.class.to_s + ")"
     end
     raise TypeError, "can't convert " + __conv_desc(arg) + " into Integer"
   end
@@ -1190,9 +1240,18 @@ module Kernel
   end
 
   # `rb_int_parse_cstr`: strip, sign, prefix, then digits with single `_`
-  # separators. `orig` is the argument the error message shows.
-  def __parse_int(s, base, orig)
-    return __unsupported__("Integer() with a negative base") if base < 0
+  # separators. `orig` is the value the error message shows, which is the String
+  # being parsed — the argument itself for a String, the `to_str` answer for
+  # anything that converted (`Integer(StrBad.new)` names `"zz"`, not the object)
+  # [V]. `raising` is CRuby's `raise_exception`: a bad literal is nil under
+  # `exception: false`, while an invalid radix raises either way, because
+  # `invalid_radix` is not gated by that flag [V].
+  def __parse_int(s, base, orig, raising = true)
+    if base < 0
+      return nil unless raising
+
+      return __unsupported__("Integer() with a negative base")
+    end
     raise ArgumentError, "invalid radix " + base.to_s if base == 1 || base > 36
 
     t = s.strip
@@ -1218,24 +1277,41 @@ module Kernel
 
     digits = "0123456789abcdefghijklmnopqrstuvwxyz"[0, base]
     bad = ArgumentError.new("invalid value for Integer(): " + orig.inspect)
-    raise bad if t.empty? || t.start_with?("_") || t.end_with?("_")
+    return __bad_int(bad, raising) if t.empty? || t.start_with?("_") || t.end_with?("_")
 
     n = 0
     prev_us = false
+    ok = true
     t.each_char do |c|
       if c == "_"
-        raise bad if prev_us
+        if prev_us
+          ok = false
+          break
+        end
 
         prev_us = true
         next
       end
       prev_us = false
       d = digits.index(c.downcase)
-      raise bad if d.nil?
+      if d.nil?
+        ok = false
+        break
+      end
 
       n = n * base + d
     end
+    return __bad_int(bad, raising) unless ok
+
     neg ? -n : n
+  end
+
+  # `invalid_integer`: the one failure `raise_exception` always decides, so it is
+  # an `ArgumentError` when raising and nil otherwise [V].
+  def __bad_int(bad, raising)
+    raise bad if raising
+
+    nil
   end
 
   # `Kernel#Float` is the same two-rule shape, with three differences worth
