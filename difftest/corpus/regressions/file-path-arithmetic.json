@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "issue #166 (File path arithmetic)",
+  "note": "File.dirname chomps the trailing separator run before it looks for a parent and takes level 2+ (rb_file_dirname_n); File.extname skips a component's leading dots; File.basename's \".*\" selector chops what extname finds. Every row is the issue's CRuby 4.0.5 table."
+}

@@ -2074,57 +2074,134 @@ end
 
 # ─── File — the pure path operations only ───────────────────────────────────
 #
-# `File` is a filesystem class, and the slice reaches exactly one of its
-# methods: `File.basename(url)` in `vulns/identify.rb`, used to chop the last
-# component off a *URL*. That operation is pure string manipulation with no
-# effect at all, so it is modeled. Every other class method of CRuby's `File` is
-# a lookup miss that dispatch resolves against the generated CRuby name tables:
-# a real one (`File.mtime`) declines with a named reason, and a name that is not
-# Ruby's (`File.zzz`) raises the ordinary `NoMethodError`, as CRuby does. There
-# is no blanket `method_missing` here: it would answer a gate for a name no
-# Ruby defines, and hide the real method set.
+# `File` is a filesystem class, and the slice reaches only its **pure path
+# arithmetic**: `File.basename(url)` in `vulns/identify.rb`, used to chop the last
+# component off a *URL*, and the `extname`/`dirname`/`join` that go with it. Those
+# are string manipulation with no effect at all, so they are modeled. Every other
+# class method of CRuby's `File` is a lookup miss that dispatch resolves against
+# the generated CRuby name tables: a real one (`File.mtime`) declines with a
+# named reason, and a name that is not Ruby's (`File.zzz`) raises the ordinary
+# `NoMethodError`, as CRuby does. There is no blanket `method_missing` here: it
+# would answer a gate for a name no Ruby defines, and hide the real method set.
 class File
   SEPARATOR = "/"
 
+  # `File.basename`: CRuby's `rb_file_basename` chomps the trailing run of
+  # separators, answers everything after the last remaining one, and answers
+  # `/` when nothing is left after the root (file.c, `chompdirsep`). A `".*"`
+  # suffix is not a string suffix at all: `rmext` chops whatever `extname`
+  # finds, so a component made only of dots is left alone.
   def self.basename(path, suffix = nil)
-    s = path.to_s
-    parts = s.split("/")
-    base = parts.empty? ? (s.empty? ? "" : "/") : parts[parts.length - 1]
+    base = __basename_of(path.to_s)
     return base if suffix.nil?
     return base if suffix == base
+
     if suffix == ".*"
-      i = base.length - 1
-      while i > 0
-        return base[0, i] if base[i] == "."
-        i -= 1
-      end
-      base
-    else
-      base.end_with?(suffix) ? base[0, base.length - suffix.length] : base
+      ext = __extname_of(base)
+      return base if ext.empty?
+
+      return base[0, base.length - ext.length]
     end
+    base.end_with?(suffix) ? base[0, base.length - suffix.length] : base
   end
 
   def self.extname(path)
-    b = basename(path)
-    i = b.length - 1
-    while i > 0
-      return b[i, b.length - i] if b[i] == "."
-      i -= 1
-    end
-    ""
+    __extname_of(__basename_of(path.to_s))
   end
 
-  def self.dirname(path)
+  # `File.dirname(path, level = 1)`: `rb_file_dirname_n` skips the root, then
+  # strips the last component `level` times, each strip chomping the trailing
+  # separators it walks over, and answers `"."` (relative) or `"/"` (absolute)
+  # once no component is left.
+  def self.dirname(path, level = 1)
     s = path.to_s
-    i = s.length - 1
-    while i >= 0
-      if s[i] == "/"
-        return "/" if i.zero?
-        return s[0, i]
-      end
-      i -= 1
+    return "." if s.empty?
+
+    n = __dirname_level(level)
+    raise ArgumentError, "negative level: " + n.to_s if n < 0
+
+    root = s[0] == "/"
+    if root
+      skip = __root_length(s)
+      body = s[skip, s.length - skip]
+    else
+      body = s
     end
-    "."
+    i = 0
+    while i < n
+      body = __dirname_once(body)
+      i += 1
+    end
+    return (root ? "/" : ".") if body.empty?
+
+    root ? "/" + body : body
+  end
+
+  # The `NUM2INT` conversion `File.dirname`'s level takes: an Integer, or a
+  # Float truncated toward zero. NaN and the infinities raise `FloatDomainError`
+  # in CRuby, a class this model does not have, so they refuse. Any other object
+  # is `rb_to_int`'s business (a `to_int`/`to_i` protocol) and refuses by name
+  # rather than answering with a coercion CRuby would not make.
+  def self.__dirname_level(level)
+    return level if Integer === level
+
+    if Float === level
+      return __unsupported__("File.dirname level of a NaN or Infinity (FloatDomainError is not modeled)") \
+        if level.nan? || level == Float::INFINITY || level == -Float::INFINITY
+
+      return level.to_i
+    end
+    __unsupported__("File.dirname level that is not an Integer (CRuby: NUM2INT)")
+  end
+
+  # `skiproot`: the whole leading run of separators is the root of an absolute
+  # path, so `//a` has the root `/` and the single component `a`.
+  def self.__root_length(s)
+    i = 0
+    i += 1 while i < s.length && s[i] == "/"
+    i
+  end
+
+  # One strip: chomp the trailing separators, then cut at the last one left and
+  # chomp the run that follows it. A path with no separator left has no parent.
+  def self.__dirname_once(body)
+    e = body.length
+    e -= 1 while e > 0 && body[e - 1] == "/"
+    i = e - 1
+    i -= 1 while i >= 0 && body[i] != "/"
+    return "" if i < 0
+
+    e = i
+    e -= 1 while e > 0 && body[e - 1] == "/"
+    body[0, e]
+  end
+
+  # The last component, by the `chompdirsep`/`strrdirsep` pair `basename` uses.
+  def self.__basename_of(s)
+    return "" if s.empty?
+
+    e = s.length
+    e -= 1 while e > 0 && s[e - 1] == "/"
+    return "/" if e.zero?
+
+    i = e - 1
+    i -= 1 while i >= 0 && s[i] != "/"
+    s[i + 1, e - i - 1]
+  end
+
+  # `ruby_enc_find_extname`: skip the leading dots of the component, then answer
+  # from the last dot left, so `".a"` and `".."` have no extension and `"a."`
+  # has the extension `"."`.
+  def self.__extname_of(base)
+    i = 0
+    i += 1 while i < base.length && base[i] == "."
+    j = base.length - 1
+    while j >= i
+      return base[j, base.length - j] if base[j] == "."
+
+      j -= 1
+    end
+    ""
   end
 
   def self.join(*parts)
