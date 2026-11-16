@@ -26,6 +26,16 @@ def pathArg? (m : Machine) : Value → Option String
     | _ => none
   | _ => none
 
+/-- Is there a **directory** at `path`? This is the question `Dir.exist?`
+    and `File.directory?` ask, and it is narrower than `File.exist?`: a path
+    naming a regular file, or nothing at all, answers `false`, as CRuby does. -/
+def dirAt? (h : Heap) (path : String) : Bool :=
+  match VFS.lookup h path with
+  | some o => match (h.get o).payload with
+    | .dir _ _ => true
+    | _ => false
+  | none => false
+
 /-- A `File.*` / `Dir.*` / `IO.*` singleton operation. `recv` is the class
     object; `args` are the Ruby arguments. -/
 def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
@@ -61,7 +71,7 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
         | none => .unsupported "File.write: no such file (Errno::ENOENT gated at step 1)"
       | _, _ => .unsupported "File.write: path or data argument is not a String"
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
-  | "File#exist?" | "Dir#exist?" =>
+  | "File#exist?" =>
     match args with
     | [p] => (match pathArg? m p with
       | some path => .ok (.bool (VFS.lookup h path).isSome) m
@@ -75,12 +85,10 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
         | none => .ok (.bool false) m
       | none => .unsupported s!"{bid}: path argument is not a String")
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
-  | "File#directory?" =>
+  | "File#directory?" | "Dir#exist?" =>
     match args with
     | [p] => (match pathArg? m p with
-      | some path => match VFS.lookup h path with
-        | some o => .ok (.bool (match (h.get o).payload with | .dir _ _ => true | _ => false)) m
-        | none => .ok (.bool false) m
+      | some path => .ok (.bool (dirAt? h path)) m
       | none => .unsupported s!"{bid}: path argument is not a String")
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
   | "File#size" =>

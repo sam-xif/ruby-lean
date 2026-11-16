@@ -47,6 +47,25 @@ MODELED = [
     ('Dir.exist?("/tmp")', "true"),
 ]
 
+# `Dir.exist?` asks a narrower question than `File.exist?` — is there a
+# *directory* at this path — so a path naming a regular file answers `false`.
+# Every payload of the boot fixture is named here, including both of its regular
+# files, so one shared "is there something at this path" branch cannot pass.
+DIR_EXIST = [
+    ('Dir.exist?("/tmp")', "true"),
+    ('Dir.exist?("/tmp/")', "true"),
+    ('Dir.exist?("/tmp/vfsdata")', "true"),
+    ('Dir.exist?("/tmp/vfsdata/")', "true"),
+    ('Dir.exist?("/tmp/readme.txt")', "false"),
+    ('Dir.exist?("/tmp/readme.txt/")', "false"),
+    ('Dir.exist?("/tmp/vfsdata/nums.txt")', "false"),
+    ('Dir.exist?("/tmp/nope")', "false"),
+    ('File.exist?("/tmp/readme.txt")', "true"),
+    ('File.exist?("/tmp/nope")', "false"),
+    ('File.directory?("/tmp/vfsdata")', "true"),
+    ('File.directory?("/tmp/readme.txt")', "false"),
+]
+
 
 @pytest.mark.parametrize(("program", "message"), INVENTED)
 def test_a_name_no_ruby_defines_is_the_ordinary_no_method_error(program, message):
@@ -67,6 +86,19 @@ def test_a_real_unmodeled_class_method_declines_by_name(program, reason):
 @pytest.mark.parametrize(("program", "result"), MODELED)
 def test_a_modeled_class_method_still_answers(program, result):
     """Removing the blanket guard must not cost the methods that were modeled."""
+    obs = SUT.run(program + "\n")
+    assert isinstance(obs, Observation), obs
+    assert obs.exception is None
+    assert obs.result_repr == result
+
+
+@pytest.mark.parametrize(("program", "result"), DIR_EXIST)
+def test_dir_exist_asks_for_a_directory_not_any_entry(program, result):
+    """`Dir.exist?` discriminates on the payload, as `File.directory?` does.
+
+    CRuby 4.0.5 answers `false` for a path naming a regular file, so sharing
+    `File.exist?`'s branch would be a wrong boolean, not a gate.
+    """
     obs = SUT.run(program + "\n")
     assert isinstance(obs, Observation), obs
     assert obs.exception is None
