@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, issue #116",
+  "arm": "probe",
+  "case_id": "array-index-is-array-only",
+  "note": "CRuby defines `index` on `Array` only (`rb_ary_index`, reachable through `find_index`), so a Range, a Hash and any user class that includes Enumerable raise NoMethodError; the prelude aliased `index` to `find_index` inside `Enumerable`, so all of them answered. The alias is now an `Array` method. Also pins the Array surface: the block form, the 0..1 arity with CRuby's message, an argument winning over a block, `==` comparison, a live read during the scan, and that `Enumerable#find_index` is untouched. Compared with CRuby 4.0.5."
+}

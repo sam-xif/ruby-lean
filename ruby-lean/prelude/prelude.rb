@@ -252,10 +252,6 @@ module Enumerable
       __unsupported__("Enumerable#find_index arity")
     end
   end
-  # `Array#index` with a block is the same search (the blockless forms stay on
-  # the builtin; the block form falls through to here).
-  alias index find_index
-
   def all?(*pat)
     return __unsupported__("Enumerable#all? with a pattern argument") unless pat.empty?
     if block_given?
@@ -1014,6 +1010,44 @@ class String
 end
 
 class Array
+  # `Array#index` is `Array#find_index`, and CRuby defines the name on `Array`
+  # **only**: `(1..5).index(3)`, `{a: 1}.index(1)` and any other Enumerable
+  # raise `NoMethodError` rather than servicing the call [V]. An alias in
+  # `Enumerable` installed it on every including class, so the name lives here.
+  #
+  # This definition also wins over the blockless builtin, so it is the whole of
+  # `Array#index`. One argument searches for it, no argument searches by the
+  # block, and an argument wins over a block, which CRuby warns it ignores [V].
+  # The arity error names CRuby's range, `0..1` [V].
+  def index(*a)
+    if a.length > 1
+      raise ArgumentError, "wrong number of arguments (given " + a.length.to_s +
+                           ", expected 0..1)"
+    end
+    return __unsupported__("Enumerator: Array#index without a block") if a.empty? && !block_given?
+
+    # `rb_ary_index` walks the array's own storage; this body is Ruby, so it
+    # reads through `each`. A receiver that *defines* `each` (a subclass, a
+    # module, a singleton method) would search something CRuby never looks at,
+    # so decline there rather than answer.
+    return __unsupported__("Array#index on a receiver that defines #each") if __user_defines?(:each)
+
+    i = 0
+    unless a.empty?
+      needle = a[0]
+      each { |x|
+        return i if x == needle
+        i = i + 1
+      }
+      return nil
+    end
+    each { |x|
+      return i if yield(x)
+      i = i + 1
+    }
+    nil
+  end
+
   # `zip` over one or more other arrays; a short partner pads with nil [V]. The
   # block form yields each tuple and returns nil.
   def zip(*others)
