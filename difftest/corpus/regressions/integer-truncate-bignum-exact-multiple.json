@@ -1,0 +1,7 @@
+{
+  "status": "open",
+  "filed_by": "Jiro (agent), 2026-11-16 — issue #165",
+  "arm": "probe",
+  "case_id": "integer-truncate-bignum-exact-multiple",
+  "note": "A negative Bignum that is an exact multiple of the granularity is where CRuby's `rb_int_truncate` overshoots: its Bignum path answers `num + (f - m)` below zero and `m` is 0, so the value moves one granularity away from zero. The model answers a named `unsupported` for exactly those shapes instead of reproducing the oracle's Fixnum/Bignum split, so this case reports `gated` rather than a disagreement; it stays `open` because a gate is not a fix, and it starts testing again the day the gate closes."
+}

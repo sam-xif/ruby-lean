@@ -77,6 +77,16 @@ CRuby defines and the model does not implement, the model declines. It does not
 raise `NoMethodError`, which is what a model that simply lacked the method would
 do, and which would be a wrong answer.
 
+One shape is declined for a different reason: `Integer#truncate` of a negative
+Bignum that is an exact multiple of `10**-ndigits`. CRuby's own Bignum path takes
+`m = n mod f` and, below zero, answers `n + (f - m)`, so an exact multiple
+(`m = 0`) moves one granularity away from zero: `(-(10**19)).truncate(-1)` is
+-9999999999999999990, and `(-(10**30)).truncate(-30)` is 0. The model's integers
+are unbounded, so it has no Fixnum/Bignum split to be faithful to — reproducing
+the answer would mean modelling an implementation detail of the oracle rather
+than Ruby — and it declines exactly those shapes. Every other `truncate` case,
+including the ones on either side of that boundary, still answers.
+
 ## Finding out about one program
 
 ```sh

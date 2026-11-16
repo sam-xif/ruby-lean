@@ -97,9 +97,48 @@ def intBitRef (m : Machine) (recv : Value) (args : List Value) : BRes :=
       else .ok (.int ((n.fdiv (2 ^ i.toNat)).fmod 2)) m
   | _, _ => .unsupported "Integer#[] bit-field form"
 
+/-- CRuby's `FIXNUM_MIN` at the pinned oracle, `-(2^62)`: a receiver below it is
+    a `Bignum` internally, so `rb_int_truncate` skips its Fixnum fast path. The
+    model's `Int` is unbounded, so this is a fact about the oracle it is checked
+    against, not about Lean's arithmetic. -/
+def crubyFixnumMin : Int := -(2 ^ 62)
+
+/-- Whether this call is one of the `Integer#truncate` shapes CRuby 4.0.5 answers
+    one granularity away from zero. The model declines those rather than answer a
+    value CRuby would not.
+
+    `rb_int_truncate` truncates a **Fixnum** receiver toward zero directly. Past
+    that it takes `m = num mod f` (always in `[0, f)`) and, for a negative
+    receiver, answers `num + (f - m)`. For an exact multiple `m` is 0, so the
+    answer moves one granularity **away from zero** instead of staying put:
+    `(-(10**19)).truncate(-1)` is `-9999999999999999990` in CRuby 4.0.5, not
+    `-10**19`. The positive receiver signs the same expression the other way and
+    stays correct, and `round`/`ceil`/`floor` compute the lower multiple first,
+    so this one shape is the only one affected.
+
+    Being faithful here would mean reproducing the Fixnum/Bignum split, an
+    implementation detail of the oracle rather than of Ruby, and the model keeps
+    every other value word-size independent. So the gate is exact: the shapes
+    CRuby gets right still answer. -/
+def intTruncateOvershoots (bid : String) (recv : Value) (args : List Value) : Bool :=
+  bid == "Integer#truncate" &&
+    (match recv, args with
+     | .int n, [.int d] =>
+       if n < crubyFixnumMin && d < 0 then
+         let mag := n.natAbs
+         let k := (-d).toNat
+         -- a granularity with more digits than the receiver cannot divide it,
+         -- and the bound keeps `10 ^ k` from being materialized for a huge `k`
+         k ≤ (toString mag).length && mag % 10 ^ k == 0
+       else false
+     | _, _ => false)
+
 /-- Integer and Float rules. -/
 def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
+  if intTruncateOvershoots bid recv args then
+    .unsupported "Integer#truncate: negative Bignum that is an exact multiple of the granularity (CRuby's bignum path answers one granularity away from zero)"
+  else
   match bid with
   /- ─── Integer / Float ─── -/
   | "Integer#+" | "Float#+" =>
