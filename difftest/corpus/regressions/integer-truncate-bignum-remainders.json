@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro (agent), 2026-11-16 — issue #165",
+  "arm": "probe",
+  "case_id": "integer-truncate-bignum-remainders",
+  "note": "The other half of the Fixnum-boundary family: a positive Bignum, a Fixnum that is an exact multiple, and a negative Bignum whose remainder is 1, f/2 or f-1 all take a CRuby path that lands on the multiple truncation wants, so they keep answering. They also keep the gate in `integer-truncate-bignum-exact-multiple` exact — it may only fire on a negative Bignum that the granularity divides."
+}
