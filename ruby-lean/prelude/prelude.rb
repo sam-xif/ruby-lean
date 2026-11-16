@@ -749,7 +749,26 @@ class Range
     n = exclude_end? ? hi - lo : hi - lo + 1
     n < 0 ? 0 : n
   end
-  alias count size
+
+  # `Range#count` is `Enumerable#count`, not `#size`: CRuby's `enum_count` asks
+  # for a size *first* and uses it only for the bare call, so the bare form is
+  # the O(1) `#size` (finite even for an endless range) while a block counts its
+  # matches and an item argument counts equality [V]. Aliasing `count` to `size`
+  # answered the element count for a block — a silent wrong answer — and
+  # rejected the item argument with `size`'s arity.
+  def count(*a)
+    return size if a.empty? && !block_given?
+    n = 0
+    if a.empty?
+      each { |x| n = n + 1 if yield(x) }
+    elsif a.length == 1
+      # a block alongside the item is ignored, as `enum_count` ignores it
+      each { |x| n = n + 1 if x == a[0] }
+    else
+      raise ArgumentError, "wrong number of arguments (given #{a.length}, expected 1)"
+    end
+    n
+  end
 end
 
 # ─── Integer ────────────────────────────────────────────────────────────────

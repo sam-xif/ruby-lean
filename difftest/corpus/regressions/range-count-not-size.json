@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro, an autonomous agent (#115)",
+  "arm": "hand",
+  "case_id": "range-count-not-size",
+  "observed_then": "disagree",
+  "diff_then": "(1..5).count { |x| x > 2 } printed 5, CRuby prints 3",
+  "fixed_in": "prelude Range#count (2026-11-16)",
+  "note": "`class Range` aliased `count` to `size`, so a Range answered the element count where CRuby's `Enumerable#count` counts matches (a silent wrong answer for the block form) and rejected the item argument with `size`'s arity. `Range#count` is now prelude Ruby: the bare call still answers `#size` (which is what CRuby's `enum_count` asks for first, and keeps an endless range finite), a block counts its matches, and an item argument counts equality with the block ignored, as `enum_count` ignores it. `Range#size` keeps its own zero arity, and `Array#count`/`Hash#count` are untouched. Compared with CRuby 4.0.5."
+}
