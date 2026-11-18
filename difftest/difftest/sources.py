@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 
 from .testcase import TestCase
+from .vfs import VfsError
 
 BASE = Path(__file__).resolve().parents[1]  # ruby/difftest/
 BOOTSTRAPTEST_DIR = BASE.parent / "desugar" / "corpus" / "bootstraptest"
@@ -181,6 +182,29 @@ def load_advisory_corpus(corpus: Path | None = None) -> list[TestCase]:
     ]
     if not cases:
         raise FileNotFoundError(f"no .rb cases under {corpus}\n{ADVISORY_RECIPE}")
+    return cases
+
+
+VFS_DIR = BASE / "corpus" / "vfs"
+
+
+def load_vfs_corpus(corpus: Path | None = None) -> list[TestCase]:
+    """The filesystem corpus (tier 5): programs run against the boot fixture.
+
+    Every case declares, in its sidecar, the fixture it runs against
+    (`{"vfs": "v1"}`; see `vfs.py`). A case without one would be compared
+    against an empty filesystem, so that is an error here rather than a
+    mismatched case. Gated programs are expected: the model's filesystem is
+    built one step at a time (issue #7), and a gate is a coverage measurement,
+    not a pass or a failure. A disagreement is a wrong answer and fails.
+    """
+    cases = load_corpus_cases(Path(corpus) if corpus else VFS_DIR, default_tier=5)
+    for case in cases:
+        if "vfs" not in case.provenance:
+            raise VfsError(
+                f"{case.id}: a filesystem case must name the fixture it runs "
+                'against in its sidecar, e.g. {"vfs": "v1"}'
+            )
     return cases
 
 

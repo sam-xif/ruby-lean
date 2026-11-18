@@ -20,6 +20,7 @@ uv sync                                                       # Python 3.12 or n
 uv run difftest run --tier 0 --sut lean                       # bootstraptest against the model
 uv run difftest run --tier regressions --sut lean             # every past disagreement
 uv run difftest replay corpus/tier3 --sut lean                # a saved corpus
+uv run difftest run --tier vfs --sut lean                     # the filesystem corpus, against the boot fixture
 uv run difftest run --tier 1 -n 300 --sut lean --seed 1       # 300 generated programs
 uv run difftest run --tier 1 -n 300 --sut desugar --inject-bug  # self-test: must find disagreements
 uv run pytest                                                 # this package's own tests
@@ -42,6 +43,7 @@ and exits with status 1 if anything disagreed.
 | 1.5 | Generated programs that probe evaluation order |
 | 3 | Adversarial programs written to stress one feature each, in `corpus/tier3/` |
 | 4 | Sorbet-annotated programs in `corpus/sorbet/`, for comparing Sorbet's static verdict with what the program does |
+| 5 | Filesystem programs in `corpus/vfs/`, run against a fixture materialized for CRuby (see [the fixture](../docs/testing.md#the-filesystem-fixture)) |
 | `regressions` | Every disagreement found so far, minimized |
 
 ## Systems under test

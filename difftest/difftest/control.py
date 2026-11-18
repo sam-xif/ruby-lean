@@ -21,6 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from .observation import Observation
+from .vfs import Materialized
 
 SENTINEL = "\n__DIFFTEST_OBS__"
 
@@ -133,7 +134,12 @@ class CRubyRunner:
         )
         return None if proc.returncode == 0 else proc.stderr.strip()
 
-    def run(self, source: str) -> Observation:
+    def run(self, source: str, fixture: Materialized | None = None) -> Observation:
+        # A filesystem case runs against a fixed tree at absolute paths, so the
+        # tree is put back before *every* run: a program's own writes must not
+        # leak into the determinism double-run or into the SUT's run.
+        if fixture is not None:
+            fixture.reset()
         wrapped = _WRAPPER.format(program=source, sentinel=json.dumps(SENTINEL), support=_SUPPORT)
         with tempfile.NamedTemporaryFile("w", suffix=".rb", delete=False) as f:
             f.write(wrapped)
@@ -177,11 +183,13 @@ class CRubyRunner:
         finally:
             os.unlink(path)
 
-    def run_deterministic(self, source: str) -> tuple[Observation | None, str | None]:
+    def run_deterministic(
+        self, source: str, fixture: Materialized | None = None
+    ) -> tuple[Observation | None, str | None]:
         """Run twice; return (observation, None) if both normalized runs agree,
         else (None, reason). Nondeterministic programs are excluded with a reason,
         never silently."""
-        a = self.run(source)
+        a = self.run(source, fixture=fixture)
         if a.timed_out:
             return None, "timeout"
         # A stack overflow is CRuby's resource-limited approximation of a
@@ -199,7 +207,7 @@ class CRubyRunner:
                 None,
                 "SystemStackError (non-terminating recursion; pre-overflow stdout is stack-depth-dependent, not a stable observable)",
             )
-        b = self.run(source)
+        b = self.run(source, fixture=fixture)
         if a.normalized() != b.normalized():
             return None, "nondeterministic (two control runs differ)"
         return a, None

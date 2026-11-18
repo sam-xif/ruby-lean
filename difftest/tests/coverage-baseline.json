@@ -43,6 +43,7 @@
     "difftest/difftest/tiers/tier1_5/strategies.py",
     "difftest/difftest/tiers/tier3/__init__.py",
     "difftest/difftest/tiers/tier3/generate.py",
-    "difftest/difftest/tiers/tier3/prompts.py"
+    "difftest/difftest/tiers/tier3/prompts.py",
+    "difftest/difftest/vfs.py"
   ]
 }
