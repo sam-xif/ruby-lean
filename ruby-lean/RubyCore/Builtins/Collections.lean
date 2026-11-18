@@ -227,7 +227,7 @@ def runCollections (bid : String) (recv : Value) (args : List Value) (m : Machin
   | "Array#flatten" =>
     match arrPayload? h recv, args with
     | some _, [] =>
-      match flattenAll m recv 100 with
+      match flattenAll m recv false 100 with
       | some vs => let (v, m) := allocArr m vs.toArray; .ok v m
       | none => .unsupported "flatten depth"
     | _, _ => .unsupported "flatten(n)"

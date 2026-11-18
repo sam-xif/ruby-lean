@@ -1152,23 +1152,36 @@ def newImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
         | _ => .err Boot.argumentErrorId
             s!"wrong number of arguments (given {args.length}, expected 0)" m
   | _ => .unsupported "new"
-def flattenAll (m : Machine) (v : Value) : Nat → Option (List Value)
+/-- Recursively flatten nested arrays (fuel against cycles). `keepEmpty` decides
+    what a nested array that contributes no leaf is worth.
+
+    `Array#flatten` wants nothing, because it returns the leaves:
+    `[1, [[], 2]].flatten` is `[1, 2]` [V]. `Array#join` wants one empty part,
+    because it joins each nested Array as a **unit** and so puts the separator on
+    both sides of it: `[1, [[], 2]].join("-")` is `"1--2"`, not `"1-2"` [V].
+    Either way the split inside a non-empty nested array is the same, so the two
+    differ only in this one case. -/
+def flattenAll (m : Machine) (v : Value) (keepEmpty : Bool) : Nat → Option (List Value)
   | 0 => none
   | fuel + 1 =>
     match arrPayload? m.heap v with
     | some xs => xs.toList.foldlM (init := []) fun acc x =>
         match arrPayload? m.heap x with
-        | some _ => do pure (acc ++ (← flattenAll m x fuel))
+        | some _ => do
+            let inner ← flattenAll m x keepEmpty fuel
+            -- `nil` renders as the empty String, which is exactly the part an
+            -- empty nested Array contributes to a join.
+            pure (acc ++ (if keepEmpty && inner.isEmpty then [.nil] else inner))
         | none => some (acc ++ [x])
     | none => some [v]
-/-- Sort key: all-numeric or all-string arrays only (general sort needs
-    `<=>` dispatch, deferred). -/
+/-- `Array#join`: render each part with `to_s` (`nil` as the empty String) and
+    intercalate the separator. -/
 def joinImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
   let sep := match args with
     | [] => some ""
     | [s] => strPayload? m.heap s
     | _ => none
-  match sep, flattenAll m recv 100 with
+  match sep, flattenAll m recv true 100 with
   | some sep, some flat =>
     let parts := flat.mapM fun v =>
       match v with
@@ -1178,7 +1191,8 @@ def joinImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
     | .ok ps => okStr m (String.intercalate sep ps)
     | .error e => .unsupported e
   | _, _ => .unsupported "join"
-/-- Recursively flatten nested arrays (fuel against cycles). -/
+/-- Sort key: all-numeric or all-string arrays only (general sort needs
+    `<=>` dispatch, deferred). -/
 def sortKey? (h : Heap) (xs : Array Value) : Option (Array (SortKey × Value)) :=
   xs.mapM fun v =>
     match v with

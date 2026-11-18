@@ -1544,6 +1544,12 @@ class Array
   # is joined too (`[Pair.new].join(",")` is `"7,8"`, not `"#<Pair:0x…>"`). Found
   # by probing L133's other sites; `to_ary` is tried **before** `to_s`, which is
   # why it cannot be left to `__as_string`.
+  #
+  # A nested Array is one **unit** of the outer join, so an empty one still takes
+  # a separator on its own side: `[[], 1].join("-")` is `"-1"`. Flattening into
+  # `parts` drops it and answers `"1"`, so a nested array that contributed no part
+  # gets an explicit empty one. `parts` is this method's own Array, so the length
+  # test dispatches nothing the caller could have overridden.
   def __join_collect(parts)
     each do |e|
       if e.nil?
@@ -1553,7 +1559,9 @@ class Array
         if sub.nil?
           parts.push(e.__as_string)
         else
+          before = parts.length
           sub.__join_collect(parts)
+          parts.push("") if parts.length == before
         end
       end
     end

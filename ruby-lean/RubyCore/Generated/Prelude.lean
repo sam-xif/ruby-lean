@@ -6877,7 +6877,7 @@ def core_29 : Expr :=
               []
               (some (RubyCore.Expr.block
                  [RubyCore.Param.req "e"]
-                 ["sub"]
+                 ["sub", "before"]
                  (RubyCore.Expr.if'
                    (RubyCore.Expr.send
                      (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "e"))
@@ -6920,11 +6920,36 @@ def core_29 : Expr :=
                               []
                               none]
                            none)
-                         (some (RubyCore.Expr.send
-                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "sub"))
-                            "__join_collect"
-                            [RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"]
-                            none))]))))),
+                         (some (RubyCore.Expr.seq
+                            [RubyCore.Expr.vasgn
+                               (RubyCore.VarKind.lvar)
+                               "before"
+                               (RubyCore.Expr.send
+                                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"))
+                                 "length"
+                                 []
+                                 none),
+                             RubyCore.Expr.send
+                               (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "sub"))
+                               "__join_collect"
+                               [RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"]
+                               none,
+                             RubyCore.Expr.if'
+                               (RubyCore.Expr.send
+                                 (some (RubyCore.Expr.send
+                                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"))
+                                    "length"
+                                    []
+                                    none))
+                                 "=="
+                                 [RubyCore.Expr.var (RubyCore.VarKind.lvar) "before"]
+                                 none)
+                               (RubyCore.Expr.send
+                                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "parts"))
+                                 "push"
+                                 [RubyCore.Expr.str ""]
+                                 none)
+                               none]))]))))),
             RubyCore.Expr.nil])])
 
 def core_30 : Expr :=

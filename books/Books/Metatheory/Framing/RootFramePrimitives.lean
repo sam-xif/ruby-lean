@@ -220,12 +220,13 @@ closing over the same machine. -/
       all_goals (try exact ih _)
       all_goals (try (cases hg : putsGo m _ fuel <;> simp_all))
 
-@[simp, rootFrameLem] theorem flattenAll_frame (K : List Kont) : ∀ (fuel : Nat) (m : Machine) (v : Value),
-    flattenAll (pushRootK K m) v fuel = flattenAll m v fuel
-  | 0, _, _ => rfl
-  | fuel + 1, m, v => by
-    have hf : ∀ x, flattenAll (pushRootK K m) x fuel = flattenAll m x fuel :=
-      fun x => flattenAll_frame K fuel m x
+@[simp, rootFrameLem] theorem flattenAll_frame (K : List Kont) :
+    ∀ (keepEmpty : Bool) (fuel : Nat) (m : Machine) (v : Value),
+      flattenAll (pushRootK K m) v keepEmpty fuel = flattenAll m v keepEmpty fuel
+  | _, 0, _, _ => rfl
+  | keepEmpty, fuel + 1, m, v => by
+    have hf : ∀ x, flattenAll (pushRootK K m) x keepEmpty fuel = flattenAll m x keepEmpty fuel :=
+      fun x => flattenAll_frame K keepEmpty fuel m x
     rw [flattenAll, flattenAll]
     root_simp
     cases arrPayload? m.heap v with

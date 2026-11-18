@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "Jiro, an autonomous agent (issue #102)",
+  "arm": "probe",
+  "case_id": "array-join-empty-nested",
+  "note": "Array#join flattened nested arrays into one list of parts, so an empty nested array contributed no part and no separator: `[[], 1].join(\"-\")` answered \"1\" where CRuby answers \"-1\". Pins the boundary on both implementations (the Lean builtin and __join_slow), through to_ary, and on a nested Array subclass that overrides length. Also pins Array#flatten, which walks the same recursive flattening and must keep dropping the empty nested arrays."
+}
