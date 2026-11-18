@@ -27,6 +27,7 @@ build.
 
 | Target | Programs | Fails when |
 |---|---|---|
+| `make conformance-corpus` | The harvested `bootstraptest` corpus, with no build and no replay | It holds a different number of programs than the baseline records, or the programs it holds are not the ones its harvest manifest lists |
 | `make conformance` | The 1287 programs of CRuby's `bootstraptest` suite | The model and CRuby disagree on any program; or fewer programs agree, or more are unsupported, than the recorded baseline |
 | `make conformance` | 219 minimized reproducers of every disagreement found in the past (`difftest/corpus/regressions/`) | Any disagrees |
 | `make conformance` | Hand-written adversarial programs for blocks and jumps, dispatch, evaluation order, exceptions, keyword arguments, metaprogramming and namespaces (`difftest/corpus/tier3/`) | Any disagrees |
@@ -54,9 +55,18 @@ make conformance
 scripts/check-conformance.sh --save .make/conformance
 ```
 
+An improvement that is not recorded does not fail the run, but it is not a log
+line either: the run reports it as a warning annotation on the pull request, and
+in its step summary, so that a reported rise cannot go unnoticed.
+
 `bootstraptest` is not stored in this repository. The first run makes a sparse
 clone of `ruby/ruby` at the pinned tag (`RUBY_REF` in the Makefile) into
-`~/.cache/ruby-lean/` and extracts the test programs from it.
+`~/.cache/ruby-lean/` and extracts the test programs from it. Because the corpus
+is harvested rather than stored, `make conformance-corpus` checks it against the
+baseline's `ran` on its own — no Lean build and no replay — and `make
+conformance` runs it first, so a harvest change that leaves the baseline
+describing a corpus that no longer exists is caught in seconds, before the
+replay starts against it.
 
 ## The desugarer
 

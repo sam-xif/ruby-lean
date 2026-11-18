@@ -64,5 +64,5 @@ agreement or as disagreement.
 | `difftest/` | The engine: the runner, the comparison, the generators (`tiers/`), the systems under test (`sut.py`) |
 | `ruby/` | Ruby helpers: the observation wrapper and the scripts that strip Sorbet annotations |
 | `corpus/` | The saved programs described above |
-| `coverage-baseline.json` | The recorded `bootstraptest` result that `make conformance` compares against |
+| `coverage-baseline.json` | The recorded `bootstraptest` result that `make conformance` compares against, and the corpus size `make conformance-corpus` checks the harvest against |
 | `tests/` | This package's unit tests |

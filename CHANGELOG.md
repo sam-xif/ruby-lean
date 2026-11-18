@@ -24,6 +24,11 @@
   fail a change that weakens a check: a recorded result that fell, a dropped
   check or audited theorem, a new `sorry` or lint suppression, fewer tests.
   `.github/CODEOWNERS` lists the files that define the checks.
+* `make conformance-corpus` checks the harvested `bootstraptest` corpus against
+  the size the conformance baseline records, without a build or a replay, and
+  `make conformance` runs it before the replay. A conformance run also reports a
+  result that improved on the baseline as an annotation on the pull request, not
+  only as a line in its log.
 
 ## 0.01
 

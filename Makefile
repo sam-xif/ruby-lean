@@ -44,7 +44,7 @@ BOOTSTRAP := desugar/corpus/bootstraptest
 .PHONY: help all check prereqs ci-sync deps lean lean-exes desugar difftest run \
         books metatheory soundness comparator lint format \
         gen gen-check desugar-test desugar-coverage desugar-unit emitter-unit difftest-test \
-        conformance feature-loading book-checks check-not-weakened \
+        conformance conformance-corpus feature-loading book-checks check-not-weakened \
         wasm playground playground-serve docs docs-serve clean distclean
 
 help: ## List the targets
@@ -278,7 +278,17 @@ $(BOOTSTRAP):
 CONFORMANCE_OUT := $(CURDIR)/$(STAMP)/conformance
 DIFFTEST_RUN    := cd difftest && $(UV) run difftest
 
-conformance: difftest $(BOOTSTRAP) ## The model against CRuby: bootstraptest, past regressions, adversarial programs
+# `ran` is the size of the corpus the baseline was measured on, and the corpus is
+# harvested rather than stored here, so a harvest change leaves the baseline
+# describing a corpus that is gone. `make conformance` used to find that only
+# after building the model and replaying every program; this finds it from the
+# corpus alone, in seconds, and runs first, so the replay is never started
+# against a corpus the baseline does not describe. `make check` reaches it that
+# way: it is the first prerequisite of `conformance`.
+conformance-corpus: $(BOOTSTRAP) ## The harvested corpus against the baseline's `ran` (no replay, no build)
+	python3 scripts/check-corpus-baseline.py
+
+conformance: conformance-corpus difftest ## The model against CRuby: bootstraptest, past regressions, adversarial programs
 	@rm -rf $(CONFORMANCE_OUT)
 	$(DIFFTEST_RUN) run --tier 0 --sut lean --out $(CONFORMANCE_OUT)
 	scripts/check-conformance.sh $(CONFORMANCE_OUT)

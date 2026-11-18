@@ -63,7 +63,11 @@ check prints what moved and how to record an improvement.
 | `difftest/tests/coverage-baseline.json` | The same for `difftest/difftest/` | `scripts/check-coverage.py --save difftest` |
 
 Commit the updated file with the change that caused it, so the diff shows what
-moved.
+moved. Two things keep a baseline from describing a corpus that is no longer
+there: `make conformance-corpus` checks the harvested corpus against the `ran`
+the baseline records, without a build or a replay, and a run that improves on the
+baseline reports the rise as an annotation on the pull request rather than only
+in its log.
 
 ## What a change may not weaken
 

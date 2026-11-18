@@ -79,6 +79,46 @@ def load_corpus_cases(corpus: Path, default_tier: int = -1) -> list[TestCase]:
     return cases
 
 
+def bootstraptest_baseline_problems(corpus: Path | None, baseline: dict) -> list[str]:
+    """Why the harvested bootstraptest corpus and a recorded baseline disagree.
+
+    A baseline's `ran` is the size of the corpus its numbers were measured on. The
+    corpus is harvested on demand and never vendored, so a new `RUBY_REF`, a changed
+    skip list in `desugar/bin/harvest_bootstraptest`, or a harvest interrupted between
+    writing the programs and writing `manifest.json` all leave the baseline describing
+    a corpus that is no longer there. `make conformance` sees that only after it has
+    built the model and replayed every program; this answers from the corpus alone.
+
+    Returns one message per problem, and none when the two agree.
+    """
+    corpus = Path(corpus) if corpus else BOOTSTRAPTEST_DIR
+    problems = []
+    ran = int(baseline.get("ran", 0))
+    files = sorted(path.name for path in corpus.glob("*.rb"))
+    if len(files) != ran:
+        problems.append(f"the corpus holds {len(files)} programs; the baseline records {ran}")
+
+    manifest_path = corpus / "manifest.json"
+    if manifest_path.exists():
+        listed = {entry["file"] for entry in json.loads(manifest_path.read_text())}
+        unlisted = [name for name in files if name not in listed]
+        unharvested = sorted(listed - set(files))
+        if unlisted or unharvested:
+            problems.append(
+                f"manifest.json and the corpus disagree: {len(unlisted)} program(s) have no "
+                f"manifest entry {unlisted[:3]}, and {len(unharvested)} entry(ies) have no "
+                f"program {unharvested[:3]}"
+            )
+
+    recorded = sum(
+        int(baseline.get(key, 0))
+        for key in ("agree", "sut_unsupported", "not_compared", "disagree")
+    )
+    if recorded != ran:
+        problems.append(f"the baseline's verdict counts add up to {recorded}, not its ran {ran}")
+    return problems
+
+
 SLICE_DIR = BASE / "corpus" / "homebrew-slice"
 
 SLICE_HARVEST_RECIPE = """The Homebrew-slice corpus is generated, not vendored (each program

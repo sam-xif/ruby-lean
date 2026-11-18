@@ -18,8 +18,11 @@
 # A program is "unsupported" when the model declines it because it uses
 # something the model does not cover. It is "not compared" when CRuby itself
 # gives nothing to compare with: a few bootstraptest programs are deliberate
-# syntax errors. When a change improves the numbers, this prints the new ones;
-# commit them with --save in the same change.
+# syntax errors. When a change improves the numbers, this prints the new ones
+# and says so as a GitHub annotation, because that improvement is not recorded:
+# commit them with --save in the same change. The corpus that a run replays is
+# checked against the baseline's `ran` separately and cheaply, without a replay,
+# by `make conformance-corpus` (scripts/check-corpus-baseline.py).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,6 +38,7 @@ fi
 
 python3 - "$BASELINE" "$REPORT/summary.json" "$SAVE" "$REPORT" <<'PY'
 import json
+import os
 import sys
 
 baseline_path, summary_path, save, report = sys.argv[1], sys.argv[2], sys.argv[3] == "1", sys.argv[4]
@@ -102,10 +106,32 @@ if agree > base["agree"]:
 if unsupported < base["sut_unsupported"]:
     rises.append(f"sut_unsupported {base['sut_unsupported']} -> {unsupported}")
 
+
+def surface(message):
+    """Put a status where a reviewer will see it, not only in the job's log.
+
+    A rise is not a failure, so it must not be something to scroll back for: on
+    GitHub it becomes an annotation on the run and a line in the step summary.
+    """
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"::warning file=difftest/coverage-baseline.json,line=1,title=Ahead of the recorded baseline::{message}")
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a") as fh:
+            fh.write(f"- The conformance baseline is behind this run: {message}\n")
+
+
 if rises:
     print()
     print("CONFORMANCE IMPROVED -- " + ", ".join(rises))
+    print("  The baseline is behind this run and nothing has recorded it. An improved")
+    print("  result is recorded in the same change, so that the next change is judged")
+    print("  against it.")
     print(f"  Record it: scripts/check-conformance.sh --save {report}")
+    surface(
+        f"{', '.join(rises)}; record it in this change with "
+        f"`scripts/check-conformance.sh --save .make/conformance`"
+    )
 else:
-    print("\nCONFORMANCE OK -- no disagreement, and coverage holds the baseline.")
+    print("\nCONFORMANCE OK -- no disagreement, and the numbers equal the baseline.")
 PY
