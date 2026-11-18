@@ -199,6 +199,10 @@ def load_vfs_corpus(corpus: Path | None = None) -> list[TestCase]:
     not a pass or a failure. A disagreement is a wrong answer and fails.
     """
     cases = load_corpus_cases(Path(corpus) if corpus else VFS_DIR, default_tier=5)
+    if not cases:
+        # `make conformance` treats "no disagreement" as a pass, so an empty
+        # corpus would be a silent hole: refuse it here.
+        raise VfsError(f"no filesystem cases under {Path(corpus) if corpus else VFS_DIR}")
     for case in cases:
         if "vfs" not in case.provenance:
             raise VfsError(
