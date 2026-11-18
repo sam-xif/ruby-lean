@@ -1527,37 +1527,47 @@ class Array
         else
           return __unsupported__("Array#join with a non-String separator")
         end
-    parts = []
-    __join_collect(parts)
-    out = ""
-    i = 0
-    while i < parts.length
-      out += s unless i.zero?
-      out += parts[i]
-      i += 1
-    end
-    out
+    __join_walk(s, 0)
   end
 
-  # `ary_join_one`: a nested Array is joined recursively — and "nested" is
-  # `rb_check_array_type`, not `is_a?(Array)`, so an element answering `to_ary`
-  # is joined too (`[Pair.new].join(",")` is `"7,8"`, not `"#<Pair:0x…>"`). Found
-  # by probing L133's other sites; `to_ary` is tried **before** `to_s`, which is
-  # why it cannot be left to `__as_string`.
-  def __join_collect(parts)
+  # `Array#*` with a String argument **is** `rb_ary_join` (`rb_ary_times` hands
+  # the String straight to it), so the separator form is `join` and shares its
+  # walk. Entered from `deferTwin?` only when an element is an Array or could
+  # answer `to_ary`, or when an element overrides `to_s`; a flat, pure receiver
+  # stays in the builtin's `joinImpl`.
+  def __ary_times_slow(sep) = __join_walk(sep, 0)
+
+  # `ary_join_1` joins each level on its own: a nested Array is joined
+  # recursively with the same separator and contributes **one** part, and an
+  # empty nested Array still occupies its position, so `[[], 1].join("-")` is
+  # `"-1"` and `[1, [], 2].join("-")` is `"1--2"`. `joinImpl` joins one flat
+  # list of leaves instead, which is why it is entered only when nothing nests
+  # (`toAryDefer?`).
+  #
+  # "Nested" is `rb_check_array_type`, not `is_a?(Array)`, so an element
+  # answering `to_ary` is joined too (`[Pair.new].join(",")` is `"7,8"`, not
+  # `"#<Pair:0x…>"`). `to_ary` is tried **before** `to_s`, which is why it
+  # cannot be left to `__as_string`.
+  #
+  # The depth guard is `flattenAll`'s fuel: a self-referential array is refused
+  # rather than run until the machine's step budget ends.
+  def __join_walk(s, depth)
+    return __unsupported__("Array#join deeper than 100 levels") if depth > 100
+    out = ""
+    first = true
     each do |e|
-      if e.nil?
-        parts.push("")
-      else
+      out += s unless first
+      first = false
+      unless e.nil?
         sub = String === e ? nil : __check_array_type(e)
         if sub.nil?
-          parts.push(e.__as_string)
+          out += e.__as_string
         else
-          sub.__join_collect(parts)
+          out += sub.__join_walk(s, depth + 1)
         end
       end
     end
-    nil
+    out
   end
 end
 

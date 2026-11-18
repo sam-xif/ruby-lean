@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, issue #173",
+  "arm": "probe",
+  "case_id": "array-times-join",
+  "note": "`Array#*` refused every non-Integer argument, including the String form that is `rb_ary_join` with that separator. The separator form now joins (one part per element at every level, so an empty nested array keeps its separator boundary), `to_ary` elements are joined as units, a Float count truncates toward zero, and a non-convertible argument raises CRuby's TypeError instead of gating. Compared with CRuby 4.0.5."
+}

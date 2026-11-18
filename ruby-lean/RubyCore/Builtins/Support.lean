@@ -703,8 +703,10 @@ wrong message *and* a lost side effect.
 A builtin cannot dispatch, so the sites defer to prelude twins over
 `__to_array_type`. Deferral is keyed on "could a `to_ary` possibly run", so two
 real Arrays — and every argument whose class chain offers nothing — keep the Lean
-fast path untouched. `Array#-`/`&`/`|`/`*` convert too and are *not* here: they
-gate on a non-Array argument today, and a gate is not a wrong answer. -/
+fast path untouched. `Array#-`/`&`/`|` convert too and are *not* here: they
+gate on a non-Array argument today, and a gate is not a wrong answer.
+`Array#*`'s String form is not an Array conversion at all — it is `rb_ary_join`
+— so its twin lives in `deferTwin?` above. -/
 
 /-- Is any value reachable from `v` through nested Arrays one that `to_ary`
     could speak for? `Array#flatten` converts **each element** with
@@ -718,6 +720,32 @@ def anyToAryDeep (h : Heap) : Nat → Value → Bool
     match arrPayload? h v with
     | some xs => xs.any (anyToAryDeep h fuel)
     | none => mayDispatchToAry h v
+
+/-- Does `Array#*`'s String form need the prelude walk instead of `joinImpl`?
+    `rb_ary_times` hands a String to `rb_ary_join`, which renders one part per
+    **element** at every level: a nested Array is joined as a unit and an empty
+    one still keeps its separator boundary. `joinImpl` renders one flat list of
+    leaves, which is exact only when no element nests, so an element that is an
+    Array or could answer `to_ary` needs the walk — and so does one overriding
+    `to_s`, which a builtin cannot dispatch. -/
+def timesJoinNeedsTwin (h : Heap) (recv sep : Value) : Bool :=
+  match arrPayload? h recv with
+  | some xs =>
+    (strPayload? h sep).isSome &&
+      (xs.any (fun x => (arrPayload? h x).isSome || mayDispatchToAry h x)
+        || !pureOk h toSSensitive recv)
+  | none => false
+
+/-- Does the receiver answer `each` with something other than Array's own
+    builtin — a program definition, an `undef`, or nothing at all? The prelude
+    twins that walk an Array **in Ruby** (`__join_walk`, `__ary_flatten_slow`)
+    iterate with `each`, while CRuby walks the internal array and never calls
+    it, so a receiver whose `each` is not the builtin is one the twin cannot
+    reproduce. -/
+def eachIsProgramDefined (h : Heap) (v : Value) : Bool :=
+  match lookup h v "each" with
+  | some (_, md) => md.builtin.isNone || md.undefined
+  | none => true
 
 /-- When an Array-conversion builtin must dispatch rather than answer, the
     prelude twin to dispatch instead. -/
@@ -794,8 +822,8 @@ def strCmpDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
   | _, _ => none
 
 /-- Every reason a builtin defers to a prelude twin instead of running: repr
-    purity, the coerce protocol, the implicit Array conversion
- and String ordering against a non-String. One hook, so `invoke` has
+    purity, the coerce protocol, the implicit Array conversion, String ordering
+    against a non-String, and `Array#*`'s join separator form. One hook, so `invoke` has
     one place to consult and the dispatch metatheorems one hypothesis to carry. -/
 def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
@@ -819,6 +847,19 @@ def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
         then some "__case_equal" else none
       | none => none
     | _, _ => none
+  else if bid == "Array#*" then
+    -- A String argument is `rb_ary_join` (`rb_ary_times` hands it straight to
+    -- it), so the elements are rendered one per **element** at every level.
+    -- `joinImpl` renders a flat part list, which is exact only for a receiver
+    -- of leaves: an element that is an Array (an empty one included, which
+    -- still keeps its separator boundary) or that could answer `to_ary` needs
+    -- this walk, and so does an element overriding `to_s`, which a builtin
+    -- must not dispatch. Anything else stays in the builtin.
+    match args with
+    | [sep] =>
+      if timesJoinNeedsTwin h recv sep && !eachIsProgramDefined h recv
+      then some "__ary_times_slow" else none
+    | _ => none
   else
   reprDefer? h bid recv args <|> coerceDefer? h bid recv args
     <|> toAryDefer? h bid recv args <|> strCmpDefer? h bid recv args

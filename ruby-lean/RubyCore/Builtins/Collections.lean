@@ -195,15 +195,28 @@ def runCollections (bid : String) (recv : Value) (args : List Value) (m : Machin
         .ok v m
       | _, _ => .unsupported "|"
   | "Array#*" =>
+    -- `rb_ary_times`: a String argument *is* `rb_ary_join` with that separator
+    -- (so `[a, b] * ", "` is `[a, b].join(", ")`), and every other argument
+    -- converts with `rb_num2long`, which truncates a Float toward zero and
+    -- raises CRuby's `TypeError` when the operand cannot convert [V].
+    -- A receiver holding a nested Array or a `to_ary` element never reaches
+    -- here: `deferTwin?` sends it to the prelude twin, whose walk keeps
+    -- `ary_join_1`'s separator boundary that a flat part list loses. The twin
+    -- walks the receiver with `each`, so one that redefines `each` cannot take
+    -- that route and is refused rather than answered flat.
     binArg m args fun b =>
-      match arrPayload? h recv, b with
-      | some xs, .int n =>
-        if n < 0 then .err Boot.argumentErrorId "negative argument" m
-        else
-          let (v, m) := allocArr m ((List.replicate n.toNat xs).foldl (· ++ ·) #[])
-          .ok v m
-      | some _, _ => .unsupported "Array#* join form"
-      | _, _ => .unsupported "*"
+      match arrPayload? h recv with
+      | some xs =>
+        if (strPayload? h b).isSome then
+          if timesJoinNeedsTwin h recv b && eachIsProgramDefined h recv then
+            .unsupported "Array#* join with a receiver that redefines Array#each"
+          else joinImpl m recv args
+        else withIndex m b "Array#*" fun n =>
+          if n < 0 then .err Boot.argumentErrorId "negative argument" m
+          else
+            let (v, m) := allocArr m ((List.replicate n.toNat xs).foldl (· ++ ·) #[])
+            .ok v m
+      | none => .unsupported "*"
   | "Array#concat" =>
     match recv, arrPayload? h recv, args with
     | .ref o, some xs, [b] =>
