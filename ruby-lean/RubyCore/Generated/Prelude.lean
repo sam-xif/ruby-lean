@@ -2108,7 +2108,290 @@ def core_3 : Expr :=
        RubyCore.Expr.def'
          "minmax"
          []
-         (RubyCore.Expr.array [RubyCore.Expr.vcall "min", RubyCore.Expr.vcall "max"]),
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "lo" (RubyCore.Expr.nil),
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "hi" (RubyCore.Expr.nil),
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "have" (RubyCore.Expr.fls),
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "last" (RubyCore.Expr.nil),
+            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "holding" (RubyCore.Expr.fls),
+            RubyCore.Expr.send
+              none
+              "each"
+              []
+              (some (RubyCore.Expr.block
+                 [RubyCore.Param.req "x"]
+                 ["j", "c", "t"]
+                 (RubyCore.Expr.if'
+                   (RubyCore.Expr.send
+                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "holding"))
+                     "!"
+                     []
+                     none)
+                   (RubyCore.Expr.seq
+                     [RubyCore.Expr.vasgn
+                        (RubyCore.VarKind.lvar)
+                        "last"
+                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
+                      RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "holding" (RubyCore.Expr.tru)])
+                   (some (RubyCore.Expr.seq
+                      [RubyCore.Expr.vasgn
+                         (RubyCore.VarKind.lvar)
+                         "j"
+                         (RubyCore.Expr.var (RubyCore.VarKind.lvar) "last"),
+                       RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "holding" (RubyCore.Expr.fls),
+                       RubyCore.Expr.vasgn
+                         (RubyCore.VarKind.lvar)
+                         "c"
+                         (RubyCore.Expr.if'
+                           (RubyCore.Expr.send none "block_given?" [] none)
+                           (RubyCore.Expr.yield'
+                             [RubyCore.Expr.var (RubyCore.VarKind.lvar) "j",
+                              RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
+                           (some (RubyCore.Expr.send
+                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "j"))
+                              "<=>"
+                              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                              none))),
+                       RubyCore.Expr.if'
+                         (RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                           "nil?"
+                           []
+                           none)
+                         (RubyCore.Expr.ret
+                           (some (RubyCore.Expr.send
+                              none
+                              "__unsupported__"
+                              [RubyCore.Expr.str "Enumerable#minmax with a nil comparison"]
+                              none)))
+                         none,
+                       RubyCore.Expr.if'
+                         (RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                           ">"
+                           [RubyCore.Expr.int 0]
+                           none)
+                         (RubyCore.Expr.nil)
+                         (some (RubyCore.Expr.if'
+                            (RubyCore.Expr.send
+                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                              "<"
+                              [RubyCore.Expr.int 0]
+                              none)
+                            (RubyCore.Expr.seq
+                              [RubyCore.Expr.vasgn
+                                 (RubyCore.VarKind.lvar)
+                                 "t"
+                                 (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
+                               RubyCore.Expr.vasgn
+                                 (RubyCore.VarKind.lvar)
+                                 "x"
+                                 (RubyCore.Expr.var (RubyCore.VarKind.lvar) "j"),
+                               RubyCore.Expr.vasgn
+                                 (RubyCore.VarKind.lvar)
+                                 "j"
+                                 (RubyCore.Expr.var (RubyCore.VarKind.lvar) "t")])
+                            (some (RubyCore.Expr.vasgn
+                               (RubyCore.VarKind.lvar)
+                               "x"
+                               (RubyCore.Expr.var (RubyCore.VarKind.lvar) "j"))))),
+                       RubyCore.Expr.if'
+                         (RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have"))
+                           "!"
+                           []
+                           none)
+                         (RubyCore.Expr.seq
+                           [RubyCore.Expr.vasgn
+                              (RubyCore.VarKind.lvar)
+                              "lo"
+                              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
+                            RubyCore.Expr.vasgn
+                              (RubyCore.VarKind.lvar)
+                              "hi"
+                              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "j"),
+                            RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "have" (RubyCore.Expr.tru)])
+                         (some (RubyCore.Expr.seq
+                            [RubyCore.Expr.vasgn
+                               (RubyCore.VarKind.lvar)
+                               "c"
+                               (RubyCore.Expr.if'
+                                 (RubyCore.Expr.send none "block_given?" [] none)
+                                 (RubyCore.Expr.yield'
+                                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
+                                    RubyCore.Expr.var (RubyCore.VarKind.lvar) "lo"])
+                                 (some (RubyCore.Expr.send
+                                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
+                                    "<=>"
+                                    [RubyCore.Expr.var (RubyCore.VarKind.lvar) "lo"]
+                                    none))),
+                             RubyCore.Expr.if'
+                               (RubyCore.Expr.send
+                                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                                 "nil?"
+                                 []
+                                 none)
+                               (RubyCore.Expr.ret
+                                 (some (RubyCore.Expr.send
+                                    none
+                                    "__unsupported__"
+                                    [RubyCore.Expr.str "Enumerable#minmax with a nil comparison"]
+                                    none)))
+                               none,
+                             RubyCore.Expr.if'
+                               (RubyCore.Expr.send
+                                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                                 "<"
+                                 [RubyCore.Expr.int 0]
+                                 none)
+                               (RubyCore.Expr.vasgn
+                                 (RubyCore.VarKind.lvar)
+                                 "lo"
+                                 (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
+                               none,
+                             RubyCore.Expr.vasgn
+                               (RubyCore.VarKind.lvar)
+                               "c"
+                               (RubyCore.Expr.if'
+                                 (RubyCore.Expr.send none "block_given?" [] none)
+                                 (RubyCore.Expr.yield'
+                                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "j",
+                                    RubyCore.Expr.var (RubyCore.VarKind.lvar) "hi"])
+                                 (some (RubyCore.Expr.send
+                                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "j"))
+                                    "<=>"
+                                    [RubyCore.Expr.var (RubyCore.VarKind.lvar) "hi"]
+                                    none))),
+                             RubyCore.Expr.if'
+                               (RubyCore.Expr.send
+                                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                                 "nil?"
+                                 []
+                                 none)
+                               (RubyCore.Expr.ret
+                                 (some (RubyCore.Expr.send
+                                    none
+                                    "__unsupported__"
+                                    [RubyCore.Expr.str "Enumerable#minmax with a nil comparison"]
+                                    none)))
+                               none,
+                             RubyCore.Expr.if'
+                               (RubyCore.Expr.send
+                                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                                 ">"
+                                 [RubyCore.Expr.int 0]
+                                 none)
+                               (RubyCore.Expr.vasgn
+                                 (RubyCore.VarKind.lvar)
+                                 "hi"
+                                 (RubyCore.Expr.var (RubyCore.VarKind.lvar) "j"))
+                               none]))]))))),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "holding")
+              (RubyCore.Expr.if'
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have"))
+                  "!"
+                  []
+                  none)
+                (RubyCore.Expr.seq
+                  [RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "lo"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "last"),
+                   RubyCore.Expr.vasgn
+                     (RubyCore.VarKind.lvar)
+                     "hi"
+                     (RubyCore.Expr.var (RubyCore.VarKind.lvar) "last"),
+                   RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "have" (RubyCore.Expr.tru)])
+                (some (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "c"
+                      (RubyCore.Expr.if'
+                        (RubyCore.Expr.send none "block_given?" [] none)
+                        (RubyCore.Expr.yield'
+                          [RubyCore.Expr.var (RubyCore.VarKind.lvar) "last",
+                           RubyCore.Expr.var (RubyCore.VarKind.lvar) "lo"])
+                        (some (RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "last"))
+                           "<=>"
+                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "lo"]
+                           none))),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                        "nil?"
+                        []
+                        none)
+                      (RubyCore.Expr.ret
+                        (some (RubyCore.Expr.send
+                           none
+                           "__unsupported__"
+                           [RubyCore.Expr.str "Enumerable#minmax with a nil comparison"]
+                           none)))
+                      none,
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                        "<"
+                        [RubyCore.Expr.int 0]
+                        none)
+                      (RubyCore.Expr.vasgn
+                        (RubyCore.VarKind.lvar)
+                        "lo"
+                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "last"))
+                      none,
+                    RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "c"
+                      (RubyCore.Expr.if'
+                        (RubyCore.Expr.send none "block_given?" [] none)
+                        (RubyCore.Expr.yield'
+                          [RubyCore.Expr.var (RubyCore.VarKind.lvar) "last",
+                           RubyCore.Expr.var (RubyCore.VarKind.lvar) "hi"])
+                        (some (RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "last"))
+                           "<=>"
+                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "hi"]
+                           none))),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                        "nil?"
+                        []
+                        none)
+                      (RubyCore.Expr.ret
+                        (some (RubyCore.Expr.send
+                           none
+                           "__unsupported__"
+                           [RubyCore.Expr.str "Enumerable#minmax with a nil comparison"]
+                           none)))
+                      none,
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                        ">"
+                        [RubyCore.Expr.int 0]
+                        none)
+                      (RubyCore.Expr.vasgn
+                        (RubyCore.VarKind.lvar)
+                        "hi"
+                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "last"))
+                      none])))
+              none,
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have"))
+                "!"
+                []
+                none)
+              (RubyCore.Expr.ret
+                (some (RubyCore.Expr.array [RubyCore.Expr.nil, RubyCore.Expr.nil])))
+              none,
+            RubyCore.Expr.array
+              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "lo",
+               RubyCore.Expr.var (RubyCore.VarKind.lvar) "hi"]]),
        RubyCore.Expr.def'
          "sort_by"
          []

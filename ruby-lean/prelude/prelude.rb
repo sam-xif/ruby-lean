@@ -553,8 +553,71 @@ module Enumerable
     best
   end
 
+  # CRuby's `enum_minmax`: a block is a **comparison**, not a key function. Elements
+  # arrive in consecutive pairs; the pair is ordered first, then its smaller is
+  # offered to the running minimum and its larger to the running maximum, and a
+  # trailing odd element is offered to both last. So the number, the arguments and
+  # the order of the comparisons are observable, and they are reproduced here
+  # exactly. `rb_cmpint` order: `> 0` first, then `< 0`, everything else a tie. A
+  # tie takes the earlier element for *both* extremes, which is why a tie assigns
+  # rather than keeps: `[a, b].minmax { 0 }` is `[a, a]` in CRuby.
+  #
+  # A block that answers `nil` is CRuby's `ArgumentError: comparison of X with Y
+  # failed`; like `min`/`max` this declines that case rather than modelling it.
   def minmax
-    [min, max]
+    lo = nil
+    hi = nil
+    have = false
+    last = nil
+    holding = false
+    each { |x|
+      if !holding
+        last = x
+        holding = true
+      else
+        j = last
+        holding = false
+        c = block_given? ? yield(j, x) : (j <=> x)
+        return __unsupported__("Enumerable#minmax with a nil comparison") if c.nil?
+        if c > 0
+          # `j` is already the smaller of the pair.
+        elsif c < 0
+          t = x
+          x = j
+          j = t
+        else
+          x = j
+        end
+        if !have
+          lo = x
+          hi = j
+          have = true
+        else
+          c = block_given? ? yield(x, lo) : (x <=> lo)
+          return __unsupported__("Enumerable#minmax with a nil comparison") if c.nil?
+          lo = x if c < 0
+          c = block_given? ? yield(j, hi) : (j <=> hi)
+          return __unsupported__("Enumerable#minmax with a nil comparison") if c.nil?
+          hi = j if c > 0
+        end
+      end
+    }
+    if holding
+      if !have
+        lo = last
+        hi = last
+        have = true
+      else
+        c = block_given? ? yield(last, lo) : (last <=> lo)
+        return __unsupported__("Enumerable#minmax with a nil comparison") if c.nil?
+        lo = last if c < 0
+        c = block_given? ? yield(last, hi) : (last <=> hi)
+        return __unsupported__("Enumerable#minmax with a nil comparison") if c.nil?
+        hi = last if c > 0
+      end
+    end
+    return [nil, nil] unless have
+    [lo, hi]
   end
 
   # Insertion sort over an extracted key vector: `<=>` dispatch means user

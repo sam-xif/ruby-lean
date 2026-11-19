@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_by": "Jiro (agent), 2026-11-19 — `Enumerable#minmax` runs CRuby's `enum_minmax` comparison",
+  "filed_by": "hand, issue #128",
+  "arm": "probe",
+  "case_id": "minmax-block-comparison",
+  "first_reconciled": "2026-11-19, lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: '[1, 2, 3].minmax { |a, b| b <=> a } = [1, 3]' vs CRuby's '[3, 1]'; %w[xxx x xxxx xx].minmax { |a, b| a.size <=> b.size } = [\"x\", \"xx\"]' vs CRuby's '[\"x\", \"xxxx\"]'; a block that logs its calls logged nothing",
+  "note": "The prelude answered `[min, max]`, so the block was never entered and the pair was the one under the default comparison. CRuby's `enum_minmax` compares *elements*: consecutive pairs are compared first, the smaller of a pair is offered to the running minimum and the larger to the running maximum, a trailing odd element is offered to both last, `rb_cmpint` reads the answer as `> 0` then `< 0` (everything else a tie), and a tie takes the earlier element for both extremes. The method now walks that algorithm once, for the block and the no-block form alike, so the pair, the number of comparisons, their arguments and their order all match. A block answering `nil` stays a gate, as `min`/`max` already did. Exact program agrees with CRuby 4.0.5."
+}
