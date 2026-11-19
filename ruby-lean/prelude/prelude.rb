@@ -755,20 +755,73 @@ class Range
     hi - 1
   end
 
+  # `cover?` answers one question in two shapes (`range_cover`): a Range
+  # argument asks whether the whole subrange is inside, anything else asks
+  # whether the value is. `===` is only the second shape — CRuby's `range_eqq`
+  # is `r_cover_p` — so `(1..10) === (2..3)` is `false` while `cover?` is `true`.
   def cover?(x)
-    lo = self.begin
-    hi = self.end
-    return __unsupported__("Range#cover? over a beginless/endless range") if lo.nil? || hi.nil?
-    return false if x < lo
-    if exclude_end?
-      x < hi
-    else
-      x <= hi
-    end
+    return __cover_range?(x) if x.is_a?(Range)
+    __cover_value?(x)
   end
 
   def ===(x)
-    cover?(x)
+    __cover_value?(x)
+  end
+
+  # CRuby's `r_cover_p`. The comparison is `<=>`, not `<`/`<=`: `<=>` answers
+  # **nil** for a pair it cannot order, and CRuby's `r_less` reads that nil as
+  # the largest possible value, so such an argument is *outside* the range.
+  # Comparing with `<` raised instead — `(1..2).cover?(:a)` was an
+  # `ArgumentError` that CRuby answers `false` [V].
+  def __cover_value?(x)
+    lo = self.begin
+    hi = self.end
+    return __unsupported__("Range#cover? over a beginless/endless range") if lo.nil? || hi.nil?
+    c = lo <=> x
+    return false if c.nil? || c > 0
+    c = x <=> hi
+    return false if c.nil?
+    if exclude_end?
+      c < 0
+    else
+      c <= 0
+    end
+  end
+
+  # CRuby's `r_cover_range_p`: both endpoints of the argument are covered, and
+  # an argument with no end, or with an end past this range's, may still count
+  # when it is an exclusive range of integers — `(1..10).cover?(10...11)` is
+  # `true`, because `(10...11).max` is 10 and 10 is covered.
+  def __cover_range?(val)
+    lo = self.begin
+    hi = self.end
+    return __unsupported__("Range#cover? over a beginless/endless range") if lo.nil? || hi.nil?
+    val_lo = val.begin
+    val_hi = val.end
+    # Neither an endless nor a beginless argument can fit in this range, which
+    # has both ends.
+    return false if val_lo.nil? || val_hi.nil?
+    c = val_lo <=> val_hi
+    return false if c.nil? || c > (val.exclude_end? ? -1 : 0)
+    return false unless __cover_value?(val_lo)
+    c = hi <=> val_hi
+    return false if c.nil?
+    if exclude_end? == val.exclude_end?
+      c >= 0
+    elsif exclude_end?
+      c > 0
+    elsif c >= 0
+      true
+    else
+      val_max = begin
+        val.max
+      rescue TypeError
+        nil
+      end
+      return false if val_max.nil?
+      c = hi <=> val_max
+      c.nil? || c >= 0
+    end
   end
 
   # `include?`/`member?` are `cover?` for numeric ranges but *iterate* for
@@ -779,7 +832,7 @@ class Range
     unless lo.is_a?(Integer) || lo.is_a?(Float)
       return __unsupported__("Range#include? over a non-numeric range")
     end
-    cover?(x)
+    __cover_value?(x)
   end
   alias member? include?
 
