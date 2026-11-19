@@ -1,0 +1,6 @@
+{
+  "tier": 3,
+  "category": "enumerable-packing",
+  "description": "Issue #184: the Enumerable methods that pass the yielded values to the block instead of packing them (map, flat_map, filter_map, find_index, count, take_while, all?/any?/none?/one?) must hand a multi-parameter block every value `each` yielded, on a user class, a Hash, an Array and a Range alike.",
+  "source": "hand-authored"
+}

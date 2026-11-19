@@ -1,0 +1,6 @@
+{
+  "tier": 3,
+  "category": "enumerable-packing",
+  "description": "Issue #184: a user class whose `each` yields several, one and no values, run through the Enumerable methods that work on the element: each answer must be built from `rb_enum_values_pack`'s value (a packed Array, the single value, or nil), including the pairwise block forms of min and sort.",
+  "source": "hand-authored"
+}
