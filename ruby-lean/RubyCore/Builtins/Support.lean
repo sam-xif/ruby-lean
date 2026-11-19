@@ -112,6 +112,7 @@ def nativeReprOwner (h : Heap) (name : String) : Value → String
     | .chain _ => if name == "to_s" then "Object" else "Enumerator::Chain"
     | .file _ => "File"
     | .dir _ _ => "Dir"
+    | .io .. => "IO"
 
 def reprUnchanged (h : Heap) (sens : List String) (value : Value) : Bool :=
   sens.all fun name =>
@@ -920,7 +921,11 @@ def cloneBids : List String :=
     deliberately absent — gating those would be over-strict. -/
 def blockSensitiveBids : List String :=
   ["Array#sort", "Array#min", "Array#max", "Array#sum", "Array#index",
-   "Array#uniq", "Hash#fetch", "Hash#delete", "Hash#merge", "Class#new"]
+   "Array#uniq", "Hash#fetch", "Hash#delete", "Hash#merge", "Class#new",
+   -- the block form of `File.open` (issue #7 step 4) closes the descriptor on
+   -- return/exception; the step-2 arm is blockless, so a passed block gates
+   -- rather than being dropped on the floor.
+   "File#open"]
 
 
 /-! ### Rule implementation helpers (promoted from `run`'s `where` block) -/

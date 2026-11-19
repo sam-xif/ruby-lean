@@ -861,6 +861,23 @@ set_option maxRecDepth 400000 in
 
 set_option maxHeartbeats 4000000 in
 set_option maxRecDepth 400000 in
+@[simp, rootFrameLem] theorem openIO_frame (K : List Kont) (path modeStr : String) (m : Machine) :
+    openIO path modeStr (pushRootK K m) = bRootPush K (openIO path modeStr m) := by
+  unfold openIO ioMode?
+  root_simp
+  root_arms
+  all_goals root_hof
+  all_goals (repeat' first
+    | rfl
+    | (simp only [rootFrameLem]; done)
+    | (simp [rootFrameLem]; done)
+    | (rw [foldPair_frame K]; try simp only [rootFrameLem])
+    | (rw [foldPairArray_frame K]; try simp only [rootFrameLem])
+    | intro _
+    | split)
+
+set_option maxHeartbeats 4000000 in
+set_option maxRecDepth 400000 in
 @[rootFrameLem] theorem runFS_frame (K : List Kont) (bid : String) (recv : Value)
     (args : List Value) (m : Machine) :
     runFS bid recv args (pushRootK K m) = bRootPush K (runFS bid recv args m) := by
