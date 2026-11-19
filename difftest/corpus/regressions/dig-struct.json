@@ -1,0 +1,8 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed (guard, filed with its fix)",
+  "arm": "hand",
+  "case_id": "dig-struct",
+  "observed_then": "disagree",
+  "note": "`Struct` had no `#dig`, so `Struct.new(:a).new(1).dig(:a)` raised `NoMethodError` where CRuby answers the member, and a Struct reached through another container's chain (`{x: s}.dig(:x, :b)`) failed the same way — `rb_obj_dig` names Struct as one of the three containers it walks itself. The first key is `rb_struct_lookup`, which is **lenient** where `Struct#[]` raises: an index or member name it cannot find is the chain's `nil` (`s.dig(:zz)` and `s.dig(5)` are nil, not `NameError`/`IndexError`), a String names a member the way a Symbol does, and the remaining keys go through the same `rb_obj_dig` tail as `Array#dig`/`Hash#dig`. The key forms only `NUM2LONG` converts (`s.dig(1.5)`, `s.dig(nil)`) and the TypeError its failure raises are left as a named gate rather than guessed. Found by probing `dig` on 2026-11-19."
+}

@@ -1,0 +1,8 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed (guard, filed with its fix)",
+  "arm": "hand",
+  "case_id": "dig-non-container",
+  "observed_then": "disagree",
+  "note": "`Array#dig` and `Hash#dig` continued the chain with a plain send, so a key reached an intermediate that answers no `#dig` (Integer, String, Symbol, Float, true/false, a bare object) and the model raised `NoMethodError: undefined method 'dig' for an instance of Integer` where CRuby raises `TypeError: Integer does not have #dig method`. `NoMethodError` is the family the validator claims to exclude, so this was a wrong answer and not a gate. The tail is now `rb_obj_dig`'s: `nil` short-circuits, everything else goes through `rb_check_funcall`'s callability rule (`__conv_callable?`), so a **custom `respond_to?` that answers false is believed** — `RT` below defines `#dig` and still gets the TypeError — a `method_missing` that serves `#dig` is called with every remaining key at once, and the message names the class that failed. Found by probing `dig` on 2026-11-19."
+}

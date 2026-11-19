@@ -1033,7 +1033,7 @@ class Array
   def dig(i, *rest)
     v = self[i]
     return v if rest.empty? || v.nil?
-    v.dig(*rest)
+    __dig_rest(v, rest)
   end
 
   # `[[k, v], …].to_h`, or `to_h { |e| [k, v] }` [V]. A non-pair element is a
@@ -1401,7 +1401,7 @@ class Hash
   def dig(key, *rest)
     v = self[key]
     return v if rest.empty? || v.nil?
-    v.dig(*rest)
+    __dig_rest(v, rest)
   end
 
   # `compact` drops nil *values*; `compact!` is deliberately absent until asked
@@ -1737,6 +1737,23 @@ module Kernel
     end
 
     false
+  end
+
+  # `rb_obj_dig`, for the tail of a `dig` chain — every key after the receiver's
+  # own. A `nil` intermediate is the chain's `notfound` (`nil`). Anything else
+  # must answer `#dig`, and CRuby asks `rb_check_funcall_with_hook_kw`, not a
+  # plain send: a **custom `respond_to?` is believed** (and a false answer is a
+  # `TypeError`, even when `#dig` is defined), a `method_missing` that serves
+  # `#dig` is called, and *nothing* serving it raises **`TypeError: <Class> does
+  # not have #dig method`**. A plain send raises `NoMethodError` there instead —
+  # a wrong answer about a program that runs, not a gate.
+  def __dig_rest(obj, rest)
+    return nil if obj.nil?
+
+    unless __conv_callable?(obj, :dig)
+      raise TypeError, obj.class.to_s + " does not have #dig method"
+    end
+    obj.dig(*rest)
   end
 
   # `rb_check_funcall`, for the callers that treat "answered nil" and "nothing
@@ -2494,6 +2511,27 @@ class Struct
 
       define_method(:==) do |other|
         other.class == self.class && syms.all? { |s| send(s) == other.send(s) }
+      end
+
+      # `rb_struct_dig`: the first key is `rb_struct_lookup`, which is
+      # **lenient** where `Struct#[]` raises — an index or member name it cannot
+      # find is the chain's `nil` (`S.new(1).dig(:zz)` is nil, not `NameError`)
+      # and a String names a member like a Symbol does [V]. The remaining keys go
+      # through `rb_obj_dig`'s tail. A key form that only `NUM2LONG` converts
+      # (a Float, an object with `to_int`) is refused rather than guessed, and so
+      # is the `TypeError` its failure raises.
+      define_method(:dig) do |k, *rest|
+        v = if k.is_a?(Integer)
+              i = k < 0 ? syms.length + k : k
+              i < 0 || i >= syms.length ? nil : send(syms[i])
+            elsif k.is_a?(Symbol) || k.is_a?(String)
+              key = k.to_sym
+              syms.include?(key) ? send(key) : nil
+            else
+              __unsupported__("Struct#dig with a non-integer, non-name key")
+            end
+        return v if rest.empty? || v.nil?
+        __dig_rest(v, rest)
       end
 
       define_method(:eql?) { |other| self == other }
