@@ -558,10 +558,17 @@ def builtinMethods : List (ObjId × List String) := [
               "to_s", "names", "==", "eql?", "hash"]),
   (matchDataId, ["[]", "captures", "named_captures", "names", "begin", "end",
                  "pre_match", "post_match", "to_a", "size", "length", "to_s",
-                 "inspect", "values_at"]),
-  (ioId, ["read", "write", "closed?", "close", "flush", "each_line", "gets"]),
-  (fileId, ["read", "write", "exist?", "file?", "directory?", "size", "open"]),
-  (dirId, ["exist?", "entries", "children", "mkdir"])
+                 "inspect", "values_at"])
+  -- `IO`, `File` and `Dir` carry no instance builtins here. Every method this
+  -- table would list for them is the *class* method of the same name
+  -- (`File.read`, `Dir.mkdir`, …), which `Boot.fsSingleton` already installs on
+  -- the constant's eigenclass, and the two would share one `bid`. Installing
+  -- them on the instance side made `File.allocate.read(path)` answer the
+  -- class-side, path-taking semantics where CRuby reads a descriptor, and let
+  -- `File.allocate.write` mutate the boot fixture. Their instance surface is
+  -- classified by the generated CRuby name table instead: a real instance
+  -- method the model does not model declines by name, and a name no Ruby
+  -- defines is the ordinary `NoMethodError` (issue #27, #177).
 ]
 
 def mkClassObj (name : String) (sup : Option ObjId) : Object :=
