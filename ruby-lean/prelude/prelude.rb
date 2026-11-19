@@ -162,6 +162,13 @@ end
 # (Array/Hash natively, `Range#each` below, any user class) buys the whole module.
 # Early exit uses `return` from inside the block (unwinds to this method's frame)
 # or `break` (returns from `each`) — both already modeled (Semantics 04 §4).
+#
+# The element a method works on is `rb_enum_values_pack`'s: `each` may yield
+# several values, and `yield a, b` binds `|x|` to `a`, so a method that needs
+# one element takes `|*vals|` and packs (`ENUM_WANT_SVALUE`). The methods whose
+# block *is* the answer — `map`, `flat_map`, `filter_map`, the predicates —
+# forward the yielded values to the user's block instead (`rb_yield_values2`),
+# as CRuby does, so `|a, b|` still receives them separately.
 
 module Enumerable
   # `rb_enum_values_pack`: the value an Enumerable method works on when `each`
@@ -175,7 +182,7 @@ module Enumerable
 
   def to_a
     r = []
-    each { |x| r.push(x) }
+    each { |*vals| r.push(__enum_values_pack(vals)) }
     r
   end
   alias entries to_a
@@ -183,7 +190,7 @@ module Enumerable
   def map
     return __unsupported__("Enumerator: Enumerable#map without a block") unless block_given?
     r = []
-    each { |x| r.push(yield(x)) }
+    each { |*vals| r.push(yield(*vals)) }
     r
   end
   alias collect map
@@ -191,8 +198,8 @@ module Enumerable
   def flat_map
     return __unsupported__("Enumerator: Enumerable#flat_map without a block") unless block_given?
     r = []
-    each { |x|
-      v = yield(x)
+    each { |*vals|
+      v = yield(*vals)
       if v.is_a?(Array)
         i = 0
         while i < v.length
@@ -210,7 +217,10 @@ module Enumerable
   def select
     return __unsupported__("Enumerator: Enumerable#select without a block") unless block_given?
     r = []
-    each { |x| r.push(x) if yield(x) }
+    each { |*vals|
+      x = __enum_values_pack(vals)
+      r.push(x) if yield(x)
+    }
     r
   end
   alias filter select
@@ -219,7 +229,10 @@ module Enumerable
   def reject
     return __unsupported__("Enumerator: Enumerable#reject without a block") unless block_given?
     r = []
-    each { |x| r.push(x) unless yield(x) }
+    each { |*vals|
+      x = __enum_values_pack(vals)
+      r.push(x) unless yield(x)
+    }
     r
   end
 
@@ -261,8 +274,8 @@ module Enumerable
   def filter_map
     return __unsupported__("Enumerator: Enumerable#filter_map without a block") unless block_given?
     r = []
-    each { |x|
-      v = yield(x)
+    each { |*vals|
+      v = yield(*vals)
       r.push(v) if v
     }
     r
@@ -270,7 +283,10 @@ module Enumerable
 
   def find
     return __unsupported__("Enumerator: Enumerable#find without a block") unless block_given?
-    each { |x| return x if yield(x) }
+    each { |*vals|
+      x = __enum_values_pack(vals)
+      return x if yield(x)
+    }
     nil
   end
   alias detect find
@@ -279,16 +295,16 @@ module Enumerable
     if a.empty?
       return __unsupported__("Enumerator: Enumerable#find_index without a block") unless block_given?
       i = 0
-      each { |x|
-        return i if yield(x)
+      each { |*vals|
+        return i if yield(*vals)
         i = i + 1
       }
       nil
     elsif a.length == 1
       target = a[0]
       i = 0
-      each { |x|
-        return i if x == target
+      each { |*vals|
+        return i if __enum_values_pack(vals) == target
         i = i + 1
       }
       nil
@@ -303,9 +319,9 @@ module Enumerable
   def all?(*pat)
     return __unsupported__("Enumerable#all? with a pattern argument") unless pat.empty?
     if block_given?
-      each { |x| return false unless yield(x) }
+      each { |*vals| return false unless yield(*vals) }
     else
-      each { |x| return false unless x }
+      each { |*vals| return false unless __enum_values_pack(vals) }
     end
     true
   end
@@ -313,9 +329,9 @@ module Enumerable
   def any?(*pat)
     return __unsupported__("Enumerable#any? with a pattern argument") unless pat.empty?
     if block_given?
-      each { |x| return true if yield(x) }
+      each { |*vals| return true if yield(*vals) }
     else
-      each { |x| return true if x }
+      each { |*vals| return true if __enum_values_pack(vals) }
     end
     false
   end
@@ -323,9 +339,9 @@ module Enumerable
   def none?(*pat)
     return __unsupported__("Enumerable#none? with a pattern argument") unless pat.empty?
     if block_given?
-      each { |x| return false if yield(x) }
+      each { |*vals| return false if yield(*vals) }
     else
-      each { |x| return false if x }
+      each { |*vals| return false if __enum_values_pack(vals) }
     end
     true
   end
@@ -334,9 +350,9 @@ module Enumerable
     return __unsupported__("Enumerable#one? with a pattern argument") unless pat.empty?
     n = 0
     if block_given?
-      each { |x| n = n + 1 if yield(x) }
+      each { |*vals| n = n + 1 if yield(*vals) }
     else
-      each { |x| n = n + 1 if x }
+      each { |*vals| n = n + 1 if __enum_values_pack(vals) }
     end
     n == 1
   end
@@ -345,9 +361,9 @@ module Enumerable
     return __unsupported__("Enumerable#count with an argument") unless a.empty?
     n = 0
     if block_given?
-      each { |x| n = n + 1 if yield(x) }
+      each { |*vals| n = n + 1 if yield(*vals) }
     else
-      each { |x| n = n + 1 }
+      each { |*vals| n = n + 1 }
     end
     n
   end
@@ -357,9 +373,9 @@ module Enumerable
     acc = 0
     acc = a[0] if a.length == 1
     if block_given?
-      each { |x| acc = acc + yield(x) }
+      each { |*vals| acc = acc + yield(__enum_values_pack(vals)) }
     else
-      each { |x| acc = acc + x }
+      each { |*vals| acc = acc + __enum_values_pack(vals) }
     end
     acc
   end
@@ -367,8 +383,8 @@ module Enumerable
   def each_with_index
     return __unsupported__("Enumerator: Enumerable#each_with_index without a block") unless block_given?
     i = 0
-    each { |x|
-      yield(x, i)
+    each { |*vals|
+      yield(__enum_values_pack(vals), i)
       i = i + 1
     }
     self
@@ -387,14 +403,15 @@ module Enumerable
 
   def each_with_object(memo)
     return __unsupported__("Enumerator: Enumerable#each_with_object without a block") unless block_given?
-    each { |x| yield(x, memo) }
+    each { |*vals| yield(__enum_values_pack(vals), memo) }
     memo
   end
 
   def group_by
     return __unsupported__("Enumerator: Enumerable#group_by without a block") unless block_given?
     h = {}
-    each { |x|
+    each { |*vals|
+      x = __enum_values_pack(vals)
       k = yield(x)
       if h.key?(k)
         h[k].push(x)
@@ -409,7 +426,8 @@ module Enumerable
     return __unsupported__("Enumerator: Enumerable#partition without a block") unless block_given?
     yes = []
     no = []
-    each { |x|
+    each { |*vals|
+      x = __enum_values_pack(vals)
       if yield(x)
         yes.push(x)
       else
@@ -421,7 +439,8 @@ module Enumerable
 
   def tally
     h = {}
-    each { |x|
+    each { |*vals|
+      x = __enum_values_pack(vals)
       if h.key?(x)
         h[x] = h[x] + 1
       else
@@ -483,14 +502,14 @@ module Enumerable
   end
 
   def include?(obj)
-    each { |x| return true if x == obj }
+    each { |*vals| return true if __enum_values_pack(vals) == obj }
     false
   end
   alias member? include?
 
   def first(*a)
     if a.empty?
-      each { |x| return x }
+      each { |*vals| return __enum_values_pack(vals) }
       nil
     elsif a.length == 1
       take(a[0])
@@ -535,8 +554,8 @@ module Enumerable
   def take(n)
     r = []
     return r if n <= 0
-    each { |x|
-      r.push(x)
+    each { |*vals|
+      r.push(__enum_values_pack(vals))
       break if r.length == n
     }
     r
@@ -545,8 +564,9 @@ module Enumerable
   def take_while
     return __unsupported__("Enumerator: Enumerable#take_while without a block") unless block_given?
     r = []
-    each { |x|
-      break unless yield(x)
+    each { |*vals|
+      x = __enum_values_pack(vals)
+      break unless yield(*vals)
       r.push(x)
     }
     r
@@ -555,8 +575,8 @@ module Enumerable
   def drop(n)
     r = []
     i = 0
-    each { |x|
-      r.push(x) if i >= n
+    each { |*vals|
+      r.push(__enum_values_pack(vals)) if i >= n
       i = i + 1
     }
     r
@@ -566,7 +586,8 @@ module Enumerable
     return __unsupported__("Enumerator: Enumerable#drop_while without a block") unless block_given?
     r = []
     dropping = true
-    each { |x|
+    each { |*vals|
+      x = __enum_values_pack(vals)
       dropping = false if dropping && !yield(x)
       r.push(x) unless dropping
     }
@@ -577,8 +598,8 @@ module Enumerable
     return __unsupported__("Enumerator: Enumerable#each_slice without a block") unless block_given?
     return __unsupported__("Enumerable#each_slice with n <= 0 (ArgumentError)") if n <= 0
     buf = []
-    each { |x|
-      buf.push(x)
+    each { |*vals|
+      buf.push(__enum_values_pack(vals))
       if buf.length == n
         yield(buf)
         buf = []
@@ -592,8 +613,8 @@ module Enumerable
     return __unsupported__("Enumerator: Enumerable#each_cons without a block") unless block_given?
     return __unsupported__("Enumerable#each_cons with n <= 0 (ArgumentError)") if n <= 0
     buf = []
-    each { |x|
-      buf.push(x)
+    each { |*vals|
+      buf.push(__enum_values_pack(vals))
       buf.shift if buf.length > n
       yield(buf.dup) if buf.length == n
     }
@@ -603,7 +624,7 @@ module Enumerable
   def reverse_each
     return __unsupported__("Enumerator: Enumerable#reverse_each without a block") unless block_given?
     a = []
-    each { |x| a.push(x) }
+    each { |*vals| a.push(__enum_values_pack(vals)) }
     i = a.length - 1
     while i >= 0
       yield(a[i])
@@ -617,7 +638,8 @@ module Enumerable
     best = nil
     bestk = nil
     have = false
-    each { |x|
+    each { |*vals|
+      x = __enum_values_pack(vals)
       k = yield(x)
       if !have
         best = x
@@ -640,7 +662,8 @@ module Enumerable
     best = nil
     bestk = nil
     have = false
-    each { |x|
+    each { |*vals|
+      x = __enum_values_pack(vals)
       k = yield(x)
       if !have
         best = x
@@ -662,7 +685,8 @@ module Enumerable
     return __unsupported__("Enumerable#min with an argument") unless a.empty?
     best = nil
     have = false
-    each { |x|
+    each { |*vals|
+      x = __enum_values_pack(vals)
       if !have
         best = x
         have = true
@@ -679,7 +703,8 @@ module Enumerable
     return __unsupported__("Enumerable#max with an argument") unless a.empty?
     best = nil
     have = false
-    each { |x|
+    each { |*vals|
+      x = __enum_values_pack(vals)
       if !have
         best = x
         have = true
@@ -781,7 +806,8 @@ module Enumerable
     return __unsupported__("Enumerator: Enumerable#sort_by without a block") unless block_given?
     keys = []
     vals = []
-    each { |x|
+    each { |*yielded|
+      x = __enum_values_pack(yielded)
       keys.push(yield(x))
       vals.push(x)
     }
@@ -811,7 +837,7 @@ module Enumerable
 
   def sort
     vals = []
-    each { |x| vals.push(x) }
+    each { |*yielded| vals.push(__enum_values_pack(yielded)) }
     i = 1
     while i < vals.length
       v = vals[i]
@@ -838,7 +864,8 @@ module Enumerable
       if a.empty?
         acc = nil
         have = false
-        each { |x|
+        each { |*raw|
+          x = __enum_values_pack(raw)
           if have
             acc = yield(acc, x)
           else
@@ -849,7 +876,7 @@ module Enumerable
         acc
       elsif a.length == 1
         acc = a[0]
-        each { |x| acc = yield(acc, x) }
+        each { |*raw| acc = yield(acc, __enum_values_pack(raw)) }
         acc
       else
         __unsupported__("Enumerable#inject with a block and 2 arguments")
@@ -859,7 +886,8 @@ module Enumerable
         op = a[0]
         acc = nil
         have = false
-        each { |x|
+        each { |*raw|
+          x = __enum_values_pack(raw)
           if have
             acc = acc.send(op, x)
           else
@@ -871,7 +899,7 @@ module Enumerable
       elsif a.length == 2
         acc = a[0]
         op = a[1]
-        each { |x| acc = acc.send(op, x) }
+        each { |*raw| acc = acc.send(op, __enum_values_pack(raw)) }
         acc
       else
         __unsupported__("Enumerable#inject arity")

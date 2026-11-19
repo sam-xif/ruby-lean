@@ -440,12 +440,16 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  []
                  (RubyCore.Expr.send
                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"))
                    "push"
-                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                   [RubyCore.Expr.send
+                      none
+                      "__enum_values_pack"
+                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                      none]
                    none))),
             RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"]),
        RubyCore.Expr.alias' "entries" "to_a",
@@ -472,12 +476,14 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  []
                  (RubyCore.Expr.send
                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"))
                    "push"
-                   [RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]]
+                   [RubyCore.Expr.yield'
+                      [RubyCore.Expr.splat
+                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))]]
                    none))),
             RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"]),
        RubyCore.Expr.alias' "collect" "map",
@@ -504,13 +510,15 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  ["v", "i"]
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.vasgn
                       (RubyCore.VarKind.lvar)
                       "v"
-                      (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]),
+                      (RubyCore.Expr.yield'
+                        [RubyCore.Expr.splat
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))]),
                     RubyCore.Expr.if'
                       (RubyCore.Expr.send
                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "v"))
@@ -577,16 +585,25 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 []
-                 (RubyCore.Expr.if'
-                   (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
-                   (RubyCore.Expr.send
-                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"))
-                     "push"
-                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
-                     none)
-                   none))),
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x"]
+                 (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"))
+                        "push"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                        none)
+                      none]))),
             RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"]),
        RubyCore.Expr.alias' "filter" "select",
        RubyCore.Expr.alias' "find_all" "select",
@@ -613,20 +630,30 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 []
-                 (RubyCore.Expr.if'
-                   (RubyCore.Expr.send
-                     (some (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]))
-                     "!"
-                     []
-                     none)
-                   (RubyCore.Expr.send
-                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"))
-                     "push"
-                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
-                     none)
-                   none))),
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x"]
+                 (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.yield'
+                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]))
+                        "!"
+                        []
+                        none)
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"))
+                        "push"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                        none)
+                      none]))),
             RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"]),
        RubyCore.Expr.def'
          "grep"
@@ -787,13 +814,15 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  ["v"]
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.vasgn
                       (RubyCore.VarKind.lvar)
                       "v"
-                      (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]),
+                      (RubyCore.Expr.yield'
+                        [RubyCore.Expr.splat
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))]),
                     RubyCore.Expr.if'
                       (RubyCore.Expr.var (RubyCore.VarKind.lvar) "v")
                       (RubyCore.Expr.send
@@ -825,12 +854,21 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 []
-                 (RubyCore.Expr.if'
-                   (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
-                   (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x")))
-                   none))),
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x"]
+                 (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
+                      (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x")))
+                      none]))),
             RubyCore.Expr.nil]),
        RubyCore.Expr.alias' "detect" "find",
        RubyCore.Expr.def'
@@ -862,11 +900,13 @@ def core_3 : Expr :=
                 "each"
                 []
                 (some (RubyCore.Expr.block
-                   [RubyCore.Param.req "x"]
+                   [RubyCore.Param.rest (some "vals")]
                    []
                    (RubyCore.Expr.seq
                      [RubyCore.Expr.if'
-                        (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
+                        (RubyCore.Expr.yield'
+                          [RubyCore.Expr.splat
+                             (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))])
                         (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "i")))
                         none,
                       RubyCore.Expr.vasgn
@@ -903,12 +943,16 @@ def core_3 : Expr :=
                    "each"
                    []
                    (some (RubyCore.Expr.block
-                      [RubyCore.Param.req "x"]
+                      [RubyCore.Param.rest (some "vals")]
                       []
                       (RubyCore.Expr.seq
                         [RubyCore.Expr.if'
                            (RubyCore.Expr.send
-                             (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
+                             (some (RubyCore.Expr.send
+                                none
+                                "__enum_values_pack"
+                                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                                none))
                              "=="
                              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "target"]
                              none)
@@ -958,11 +1002,13 @@ def core_3 : Expr :=
                 "each"
                 []
                 (some (RubyCore.Expr.block
-                   [RubyCore.Param.req "x"]
+                   [RubyCore.Param.rest (some "vals")]
                    []
                    (RubyCore.Expr.if'
                      (RubyCore.Expr.send
-                       (some (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]))
+                       (some (RubyCore.Expr.yield'
+                          [RubyCore.Expr.splat
+                             (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))]))
                        "!"
                        []
                        none)
@@ -973,11 +1019,15 @@ def core_3 : Expr :=
                  "each"
                  []
                  (some (RubyCore.Expr.block
-                    [RubyCore.Param.req "x"]
+                    [RubyCore.Param.rest (some "vals")]
                     []
                     (RubyCore.Expr.if'
                       (RubyCore.Expr.send
-                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
+                        (some (RubyCore.Expr.send
+                           none
+                           "__enum_values_pack"
+                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                           none))
                         "!"
                         []
                         none)
@@ -1012,10 +1062,12 @@ def core_3 : Expr :=
                 "each"
                 []
                 (some (RubyCore.Expr.block
-                   [RubyCore.Param.req "x"]
+                   [RubyCore.Param.rest (some "vals")]
                    []
                    (RubyCore.Expr.if'
-                     (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
+                     (RubyCore.Expr.yield'
+                       [RubyCore.Expr.splat
+                          (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))])
                      (RubyCore.Expr.ret (some (RubyCore.Expr.tru)))
                      none))))
               (some (RubyCore.Expr.send
@@ -1023,10 +1075,14 @@ def core_3 : Expr :=
                  "each"
                  []
                  (some (RubyCore.Expr.block
-                    [RubyCore.Param.req "x"]
+                    [RubyCore.Param.rest (some "vals")]
                     []
                     (RubyCore.Expr.if'
-                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x")
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none)
                       (RubyCore.Expr.ret (some (RubyCore.Expr.tru)))
                       none))))),
             RubyCore.Expr.fls]),
@@ -1058,10 +1114,12 @@ def core_3 : Expr :=
                 "each"
                 []
                 (some (RubyCore.Expr.block
-                   [RubyCore.Param.req "x"]
+                   [RubyCore.Param.rest (some "vals")]
                    []
                    (RubyCore.Expr.if'
-                     (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
+                     (RubyCore.Expr.yield'
+                       [RubyCore.Expr.splat
+                          (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))])
                      (RubyCore.Expr.ret (some (RubyCore.Expr.fls)))
                      none))))
               (some (RubyCore.Expr.send
@@ -1069,10 +1127,14 @@ def core_3 : Expr :=
                  "each"
                  []
                  (some (RubyCore.Expr.block
-                    [RubyCore.Param.req "x"]
+                    [RubyCore.Param.rest (some "vals")]
                     []
                     (RubyCore.Expr.if'
-                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x")
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none)
                       (RubyCore.Expr.ret (some (RubyCore.Expr.fls)))
                       none))))),
             RubyCore.Expr.tru]),
@@ -1105,10 +1167,12 @@ def core_3 : Expr :=
                 "each"
                 []
                 (some (RubyCore.Expr.block
-                   [RubyCore.Param.req "x"]
+                   [RubyCore.Param.rest (some "vals")]
                    []
                    (RubyCore.Expr.if'
-                     (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
+                     (RubyCore.Expr.yield'
+                       [RubyCore.Expr.splat
+                          (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))])
                      (RubyCore.Expr.vasgn
                        (RubyCore.VarKind.lvar)
                        "n"
@@ -1123,10 +1187,14 @@ def core_3 : Expr :=
                  "each"
                  []
                  (some (RubyCore.Expr.block
-                    [RubyCore.Param.req "x"]
+                    [RubyCore.Param.rest (some "vals")]
                     []
                     (RubyCore.Expr.if'
-                      (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x")
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none)
                       (RubyCore.Expr.vasgn
                         (RubyCore.VarKind.lvar)
                         "n"
@@ -1170,10 +1238,12 @@ def core_3 : Expr :=
                 "each"
                 []
                 (some (RubyCore.Expr.block
-                   [RubyCore.Param.req "x"]
+                   [RubyCore.Param.rest (some "vals")]
                    []
                    (RubyCore.Expr.if'
-                     (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
+                     (RubyCore.Expr.yield'
+                       [RubyCore.Expr.splat
+                          (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))])
                      (RubyCore.Expr.vasgn
                        (RubyCore.VarKind.lvar)
                        "n"
@@ -1188,7 +1258,7 @@ def core_3 : Expr :=
                  "each"
                  []
                  (some (RubyCore.Expr.block
-                    [RubyCore.Param.req "x"]
+                    [RubyCore.Param.rest (some "vals")]
                     []
                     (RubyCore.Expr.vasgn
                       (RubyCore.VarKind.lvar)
@@ -1247,7 +1317,7 @@ def core_3 : Expr :=
                 "each"
                 []
                 (some (RubyCore.Expr.block
-                   [RubyCore.Param.req "x"]
+                   [RubyCore.Param.rest (some "vals")]
                    []
                    (RubyCore.Expr.vasgn
                      (RubyCore.VarKind.lvar)
@@ -1255,14 +1325,19 @@ def core_3 : Expr :=
                      (RubyCore.Expr.send
                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc"))
                        "+"
-                       [RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]]
+                       [RubyCore.Expr.yield'
+                          [RubyCore.Expr.send
+                             none
+                             "__enum_values_pack"
+                             [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                             none]]
                        none)))))
               (some (RubyCore.Expr.send
                  none
                  "each"
                  []
                  (some (RubyCore.Expr.block
-                    [RubyCore.Param.req "x"]
+                    [RubyCore.Param.rest (some "vals")]
                     []
                     (RubyCore.Expr.vasgn
                       (RubyCore.VarKind.lvar)
@@ -1270,7 +1345,11 @@ def core_3 : Expr :=
                       (RubyCore.Expr.send
                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc"))
                         "+"
-                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                        [RubyCore.Expr.send
+                           none
+                           "__enum_values_pack"
+                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                           none]
                         none)))))),
             RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc"]),
        RubyCore.Expr.def'
@@ -1296,11 +1375,15 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  []
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.yield'
-                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
+                      [RubyCore.Expr.send
+                         none
+                         "__enum_values_pack"
+                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                         none,
                        RubyCore.Expr.var (RubyCore.VarKind.lvar) "i"],
                     RubyCore.Expr.vasgn
                       (RubyCore.VarKind.lvar)
@@ -1364,10 +1447,14 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  []
                  (RubyCore.Expr.yield'
-                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
+                   [RubyCore.Expr.send
+                      none
+                      "__enum_values_pack"
+                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                      none,
                     RubyCore.Expr.var (RubyCore.VarKind.lvar) "memo"]))),
             RubyCore.Expr.var (RubyCore.VarKind.lvar) "memo"]),
        RubyCore.Expr.def'
@@ -1393,10 +1480,18 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 ["k"]
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x", "k"]
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.vasgn
                       (RubyCore.VarKind.lvar)
                       "k"
                       (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]),
@@ -1452,20 +1547,29 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 []
-                 (RubyCore.Expr.if'
-                   (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
-                   (RubyCore.Expr.send
-                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "yes"))
-                     "push"
-                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
-                     none)
-                   (some (RubyCore.Expr.send
-                      (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "no"))
-                      "push"
-                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
-                      none))))),
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x"]
+                 (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "yes"))
+                        "push"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                        none)
+                      (some (RubyCore.Expr.send
+                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "no"))
+                         "push"
+                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                         none))]))),
             RubyCore.Expr.array
               [RubyCore.Expr.var (RubyCore.VarKind.lvar) "yes",
                RubyCore.Expr.var (RubyCore.VarKind.lvar) "no"]]),
@@ -1479,44 +1583,53 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 []
-                 (RubyCore.Expr.if'
-                   (RubyCore.Expr.send
-                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "h"))
-                     "key?"
-                     [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
-                     none)
-                   (RubyCore.Expr.seq
-                     [RubyCore.Expr.send
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x"]
+                 (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.send
                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "h"))
-                        "[]="
-                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
-                         RubyCore.Expr.vasgn
-                           (RubyCore.VarKind.lvar)
-                           "__dt_t9"
-                           (RubyCore.Expr.send
-                             (some (RubyCore.Expr.send
-                                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "h"))
-                                "[]"
-                                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
-                                none))
-                             "+"
-                             [RubyCore.Expr.int 1]
-                             none)]
-                        none,
-                      RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t9"])
-                   (some (RubyCore.Expr.seq
-                      [RubyCore.Expr.send
-                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "h"))
-                         "[]="
-                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
-                          RubyCore.Expr.vasgn
-                            (RubyCore.VarKind.lvar)
-                            "__dt_t8"
-                            (RubyCore.Expr.int 1)]
-                         none,
-                       RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t8"]))))),
+                        "key?"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                        none)
+                      (RubyCore.Expr.seq
+                        [RubyCore.Expr.send
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "h"))
+                           "[]="
+                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
+                            RubyCore.Expr.vasgn
+                              (RubyCore.VarKind.lvar)
+                              "__dt_t9"
+                              (RubyCore.Expr.send
+                                (some (RubyCore.Expr.send
+                                   (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "h"))
+                                   "[]"
+                                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                                   none))
+                                "+"
+                                [RubyCore.Expr.int 1]
+                                none)]
+                           none,
+                         RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t9"])
+                      (some (RubyCore.Expr.seq
+                         [RubyCore.Expr.send
+                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "h"))
+                            "[]="
+                            [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
+                             RubyCore.Expr.vasgn
+                               (RubyCore.VarKind.lvar)
+                               "__dt_t8"
+                               (RubyCore.Expr.int 1)]
+                            none,
+                          RubyCore.Expr.var (RubyCore.VarKind.lvar) "__dt_t8"]))]))),
             RubyCore.Expr.var (RubyCore.VarKind.lvar) "h"]),
        RubyCore.Expr.def'
          "uniq"
@@ -1751,11 +1864,15 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  []
                  (RubyCore.Expr.if'
                    (RubyCore.Expr.send
-                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
+                     (some (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none))
                      "=="
                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "obj"]
                      none)
@@ -1778,9 +1895,14 @@ def core_3 : Expr :=
                 "each"
                 []
                 (some (RubyCore.Expr.block
-                   [RubyCore.Param.req "x"]
+                   [RubyCore.Param.rest (some "vals")]
                    []
-                   (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))))),
+                   (RubyCore.Expr.ret
+                     (some (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none))))),
               RubyCore.Expr.nil])
            (some (RubyCore.Expr.if'
               (RubyCore.Expr.send
@@ -1964,13 +2086,17 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  []
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.send
                       (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"))
                       "push"
-                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                      [RubyCore.Expr.send
+                         none
+                         "__enum_values_pack"
+                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                         none]
                       none,
                     RubyCore.Expr.if'
                       (RubyCore.Expr.send
@@ -2008,13 +2134,22 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 []
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x"]
                  (RubyCore.Expr.seq
-                   [RubyCore.Expr.if'
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.if'
                       (RubyCore.Expr.send
                         (some (RubyCore.Expr.yield'
-                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]))
+                           [RubyCore.Expr.splat
+                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))]))
                         "!"
                         []
                         none)
@@ -2037,7 +2172,7 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  []
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.if'
@@ -2049,7 +2184,11 @@ def core_3 : Expr :=
                       (RubyCore.Expr.send
                         (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "r"))
                         "push"
-                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                        [RubyCore.Expr.send
+                           none
+                           "__enum_values_pack"
+                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                           none]
                         none)
                       none,
                     RubyCore.Expr.vasgn
@@ -2085,10 +2224,18 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 []
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x"]
                  (RubyCore.Expr.seq
-                   [RubyCore.Expr.if'
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.if'
                       (RubyCore.Expr.seq
                         [RubyCore.Expr.vasgn
                            (RubyCore.VarKind.lvar)
@@ -2154,13 +2301,17 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  []
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.send
                       (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "buf"))
                       "push"
-                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                      [RubyCore.Expr.send
+                         none
+                         "__enum_values_pack"
+                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                         none]
                       none,
                     RubyCore.Expr.if'
                       (RubyCore.Expr.send
@@ -2228,13 +2379,17 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  []
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.send
                       (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "buf"))
                       "push"
-                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                      [RubyCore.Expr.send
+                         none
+                         "__enum_values_pack"
+                         [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                         none]
                       none,
                     RubyCore.Expr.if'
                       (RubyCore.Expr.send
@@ -2293,12 +2448,16 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "vals")]
                  []
                  (RubyCore.Expr.send
                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "a"))
                    "push"
-                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                   [RubyCore.Expr.send
+                      none
+                      "__enum_values_pack"
+                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                      none]
                    none))),
             RubyCore.Expr.vasgn
               (RubyCore.VarKind.lvar)
@@ -2359,10 +2518,18 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 ["k", "c"]
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x", "k", "c"]
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.vasgn
                       (RubyCore.VarKind.lvar)
                       "k"
                       (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]),
@@ -2446,10 +2613,18 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 ["k", "c"]
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x", "k", "c"]
                  (RubyCore.Expr.seq
                    [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.vasgn
                       (RubyCore.VarKind.lvar)
                       "k"
                       (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]),
@@ -2536,58 +2711,67 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 ["c"]
-                 (RubyCore.Expr.if'
-                   (RubyCore.Expr.send
-                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have"))
-                     "!"
-                     []
-                     none)
-                   (RubyCore.Expr.seq
-                     [RubyCore.Expr.vasgn
-                        (RubyCore.VarKind.lvar)
-                        "best"
-                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
-                      RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "have" (RubyCore.Expr.tru)])
-                   (some (RubyCore.Expr.seq
-                      [RubyCore.Expr.vasgn
-                         (RubyCore.VarKind.lvar)
-                         "c"
-                         (RubyCore.Expr.if'
-                           (RubyCore.Expr.send none "block_given?" [] none)
-                           (RubyCore.Expr.yield'
-                             [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
-                              RubyCore.Expr.var (RubyCore.VarKind.lvar) "best"])
-                           (some (RubyCore.Expr.send
-                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
-                              "<=>"
-                              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "best"]
-                              none))),
-                       RubyCore.Expr.if'
-                         (RubyCore.Expr.send
-                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
-                           "nil?"
-                           []
-                           none)
-                         (RubyCore.Expr.ret
-                           (some (RubyCore.Expr.send
-                              none
-                              "__unsupported__"
-                              [RubyCore.Expr.str "Enumerable#min with a nil comparison"]
-                              none)))
-                         none,
-                       RubyCore.Expr.if'
-                         (RubyCore.Expr.send
-                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
-                           "<"
-                           [RubyCore.Expr.int 0]
-                           none)
-                         (RubyCore.Expr.vasgn
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x", "c"]
+                 (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have"))
+                        "!"
+                        []
+                        none)
+                      (RubyCore.Expr.seq
+                        [RubyCore.Expr.vasgn
                            (RubyCore.VarKind.lvar)
                            "best"
-                           (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
-                         none]))))),
+                           (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
+                         RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "have" (RubyCore.Expr.tru)])
+                      (some (RubyCore.Expr.seq
+                         [RubyCore.Expr.vasgn
+                            (RubyCore.VarKind.lvar)
+                            "c"
+                            (RubyCore.Expr.if'
+                              (RubyCore.Expr.send none "block_given?" [] none)
+                              (RubyCore.Expr.yield'
+                                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
+                                 RubyCore.Expr.var (RubyCore.VarKind.lvar) "best"])
+                              (some (RubyCore.Expr.send
+                                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
+                                 "<=>"
+                                 [RubyCore.Expr.var (RubyCore.VarKind.lvar) "best"]
+                                 none))),
+                          RubyCore.Expr.if'
+                            (RubyCore.Expr.send
+                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                              "nil?"
+                              []
+                              none)
+                            (RubyCore.Expr.ret
+                              (some (RubyCore.Expr.send
+                                 none
+                                 "__unsupported__"
+                                 [RubyCore.Expr.str "Enumerable#min with a nil comparison"]
+                                 none)))
+                            none,
+                          RubyCore.Expr.if'
+                            (RubyCore.Expr.send
+                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                              "<"
+                              [RubyCore.Expr.int 0]
+                              none)
+                            (RubyCore.Expr.vasgn
+                              (RubyCore.VarKind.lvar)
+                              "best"
+                              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
+                            none]))]))),
             RubyCore.Expr.var (RubyCore.VarKind.lvar) "best"]),
        RubyCore.Expr.def'
          "max"
@@ -2617,58 +2801,67 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 ["c"]
-                 (RubyCore.Expr.if'
-                   (RubyCore.Expr.send
-                     (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have"))
-                     "!"
-                     []
-                     none)
-                   (RubyCore.Expr.seq
-                     [RubyCore.Expr.vasgn
-                        (RubyCore.VarKind.lvar)
-                        "best"
-                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
-                      RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "have" (RubyCore.Expr.tru)])
-                   (some (RubyCore.Expr.seq
-                      [RubyCore.Expr.vasgn
-                         (RubyCore.VarKind.lvar)
-                         "c"
-                         (RubyCore.Expr.if'
-                           (RubyCore.Expr.send none "block_given?" [] none)
-                           (RubyCore.Expr.yield'
-                             [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
-                              RubyCore.Expr.var (RubyCore.VarKind.lvar) "best"])
-                           (some (RubyCore.Expr.send
-                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
-                              "<=>"
-                              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "best"]
-                              none))),
-                       RubyCore.Expr.if'
-                         (RubyCore.Expr.send
-                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
-                           "nil?"
-                           []
-                           none)
-                         (RubyCore.Expr.ret
-                           (some (RubyCore.Expr.send
-                              none
-                              "__unsupported__"
-                              [RubyCore.Expr.str "Enumerable#max with a nil comparison"]
-                              none)))
-                         none,
-                       RubyCore.Expr.if'
-                         (RubyCore.Expr.send
-                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
-                           ">"
-                           [RubyCore.Expr.int 0]
-                           none)
-                         (RubyCore.Expr.vasgn
+                 [RubyCore.Param.rest (some "vals")]
+                 ["x", "c"]
+                 (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"]
+                        none),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have"))
+                        "!"
+                        []
+                        none)
+                      (RubyCore.Expr.seq
+                        [RubyCore.Expr.vasgn
                            (RubyCore.VarKind.lvar)
                            "best"
-                           (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
-                         none]))))),
+                           (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
+                         RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "have" (RubyCore.Expr.tru)])
+                      (some (RubyCore.Expr.seq
+                         [RubyCore.Expr.vasgn
+                            (RubyCore.VarKind.lvar)
+                            "c"
+                            (RubyCore.Expr.if'
+                              (RubyCore.Expr.send none "block_given?" [] none)
+                              (RubyCore.Expr.yield'
+                                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x",
+                                 RubyCore.Expr.var (RubyCore.VarKind.lvar) "best"])
+                              (some (RubyCore.Expr.send
+                                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
+                                 "<=>"
+                                 [RubyCore.Expr.var (RubyCore.VarKind.lvar) "best"]
+                                 none))),
+                          RubyCore.Expr.if'
+                            (RubyCore.Expr.send
+                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                              "nil?"
+                              []
+                              none)
+                            (RubyCore.Expr.ret
+                              (some (RubyCore.Expr.send
+                                 none
+                                 "__unsupported__"
+                                 [RubyCore.Expr.str "Enumerable#max with a nil comparison"]
+                                 none)))
+                            none,
+                          RubyCore.Expr.if'
+                            (RubyCore.Expr.send
+                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "c"))
+                              ">"
+                              [RubyCore.Expr.int 0]
+                              none)
+                            (RubyCore.Expr.vasgn
+                              (RubyCore.VarKind.lvar)
+                              "best"
+                              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"))
+                            none]))]))),
             RubyCore.Expr.var (RubyCore.VarKind.lvar) "best"]),
        RubyCore.Expr.def'
          "minmax"
@@ -3016,10 +3209,18 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
-                 []
+                 [RubyCore.Param.rest (some "yielded")]
+                 ["x"]
                  (RubyCore.Expr.seq
-                   [RubyCore.Expr.send
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "x"
+                      (RubyCore.Expr.send
+                        none
+                        "__enum_values_pack"
+                        [RubyCore.Expr.var (RubyCore.VarKind.lvar) "yielded"]
+                        none),
+                    RubyCore.Expr.send
                       (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "keys"))
                       "push"
                       [RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]]
@@ -3216,12 +3417,16 @@ def core_3 : Expr :=
               "each"
               []
               (some (RubyCore.Expr.block
-                 [RubyCore.Param.req "x"]
+                 [RubyCore.Param.rest (some "yielded")]
                  []
                  (RubyCore.Expr.send
                    (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "vals"))
                    "push"
-                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                   [RubyCore.Expr.send
+                      none
+                      "__enum_values_pack"
+                      [RubyCore.Expr.var (RubyCore.VarKind.lvar) "yielded"]
+                      none]
                    none))),
             RubyCore.Expr.vasgn (RubyCore.VarKind.lvar) "i" (RubyCore.Expr.int 1),
             RubyCore.Expr.while'
@@ -3386,25 +3591,34 @@ def core_3 : Expr :=
                   "each"
                   []
                   (some (RubyCore.Expr.block
-                     [RubyCore.Param.req "x"]
-                     []
-                     (RubyCore.Expr.if'
-                       (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have")
-                       (RubyCore.Expr.vasgn
-                         (RubyCore.VarKind.lvar)
-                         "acc"
-                         (RubyCore.Expr.yield'
-                           [RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc",
-                            RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]))
-                       (some (RubyCore.Expr.seq
-                          [RubyCore.Expr.vasgn
-                             (RubyCore.VarKind.lvar)
-                             "acc"
-                             (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
-                           RubyCore.Expr.vasgn
-                             (RubyCore.VarKind.lvar)
-                             "have"
-                             (RubyCore.Expr.tru)]))))),
+                     [RubyCore.Param.rest (some "raw")]
+                     ["x"]
+                     (RubyCore.Expr.seq
+                       [RubyCore.Expr.vasgn
+                          (RubyCore.VarKind.lvar)
+                          "x"
+                          (RubyCore.Expr.send
+                            none
+                            "__enum_values_pack"
+                            [RubyCore.Expr.var (RubyCore.VarKind.lvar) "raw"]
+                            none),
+                        RubyCore.Expr.if'
+                          (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have")
+                          (RubyCore.Expr.vasgn
+                            (RubyCore.VarKind.lvar)
+                            "acc"
+                            (RubyCore.Expr.yield'
+                              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc",
+                               RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]))
+                          (some (RubyCore.Expr.seq
+                             [RubyCore.Expr.vasgn
+                                (RubyCore.VarKind.lvar)
+                                "acc"
+                                (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
+                              RubyCore.Expr.vasgn
+                                (RubyCore.VarKind.lvar)
+                                "have"
+                                (RubyCore.Expr.tru)]))]))),
                 RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc"])
              (some (RubyCore.Expr.if'
                 (RubyCore.Expr.send
@@ -3430,14 +3644,18 @@ def core_3 : Expr :=
                      "each"
                      []
                      (some (RubyCore.Expr.block
-                        [RubyCore.Param.req "x"]
+                        [RubyCore.Param.rest (some "raw")]
                         []
                         (RubyCore.Expr.vasgn
                           (RubyCore.VarKind.lvar)
                           "acc"
                           (RubyCore.Expr.yield'
                             [RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc",
-                             RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"])))),
+                             RubyCore.Expr.send
+                               none
+                               "__enum_values_pack"
+                               [RubyCore.Expr.var (RubyCore.VarKind.lvar) "raw"]
+                               none])))),
                    RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc"])
                 (some (RubyCore.Expr.send
                    none
@@ -3470,28 +3688,37 @@ def core_3 : Expr :=
                    "each"
                    []
                    (some (RubyCore.Expr.block
-                      [RubyCore.Param.req "x"]
-                      []
-                      (RubyCore.Expr.if'
-                        (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have")
-                        (RubyCore.Expr.vasgn
-                          (RubyCore.VarKind.lvar)
-                          "acc"
-                          (RubyCore.Expr.send
-                            (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc"))
-                            "send"
-                            [RubyCore.Expr.var (RubyCore.VarKind.lvar) "op",
-                             RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
-                            none))
-                        (some (RubyCore.Expr.seq
-                           [RubyCore.Expr.vasgn
-                              (RubyCore.VarKind.lvar)
-                              "acc"
-                              (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
-                            RubyCore.Expr.vasgn
-                              (RubyCore.VarKind.lvar)
-                              "have"
-                              (RubyCore.Expr.tru)]))))),
+                      [RubyCore.Param.rest (some "raw")]
+                      ["x"]
+                      (RubyCore.Expr.seq
+                        [RubyCore.Expr.vasgn
+                           (RubyCore.VarKind.lvar)
+                           "x"
+                           (RubyCore.Expr.send
+                             none
+                             "__enum_values_pack"
+                             [RubyCore.Expr.var (RubyCore.VarKind.lvar) "raw"]
+                             none),
+                         RubyCore.Expr.if'
+                           (RubyCore.Expr.var (RubyCore.VarKind.lvar) "have")
+                           (RubyCore.Expr.vasgn
+                             (RubyCore.VarKind.lvar)
+                             "acc"
+                             (RubyCore.Expr.send
+                               (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc"))
+                               "send"
+                               [RubyCore.Expr.var (RubyCore.VarKind.lvar) "op",
+                                RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                               none))
+                           (some (RubyCore.Expr.seq
+                              [RubyCore.Expr.vasgn
+                                 (RubyCore.VarKind.lvar)
+                                 "acc"
+                                 (RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"),
+                               RubyCore.Expr.vasgn
+                                 (RubyCore.VarKind.lvar)
+                                 "have"
+                                 (RubyCore.Expr.tru)]))]))),
                  RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc"])
               (some (RubyCore.Expr.if'
                  (RubyCore.Expr.send
@@ -3525,7 +3752,7 @@ def core_3 : Expr :=
                       "each"
                       []
                       (some (RubyCore.Expr.block
-                         [RubyCore.Param.req "x"]
+                         [RubyCore.Param.rest (some "raw")]
                          []
                          (RubyCore.Expr.vasgn
                            (RubyCore.VarKind.lvar)
@@ -3534,7 +3761,11 @@ def core_3 : Expr :=
                              (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc"))
                              "send"
                              [RubyCore.Expr.var (RubyCore.VarKind.lvar) "op",
-                              RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]
+                              RubyCore.Expr.send
+                                none
+                                "__enum_values_pack"
+                                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "raw"]
+                                none]
                              none)))),
                     RubyCore.Expr.var (RubyCore.VarKind.lvar) "acc"])
                  (some (RubyCore.Expr.send

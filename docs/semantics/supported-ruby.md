@@ -82,6 +82,15 @@ class that includes it. The methods that need an `Enumerator` the model does not
 build — `cycle`, `chunk`, `chunk_while`, `slice_before`, `slice_after`,
 `slice_when`, `lazy`, and `each_entry` without a block — decline by name.
 
+An `each` may yield several values, one, or none at all. Every `Enumerable`
+method works on the element CRuby's `rb_enum_values_pack` produces — an Array for
+several values, the value itself for one, `nil` for none — because `yield a, b`
+binds a one-parameter block to `a` alone. The methods whose block *is* the
+answer — `map`/`collect`, `flat_map`, `filter_map`, `all?`, `any?`, `none?`,
+`one?`, `count`, `take_while` and `find_index` — instead hand the yielded values
+to the block unchanged (`rb_yield_values2`), so `|a, b|` receives both. `Hash`
+is unaffected: its native `each` yields the pair as one value.
+
 ## Finding out about one program
 
 ```sh

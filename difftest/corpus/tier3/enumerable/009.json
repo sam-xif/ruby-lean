@@ -1,0 +1,6 @@
+{
+  "tier": 3,
+  "category": "enumerable",
+  "description": "Guard for issue #184: a class whose `each` yields several values, one value or none gives every pre-existing Enumerable method CRuby's `rb_enum_values_pack` element, while the methods whose block is the answer (map/flat_map/filter_map, the predicates) forward the yielded values so a two-parameter block still sees both.",
+  "source": "hand-authored"
+}
