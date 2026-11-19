@@ -305,8 +305,16 @@ def crubyMethodNames : List (String × List String) := [
     "ungetc", "wait", "wait_priority", "wait_readable", "wait_writable", "write", "write_nonblock"
   ]),
   ("Dir", [
-    "chdir", "children", "close", "each", "each_child", "fileno", "initialize", "inspect",
-    "path", "pos", "pos=", "read", "rewind", "seek", "tell", "to_path"
+    "all?", "any?", "chain", "chdir", "children", "chunk", "chunk_while", "close",
+    "collect", "collect_concat", "compact", "count", "cycle", "detect", "drop", "drop_while",
+    "each", "each_child", "each_cons", "each_entry", "each_slice", "each_with_index", "each_with_object", "entries",
+    "fileno", "filter", "filter_map", "find", "find_all", "find_index", "first", "flat_map",
+    "grep", "grep_v", "group_by", "include?", "initialize", "inject", "inspect", "lazy",
+    "map", "max", "max_by", "member?", "min", "min_by", "minmax", "minmax_by",
+    "none?", "one?", "partition", "path", "pos", "pos=", "read", "reduce",
+    "reject", "reverse_each", "rewind", "seek", "select", "slice_after", "slice_before", "slice_when",
+    "sort", "sort_by", "sum", "take", "take_while", "tally", "tell", "to_a",
+    "to_h", "to_path", "to_set", "uniq", "zip"
   ])
 ]
 

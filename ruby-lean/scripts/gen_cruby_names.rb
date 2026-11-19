@@ -41,7 +41,12 @@ GUARDED = { "File" => File, "IO" => IO, "Dir" => Dir, "Pathname" => Pathname }.f
 # exception family `validateD` excludes, which makes it a wrong answer rather
 # than a gate. `Pathname`'s instance side belongs with the class itself (issue
 # #147), not here.
-GUARDED_INSTANCE = { "File" => File, "IO" => IO, "Dir" => Dir }.freeze
+#
+# A value is the list of modules whose methods are reachable on an instance, the
+# same folding `FOLD` does per class: `Dir` includes `Enumerable` (`entries`,
+# `count`, `first`, … call `#each`), so those names are part of its instance
+# surface even though `Dir.instance_methods(false)` does not list them.
+GUARDED_INSTANCE = { "File" => [File], "IO" => [IO], "Dir" => [Dir, Enumerable] }.freeze
 
 # Constants that exist only in some builds of the same CRuby release. They are
 # left out so that this table is the same on every platform: `Integer::GMP_VERSION`
@@ -144,8 +149,8 @@ entries = FOLD.map do |name, mods|
   meths = meths.uniq.sort
   "  (\"#{name}\", [\n#{NAME_LINES.call(meths, "    ")}\n  ])"
 end
-entries += GUARDED_INSTANCE.map do |name, cls|
-  TABLE_ROW.call(name, cls.instance_methods(false) + cls.private_instance_methods(false))
+entries += GUARDED_INSTANCE.map do |name, mods|
+  TABLE_ROW.call(name, mods.flat_map { |m| m.instance_methods(false) + m.private_instance_methods(false) })
 end
 puts entries.join(",\n")
 
