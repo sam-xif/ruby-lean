@@ -164,6 +164,15 @@ end
 # or `break` (returns from `each`) — both already modeled (Semantics 04 §4).
 
 module Enumerable
+  # `rb_enum_values_pack`: the value an Enumerable method works on when `each`
+  # yields several values (packed into an Array) or none (nil). A plain block
+  # parameter cannot stand in: `yield a, b` binds `|x|` to `a`, it does not pack.
+  def __enum_values_pack(vals)
+    return nil if vals.length == 0
+    return vals[0] if vals.length == 1
+    vals
+  end
+
   def to_a
     r = []
     each { |x| r.push(x) }
@@ -211,6 +220,41 @@ module Enumerable
     return __unsupported__("Enumerator: Enumerable#reject without a block") unless block_given?
     r = []
     each { |x| r.push(x) unless yield(x) }
+    r
+  end
+
+  # `pattern === element`, mapped through the block when one is given
+  # (`enum_grep`/`enum_grep_v`). `===` is an ordinary send, so a user pattern
+  # works, and the block sees the packed value as one argument (`enum_yield`).
+  def grep(pat)
+    r = []
+    if block_given?
+      each { |*vals|
+        x = __enum_values_pack(vals)
+        r.push(yield(x)) if pat === x
+      }
+    else
+      each { |*vals|
+        x = __enum_values_pack(vals)
+        r.push(x) if pat === x
+      }
+    end
+    r
+  end
+
+  def grep_v(pat)
+    r = []
+    if block_given?
+      each { |*vals|
+        x = __enum_values_pack(vals)
+        r.push(yield(x)) unless pat === x
+      }
+    else
+      each { |*vals|
+        x = __enum_values_pack(vals)
+        r.push(x) unless pat === x
+      }
+    end
     r
   end
 
@@ -330,6 +374,17 @@ module Enumerable
     self
   end
 
+  # `each_val_i`: each yielded value, with a multi-value yield packed into an
+  # Array and a zero-value yield answered as nil. The blockless form needs an
+  # Enumerator.
+  def each_entry(*args)
+    return __unsupported__("Enumerator: Enumerable#each_entry without a block") unless block_given?
+    each(*args) { |*vals|
+      yield(__enum_values_pack(vals))
+    }
+    self
+  end
+
   def each_with_object(memo)
     return __unsupported__("Enumerator: Enumerable#each_with_object without a block") unless block_given?
     each { |x| yield(x, memo) }
@@ -376,6 +431,57 @@ module Enumerable
     h
   end
 
+  # `enum_uniq` keys a fresh Hash by the element (or the block's answer), so a
+  # duplicate is decided by `hash`/`eql?` — `1` and `1.0` are distinct — and the
+  # answer keeps the order the first occurrences appear in.
+  def uniq
+    seen = {}
+    r = []
+    each { |*vals|
+      x = __enum_values_pack(vals)
+      k = block_given? ? yield(x) : x
+      unless seen.key?(k)
+        seen[k] = true
+        r.push(x)
+      end
+    }
+    r
+  end
+
+  # `enum_compact`: every element that is not nil, in order.
+  def compact
+    r = []
+    each { |*vals|
+      x = __enum_values_pack(vals)
+      r.push(x) unless x.nil?
+    }
+    r
+  end
+
+  # `enum_hashify`/`rb_hash_set_pair`: with a block the pair is the block's
+  # answer, otherwise the element itself must be a 2-element Array (with a
+  # multi-value `each`, the values are packed first). Both messages are
+  # Enumerable's — no index, and `element has wrong array length` — which differ
+  # from `Array#to_h`'s (L124).
+  def to_h(*args)
+    h = {}
+    each(*args) { |*vals|
+      if block_given?
+        pair = yield(*vals)
+      else
+        pair = __enum_values_pack(vals)
+      end
+      element = pair
+      pair = __check_array_type(pair)
+      raise TypeError, "wrong element type " + element.class.to_s + " (expected array)" if pair.nil?
+      unless pair.length == 2
+        raise ArgumentError, "element has wrong array length (expected 2, was " + pair.length.to_s + ")"
+      end
+      h[pair[0]] = pair[1]
+    }
+    h
+  end
+
   def include?(obj)
     each { |x| return true if x == obj }
     false
@@ -391,6 +497,39 @@ module Enumerable
     else
       __unsupported__("Enumerable#first arity")
     end
+  end
+
+  # `enum_zip`: a partner that is not an Array is read through `each` (CRuby
+  # wraps it in an Enumerator and calls `next`); one that has no `each` is a
+  # TypeError. A short partner pads with nil. The block form yields each row and
+  # answers nil.
+  def zip(*others)
+    partners = []
+    others.each { |o|
+      a = __check_array_type(o)
+      if a.nil?
+        unless o.respond_to?(:each)
+          raise TypeError, "wrong argument type " + o.class.to_s + " (must respond to :each)"
+        end
+        a = []
+        o.each { |*vals| a.push(__enum_values_pack(vals)) }
+      end
+      partners.push(a)
+    }
+    out = []
+    i = 0
+    each { |*vals|
+      row = [__enum_values_pack(vals)]
+      partners.each { |p| row.push(p[i]) }
+      if block_given?
+        yield(row)
+      else
+        out.push(row)
+      end
+      i = i + 1
+    }
+    return nil if block_given?
+    out
   end
 
   def take(n)
@@ -557,6 +696,84 @@ module Enumerable
     [min, max]
   end
 
+  # `enum_minmax_by`: consecutive elements are ordered as a pair with one `<=>`,
+  # and each pair is folded into the running min and max, so `each` runs once and
+  # an odd last element is folded against itself. A pair of equal keys is
+  # ordered as (previous, previous), which is why `[1, 1].minmax_by { |x| x }`
+  # answers the first element twice.
+  def minmax_by
+    return __unsupported__("Enumerator: Enumerable#minmax_by without a block") unless block_given?
+    min = nil
+    max = nil
+    min_k = nil
+    max_k = nil
+    have = false
+    pending = false
+    last = nil
+    last_k = nil
+    each { |*vals|
+      x = __enum_values_pack(vals)
+      k = yield(x)
+      unless pending
+        last = x
+        last_k = k
+        pending = true
+        next
+      end
+      pending = false
+      c = (last_k <=> k)
+      return __unsupported__("Enumerable#minmax_by with a nil <=>") if c.nil?
+      if c <= 0
+        lo = last
+        lo_k = last_k
+      else
+        lo = x
+        lo_k = k
+      end
+      if c < 0
+        hi = x
+        hi_k = k
+      else
+        hi = last
+        hi_k = last_k
+      end
+      if !have
+        min = lo
+        min_k = lo_k
+        max = hi
+        max_k = hi_k
+        have = true
+      else
+        cmin = (lo_k <=> min_k)
+        return __unsupported__("Enumerable#minmax_by with a nil <=>") if cmin.nil?
+        if cmin < 0
+          min = lo
+          min_k = lo_k
+        end
+        cmax = (hi_k <=> max_k)
+        return __unsupported__("Enumerable#minmax_by with a nil <=>") if cmax.nil?
+        if cmax > 0
+          max = hi
+          max_k = hi_k
+        end
+      end
+    }
+    if pending
+      if !have
+        min = last
+        max = last
+      else
+        cmin = (last_k <=> min_k)
+        return __unsupported__("Enumerable#minmax_by with a nil <=>") if cmin.nil?
+        min = last if cmin < 0
+        cmax = (last_k <=> max_k)
+        return __unsupported__("Enumerable#minmax_by with a nil <=>") if cmax.nil?
+        max = last if cmax > 0
+      end
+    end
+    [min, max]
+  end
+
   # Insertion sort over an extracted key vector: `<=>` dispatch means user
   # classes and mixed comparables work, and it is stable (CRuby's sort is not,
   # so programs that observe tie order are outside what this models faithfully).
@@ -662,6 +879,38 @@ module Enumerable
     end
   end
   alias reduce inject
+
+  # These need an `Enumerator` whose producer is an arbitrary `each`, or
+  # `Enumerator::Lazy`, which the model does not build; they are named gates so a
+  # class that `include Enumerable` answers rather than raising `NoMethodError`
+  # (issue #182).
+  def cycle(*a)
+    __unsupported__("Enumerator: Enumerable#cycle (endless producer)")
+  end
+
+  def chunk
+    __unsupported__("Enumerator: Enumerable#chunk returns an Enumerator")
+  end
+
+  def chunk_while
+    __unsupported__("Enumerator: Enumerable#chunk_while returns an Enumerator")
+  end
+
+  def slice_before(*a)
+    __unsupported__("Enumerator: Enumerable#slice_before returns an Enumerator")
+  end
+
+  def slice_after(*a)
+    __unsupported__("Enumerator: Enumerable#slice_after returns an Enumerator")
+  end
+
+  def slice_when
+    __unsupported__("Enumerator: Enumerable#slice_when returns an Enumerator")
+  end
+
+  def lazy
+    __unsupported__("Enumerable#lazy (no Enumerator::Lazy in the boot heap)")
+  end
 end
 
 # ─── Range ──────────────────────────────────────────────────────────────────
@@ -1402,6 +1651,16 @@ class Hash
     v = self[key]
     return v if rest.empty? || v.nil?
     v.dig(*rest)
+  end
+
+  # `Hash#to_h` answers **itself** without a block (`rb_hash_to_h`), so a default
+  # value or proc survives; `Enumerable#to_h` would answer a new, defaultless
+  # Hash. A subclass answers a plain Hash copy, which is not modeled, so it
+  # declines rather than silently dropping the default.
+  def to_h
+    return super if block_given?
+    return self if self.class == Hash
+    __unsupported__("Hash#to_h on a Hash subclass")
   end
 
   # `compact` drops nil *values*; `compact!` is deliberately absent until asked

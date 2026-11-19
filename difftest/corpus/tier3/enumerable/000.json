@@ -1,0 +1,6 @@
+{
+  "tier": 3,
+  "category": "enumerable",
+  "description": "A class that includes Enumerable and defines only `each` answers the methods the prelude module was missing (issue #182): uniq/compact/to_h/minmax_by/each_entry/grep/grep_v/zip, including multi-value and empty `each` yields, minmax_by's pairwise tie ordering, the three distinct to_h/zip refusals, and Hash#to_h's own identity and two-argument block.",
+  "source": "hand-authored"
+}
