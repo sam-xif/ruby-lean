@@ -15,9 +15,10 @@ Numeric→Integer/Float, Enumerable→Array/Hash.
 -/
 namespace RubyCore
 
-/-- Method names each bootstrap class defines directly in CRuby
+/-- Method names each class of the L0 model defines directly in CRuby
     (instance_methods(false) ∪ private_instance_methods(false), modules
-    folded as above). -/
+    folded as above), plus the instance surface of the filesystem classes
+    dispatch guards by name. -/
 def crubyMethodNames : List (String × List String) := [
   ("BasicObject", [
     "!", "!=", "==", "__id__", "__send__", "equal?", "initialize", "instance_eval",
@@ -286,6 +287,26 @@ def crubyMethodNames : List (String × List String) := [
   ]),
   ("ScriptError", [
 
+  ]),
+  ("File", [
+    "atime", "birthtime", "chmod", "chown", "ctime", "flock", "initialize", "lstat",
+    "mtime", "size", "truncate"
+  ]),
+  ("IO", [
+    "<<", "advise", "autoclose=", "autoclose?", "binmode", "binmode?", "close", "close_on_exec=",
+    "close_on_exec?", "close_read", "close_write", "closed?", "each", "each_byte", "each_char", "each_codepoint",
+    "each_line", "eof", "eof?", "external_encoding", "fcntl", "fdatasync", "fileno", "flush",
+    "fsync", "getbyte", "getc", "gets", "initialize", "initialize_copy", "inspect", "internal_encoding",
+    "ioctl", "isatty", "lineno", "lineno=", "path", "pid", "pos", "pos=",
+    "pread", "print", "printf", "putc", "puts", "pwrite", "read", "read_nonblock",
+    "readbyte", "readchar", "readline", "readlines", "readpartial", "reopen", "rewind", "seek",
+    "set_encoding", "set_encoding_by_bom", "stat", "sync", "sync=", "sysread", "sysseek", "syswrite",
+    "tell", "timeout", "timeout=", "to_i", "to_io", "to_path", "tty?", "ungetbyte",
+    "ungetc", "wait", "wait_priority", "wait_readable", "wait_writable", "write", "write_nonblock"
+  ]),
+  ("Dir", [
+    "chdir", "children", "close", "each", "each_child", "fileno", "initialize", "inspect",
+    "path", "pos", "pos=", "read", "rewind", "seek", "tell", "to_path"
   ])
 ]
 

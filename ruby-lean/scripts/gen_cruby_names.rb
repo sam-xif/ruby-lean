@@ -26,14 +26,22 @@ end
 # The Lean model uses these for dispatch fidelity (shadow detection and
 # genuine-NoMethodError classification), not behavior.
 
-# Classes the model does not boot as core classes, but whose **class-side**
-# surface dispatch must know: the virtual filesystem's `File`/`IO`/`Dir` and the
-# pure path wrapper `Pathname`. Their singleton tables go into
-# `crubySingletonNames`, so a lookup miss can tell a real class method the model
-# declines (`File.mtime`, a named Unsupported) from a name that is not Ruby at
-# all (`File.zzz`, an ordinary `NoMethodError`). Only the singleton side is
-# emitted: their instance surfaces are still declined wholesale.
+# Classes the model does not boot as core classes, but whose surface dispatch
+# must know: the virtual filesystem's `File`/`IO`/`Dir` and the pure path wrapper
+# `Pathname`. Their singleton tables go into `crubySingletonNames`, so a lookup
+# miss can tell a real class method the model declines (`File.mtime`, a named
+# Unsupported) from a name that is not Ruby at all (`File.zzz`, an ordinary
+# `NoMethodError`).
 GUARDED = { "File" => File, "IO" => IO, "Dir" => Dir, "Pathname" => Pathname }.freeze
+
+# The **instance** side of the filesystem classes, which goes into
+# `crubyMethodNames`. A `File`/`IO`/`Dir` instance carries no builtin for most of
+# CRuby's methods (`path`, `fileno`, `eof`, `tty?`, ...), so without this table a
+# send to one is a lookup-total miss and raises `NoMethodError` — inside the
+# exception family `validateD` excludes, which makes it a wrong answer rather
+# than a gate. `Pathname`'s instance side belongs with the class itself (issue
+# #147), not here.
+GUARDED_INSTANCE = { "File" => File, "IO" => IO, "Dir" => Dir }.freeze
 
 # Constants that exist only in some builds of the same CRuby release. They are
 # left out so that this table is the same on every platform: `Integer::GMP_VERSION`
@@ -87,8 +95,8 @@ FOLD = {
 
 # Every constant this script defines. They are filtered out of the constant
 # tables below: a toplevel constant lands on Object, which is one of the tables.
-SCRIPT_CONSTANTS = (%i[FOLD GUARDED BUILD_DEPENDENT NAME_LINES TABLE_ROW MAIN_SINGLETON] +
-                    [:SCRIPT_CONSTANTS]).freeze
+SCRIPT_CONSTANTS = (%i[FOLD GUARDED GUARDED_INSTANCE BUILD_DEPENDENT NAME_LINES TABLE_ROW
+                       MAIN_SINGLETON] + [:SCRIPT_CONSTANTS]).freeze
 
 # A lambda, not a toplevel def — a def here would land on Object and leak
 # into the very tables we are snapshotting.
@@ -119,9 +127,10 @@ puts <<~HEADER
   -/
   namespace RubyCore
 
-  /-- Method names each bootstrap class defines directly in CRuby
+  /-- Method names each class of the L0 model defines directly in CRuby
       (instance_methods(false) ∪ private_instance_methods(false), modules
-      folded as above). -/
+      folded as above), plus the instance surface of the filesystem classes
+      dispatch guards by name. -/
   def crubyMethodNames : List (String × List String) := [
 HEADER
 
@@ -134,6 +143,9 @@ entries = FOLD.map do |name, mods|
   meths = mods.flat_map { |m| m.instance_methods(false) + m.private_instance_methods(false) }
   meths = meths.uniq.sort
   "  (\"#{name}\", [\n#{NAME_LINES.call(meths, "    ")}\n  ])"
+end
+entries += GUARDED_INSTANCE.map do |name, cls|
+  TABLE_ROW.call(name, cls.instance_methods(false) + cls.private_instance_methods(false))
 end
 puts entries.join(",\n")
 
