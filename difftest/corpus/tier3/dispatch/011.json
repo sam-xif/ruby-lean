@@ -1,0 +1,5 @@
+{
+  "tier": 3,
+  "category": "dispatch",
+  "description": "Probes that `Range#cover?` orders with `<=>` rather than `<`/`<=`, so an argument from a class the endpoints cannot be ordered against is outside the range instead of an error; that a Range argument asks the subrange question (both endpoints covered, with the exclusive-end rule) while `===` stays the scalar half; and that a `when` arm over mixed classes therefore skips rather than raises (issue #187)."
+}

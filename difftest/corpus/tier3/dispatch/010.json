@@ -1,0 +1,5 @@
+{
+  "tier": 3,
+  "category": "dispatch",
+  "description": "Probes that `Range#min`/`#max`/`#minmax` are CRuby's `range_min`/`range_max`, which never iterate: a Float range answers its endpoint (`(1.5..2.5).max` is 2.5) instead of stepping with `succ`, an exclusive range whose end is not an Integer raises `TypeError` rather than answering `end - 1`, and a block or a count is `Enumerable`'s (issue #187)."
+}

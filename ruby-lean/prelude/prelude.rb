@@ -712,6 +712,49 @@ class Range
     self
   end
 
+  # CRuby's `range_min`/`range_max`, which are not `Enumerable`'s: with neither a
+  # block nor a count they never iterate, so a **Float** range answers its
+  # endpoint (`(1.5..2.5).max` is `2.5`) instead of stepping with `succ` — a
+  # method Float does not have — and an exclusive range with a non-Integer end
+  # has no `max` at all.
+  #
+  # The exclusive `max` is why this exists here: `r_cover_range_p` below asks the
+  # argument range for its `max` and reads that `TypeError` as "no value", so
+  # `(1..2).cover?(1...2.5)` is `false`. `Enumerable#max` would answer `2`.
+  #
+  # A beginless or endless receiver gates rather than raising CRuby's
+  # `RangeError`: `Range#each` declines those too, and a gate is what this model
+  # answers for a range it cannot walk.
+  def min(*a)
+    lo = self.begin
+    return __unsupported__("Range#min over a beginless range") if lo.nil?
+    return super(*a) if block_given? || !a.empty?
+    hi = self.end
+    c = hi.nil? ? -1 : lo.__cmpint(hi)
+    return nil if c > 0 || (c == 0 && exclude_end?)
+    lo
+  end
+
+  def max(*a)
+    hi = self.end
+    return __unsupported__("Range#max over an endless range") if hi.nil?
+    lo = self.begin
+    if block_given? || (exclude_end? && !hi.is_a?(Numeric))
+      return __unsupported__("Range#max over a beginless range") if lo.nil?
+      return super(*a)
+    end
+    return super(*a) unless a.empty?
+    c = lo.nil? ? -1 : lo.__cmpint(hi)
+    return nil if c > 0
+    return hi unless exclude_end?
+    raise TypeError, "cannot exclude non Integer end value" unless hi.is_a?(Integer)
+    return nil if c == 0
+    unless lo.nil? || lo.is_a?(Integer)
+      raise TypeError, "cannot exclude end value with non Integer begin value"
+    end
+    hi - 1
+  end
+
   def cover?(x)
     lo = self.begin
     hi = self.end
