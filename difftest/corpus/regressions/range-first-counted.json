@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed while fixing issue #114",
+  "arm": "hand",
+  "case_id": "range-first-counted",
+  "note": "`Range#first` was a native builtin with arity 0, so the counted form CRuby defines raised `ArgumentError: wrong number of arguments (given 1, expected 0)` where `Array#first(n)` at least gated, and the bare form answered `nil` on a beginless range where CRuby raises `RangeError: cannot get the first element of beginless range`. It is a prelude method now: the counted form is `Enumerable#first(n)` over the range, the bare form is `#begin` plus the beginless refusal, and the count follows `rb_range_first`'s order — `NUM2LONG` (a count outside a machine word is `bignum too big to convert into 'long'`), then `rb_ary_new2` (below zero `negative array size (or size too big)`, above `ARY_MAX_SIZE` = 2**60 - 1 `array size too big`), then the range is iterated. A non-Integer count and a range with non-Integer endpoints gate with a named `Unsupported` rather than guess CRuby's per-class conversion, so they are not in this program. `Range#begin` keeps its arity of zero. Compared with CRuby 4.0.5. See issue #114."
+}

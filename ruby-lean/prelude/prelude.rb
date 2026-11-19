@@ -750,6 +750,62 @@ class Range
     n < 0 ? 0 : n
   end
   alias count size
+
+  # `Range#first` is two methods under one name, and the counted one is not
+  # `#begin`: CRuby walks forward from the beginning, answering up to `n`
+  # elements [V].
+  #
+  #   * the **bare** form is `#begin`, with one correction: a *beginless* range
+  #     has no first element, so CRuby raises `RangeError: cannot get the first
+  #     element of beginless range` where an unguarded `#begin` answers `nil`
+  #     [V]. That check runs before the arity check in `rb_range_first`, so a
+  #     beginless range raises it for every argument shape. An **endless** range
+  #     is fine here (`(1..).first` is `1`), the mirror of `#last`'s refusal;
+  #   * the **counted** form stops at the end of the range, so an over-large `n`
+  #     is the whole range (`(1..5).first(9)` is `[1, 2, 3, 4, 5]`) and an
+  #     endless range simply yields `n` elements (`(1..).first(2)` is `[1, 2]`)
+  #     [V];
+  #   * `n` is coerced the way `NUM2LONG` coerces it: a value outside a machine
+  #     word is `RangeError: bignum too big to convert into 'long'`, and the
+  #     array `rb_range_first` preallocates answers `rb_ary_new2`'s own refusals
+  #     in its order — `ArgumentError: negative array size (or size too big)`
+  #     below zero, then `ArgumentError: array size too big` above `ARY_MAX_SIZE`
+  #     (`LONG_MAX / sizeof(VALUE)`, `2**60 - 1` on a 64-bit build) — both before
+  #     the range is iterated [V]; a second argument is CRuby's
+  #     `wrong number of arguments (given 2, expected 1)`.
+  #
+  # Corners the model cannot reproduce word for word are declined rather than
+  # approximated: a non-Integer count (CRuby converts it with `NUM2LONG`, so
+  # `(1..5).first(2.7)` is `[1, 2]`), and a range whose endpoints are not
+  # Integers, whose `first(n)` needs the class's own `each` (CRuby raises
+  # `can't iterate from Float` there) [V].
+  def first(*a)
+    lo = self.begin
+    raise RangeError, "cannot get the first element of beginless range" if lo.nil?
+    return lo if a.empty?
+    unless a.length == 1
+      raise ArgumentError, "wrong number of arguments (given #{a.length}, expected 1)"
+    end
+    n = a[0]
+    return __unsupported__("Range#first(n) with a non-Integer count") unless n.is_a?(Integer)
+    unless n >= -9223372036854775808 && n <= 9223372036854775807
+      raise RangeError, "bignum too big to convert into 'long'"
+    end
+    raise ArgumentError, "negative array size (or size too big)" if n < 0
+    raise ArgumentError, "array size too big" if n > 1152921504606846975
+    hi = self.end
+    unless lo.is_a?(Integer) && (hi.nil? || hi.is_a?(Integer))
+      return __unsupported__("Range#first(n) over a non-Integer range")
+    end
+    last = hi.nil? ? nil : (exclude_end? ? hi - 1 : hi)
+    r = []
+    i = lo
+    while r.length < n && (last.nil? || i <= last)
+      r.push(i)
+      i = i + 1
+    end
+    r
+  end
 end
 
 # ─── Integer ────────────────────────────────────────────────────────────────

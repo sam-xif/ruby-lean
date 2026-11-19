@@ -11,8 +11,8 @@ module Shadowed
 
   def self.range_literal = (1..2)
   def self.exclusive = (1...3).to_a
-  # `.begin`, not `.first(2)`: `Range#first` with an argument is unmodeled, and a
-  # gate anywhere would hide every line of this file
+  # `.begin`, not `.first(2)`: the line is about which constant the literal
+  # consults, and `#begin` reads the endpoint without building an Array
   def self.endless = (1..).begin
   def self.slice = "abcdef"[1..3]
   def self.regex_literal = ("ab" =~ /b/)
