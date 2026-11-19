@@ -232,6 +232,23 @@ closing over the same machine. -/
     | none => rfl
     | some xs => simp only [hf]
 
+/-- `joinUnits` is another fuel walk, and it writes nothing: `toSP` reads the heap only, so
+the same induction as `flattenAll_frame` closes it. -/
+@[simp, rootFrameLem] theorem joinUnits_frame (K : List Kont) (sep : String) :
+    ∀ (fuel : Nat) (m : Machine) (xs : List Value),
+      joinUnits (pushRootK K m) sep fuel xs = joinUnits m sep fuel xs
+  | 0, _, _ => rfl
+  | fuel + 1, m, xs => by
+    have hf : ∀ x, joinUnits (pushRootK K m) sep fuel x = joinUnits m sep fuel x :=
+      fun x => joinUnits_frame K sep fuel m x
+    cases xs with
+    | nil => rfl
+    | cons v rest =>
+      rw [joinUnits, joinUnits]
+      root_simp
+      split
+      all_goals simp only [hf]
+
 /-- `Kernel#print`'s fold: `to_s` each argument and emit it, failing the whole call if any
 `to_s` is impure. `Option`-monadic rather than the plain `foldl` the allocating folds use, so
 it gets its own induction.
@@ -439,7 +456,7 @@ set_option maxHeartbeats 2000000 in
     joinImpl (pushRootK K m) recv args = bRootPush K (joinImpl m recv args) := by
   rw [joinImpl.eq_def, joinImpl.eq_def]
   root_simp
-  try simp only [flattenAll_frame]
+  try simp only [joinUnits_frame]
   root_arms
 
 @[rootFrameLem] theorem sortImpl_frame (K : List Kont) (m : Machine) (recv : Value) :

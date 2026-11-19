@@ -1512,8 +1512,8 @@ class Array
 
   def __to_s_slow = __inspect_slow
 
-  # `join` renders each element with `to_s`, flattens nested arrays, and renders
-  # nil as the empty string [V].
+  # `join` renders each element with `to_s`, joins a nested Array with the same
+  # separator, and renders nil as the empty string [V].
   def __join_slow(sep = nil)
     # The separator goes through `StringValue` (`to_str`), **not** `to_s`: a String
     # is used verbatim, so `["a"].join("-")` is unaffected by a redefined
@@ -1527,37 +1527,29 @@ class Array
         else
           return __unsupported__("Array#join with a non-String separator")
         end
-    parts = []
-    __join_collect(parts)
-    out = ""
-    i = 0
-    while i < parts.length
-      out += s unless i.zero?
-      out += parts[i]
-      i += 1
-    end
-    out
+    __join_collect(s)
   end
 
-  # `ary_join_one`: a nested Array is joined recursively — and "nested" is
-  # `rb_check_array_type`, not `is_a?(Array)`, so an element answering `to_ary`
-  # is joined too (`[Pair.new].join(",")` is `"7,8"`, not `"#<Pair:0x…>"`). Found
-  # by probing L133's other sites; `to_ary` is tried **before** `to_s`, which is
-  # why it cannot be left to `__as_string`.
-  def __join_collect(parts)
+  # `ary_join`: every element renders as **one unit**, and a nested Array is
+  # joined with the same separator. An empty nested Array therefore still stands
+  # as a unit and keeps its two separator boundaries — `[[], 1].join("-")` is
+  # `"-1"` — where collecting a flat list of parts drops them (issue #102).
+  # "Nested" is `rb_check_array_type`, not `is_a?(Array)`, so an element
+  # answering `to_ary` is joined too (`[Pair.new].join(",")` is `"7,8"`, not
+  # `"#<Pair:0x…>"`). `to_ary` is tried **before** `to_s`, which is why it cannot
+  # be left to `__as_string`.
+  def __join_collect(sep)
+    out = ""
+    i = 0
     each do |e|
-      if e.nil?
-        parts.push("")
-      else
-        sub = String === e ? nil : __check_array_type(e)
-        if sub.nil?
-          parts.push(e.__as_string)
-        else
-          sub.__join_collect(parts)
-        end
-      end
+      out += sep unless i.zero?
+      i += 1
+      next if e.nil?
+
+      sub = String === e ? nil : __check_array_type(e)
+      out += sub.nil? ? e.__as_string : sub.__join_collect(sep)
     end
-    nil
+    out
   end
 end
 

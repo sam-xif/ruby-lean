@@ -1152,6 +1152,7 @@ def newImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
         | _ => .err Boot.argumentErrorId
             s!"wrong number of arguments (given {args.length}, expected 0)" m
   | _ => .unsupported "new"
+/-- Recursively flatten nested arrays (fuel against cycles). -/
 def flattenAll (m : Machine) (v : Value) : Nat → Option (List Value)
   | 0 => none
   | fuel + 1 =>
@@ -1161,24 +1162,37 @@ def flattenAll (m : Machine) (v : Value) : Nat → Option (List Value)
         | some _ => do pure (acc ++ (← flattenAll m x fuel))
         | none => some (acc ++ [x])
     | none => some [v]
-/-- Sort key: all-numeric or all-string arrays only (general sort needs
-    `<=>` dispatch, deferred). -/
+/-- `ary_join`'s element walk: every element renders as **one unit**, and a nested
+Array is joined with the same separator. An empty nested Array therefore still stands as
+a unit and keeps its two separator boundaries — `[[], 1].join("-")` is `"-1"`,
+`[1, [], 2].join("-")` is `"1--2"` — where flattening the nesting first drops them
+(issue #102). Each element renders through `to_s` (`toSP`), whose nil arm is the empty
+String, which is what `ary_join`'s `NIL_P` check appends. Fuel bounds the nesting, as
+`flattenAll` does for `flatten`. -/
+def joinUnits (m : Machine) (sep : String) : Nat → List Value → Except String (List String)
+  | 0, _ => .error "Array#join nested too deeply"
+  | _ + 1, [] => .ok []
+  | fuel + 1, v :: rest => do
+    let unit ← match arrPayload? m.heap v with
+      | some ys => pure (String.intercalate sep (← joinUnits m sep fuel ys.toList))
+      | none => toSP m v
+    pure (unit :: (← joinUnits m sep fuel rest))
+
+/-- `Array#join`: render each element as a unit (`joinUnits`) and intercalate the
+    separator between the units. -/
 def joinImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
   let sep := match args with
     | [] => some ""
     | [s] => strPayload? m.heap s
     | _ => none
-  match sep, flattenAll m recv 100 with
-  | some sep, some flat =>
-    let parts := flat.mapM fun v =>
-      match v with
-      | .nil => Except.ok ""
-      | _ => toSP m v
-    match parts with
-    | .ok ps => okStr m (String.intercalate sep ps)
+  match sep, arrPayload? m.heap recv with
+  | some sep, some xs =>
+    match joinUnits m sep 100 xs.toList with
+    | .ok units => okStr m (String.intercalate sep units)
     | .error e => .unsupported e
   | _, _ => .unsupported "join"
-/-- Recursively flatten nested arrays (fuel against cycles). -/
+/-- Sort key: all-numeric or all-string arrays only (general sort needs
+    `<=>` dispatch, deferred). -/
 def sortKey? (h : Heap) (xs : Array Value) : Option (Array (SortKey × Value)) :=
   xs.mapM fun v =>
     match v with

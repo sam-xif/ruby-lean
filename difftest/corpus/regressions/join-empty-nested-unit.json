@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_by": "issue #102 \u2014 `joinUnits` in `RubyCore/Builtins/Support.lean` and the `__join_collect` twin in `prelude/prelude.rb`",
+  "filed_by": "hand, issue #102",
+  "arm": "hand",
+  "case_id": "join-empty-nested-unit",
+  "first_reconciled": "2026-11-18, lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'leading empty: \"1\"' vs 'leading empty: \"-1\"'",
+  "note": "`ary_join` inserts a separator around each element as a unit and joins a nested Array with the same separator, so an empty nested Array is a unit that renders \"\" and keeps both boundaries: `[[], 1].join(\"-\")` is `\"-1\"`, `[1, [], 2].join(\"-\")` is `\"1--2\"`. The model flattened the nesting into one list of rendered parts first (`flattenAll` then `String.intercalate`), so every empty nested Array removed a separator. Both implementations carried the defect: the native `joinImpl` and the prelude twin `__join_slow`, which dispatch picks when an element answers `to_ary` or when some element's `to_s` is overridden, so the case pins both (the `to_ary` and `to_s` groups below). `nil` and the empty separator are controls: `nil` renders \"\" without consulting `NilClass#to_s` (which `toS` already agrees with), and an empty separator hides the boundary either way."
+}
