@@ -1,0 +1,6 @@
+{
+  "tier": 3,
+  "category": "enumerable",
+  "description": "Guard for issue #182: Enumerable#lazy gates by name instead of raising NoMethodError (no Enumerator::Lazy in the boot heap).",
+  "source": "hand-authored"
+}

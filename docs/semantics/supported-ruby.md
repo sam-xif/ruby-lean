@@ -77,6 +77,11 @@ CRuby defines and the model does not implement, the model declines. It does not
 raise `NoMethodError`, which is what a model that simply lacked the method would
 do, and which would be a wrong answer.
 
+The same rule applies inside `Enumerable`, whose methods are inherited by any
+class that includes it. The methods that need an `Enumerator` the model does not
+build — `cycle`, `chunk`, `chunk_while`, `slice_before`, `slice_after`,
+`slice_when`, `lazy`, and `each_entry` without a block — decline by name.
+
 ## Finding out about one program
 
 ```sh

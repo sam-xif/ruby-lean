@@ -1,0 +1,6 @@
+{
+  "tier": 3,
+  "category": "enumerable",
+  "description": "Guard for issue #182: Enumerable#each_entry without a block gates by name instead of raising NoMethodError; the block form is modelled in 000.",
+  "source": "hand-authored"
+}

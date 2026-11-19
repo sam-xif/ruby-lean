@@ -1,0 +1,6 @@
+{
+  "tier": 3,
+  "category": "enumerable",
+  "description": "Guard for issue #182: Enumerable#cycle is defined, so a class that includes Enumerable must gate (no block needs an Enumerator, which the model does not build) rather than raise NoMethodError.",
+  "source": "hand-authored"
+}
