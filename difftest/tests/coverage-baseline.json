@@ -1,6 +1,6 @@
 {
-  "line": 73.19,
-  "branch": 68.61,
+  "line": 73.42,
+  "branch": 69.0,
   "files": [
     "difftest/difftest/__init__.py",
     "difftest/difftest/__main__.py",
