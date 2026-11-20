@@ -25,7 +25,7 @@ make -C .. playground-serve   # builds the wasm modules and dist/, serves on :80
 ## Testing it
 
 ```sh
-./build.sh && node --experimental-wasm-exnref check.mjs
+make -C .. playground-check   # builds the modules and dist/, then checks every backend call
 ```
 
 [The playground](../docs/playground.md) describes the page, what the browser

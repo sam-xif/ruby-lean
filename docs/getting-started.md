@@ -8,12 +8,13 @@
 | CRuby | 4.0.x | The reference the model is checked against, and the interpreter the desugarer runs under |
 | Sorbet | pinned in `Gemfile.lock` | Reads the signatures of a typed program |
 | [uv](https://docs.astral.sh/uv/) and Python | 3.12 or newer | The differential tests and the corpus pipeline |
+| Node and [wasmtime](https://wasmtime.dev) | Node 22 or newer; wasmtime pinned in `mise.toml` | Building and checking the browser playground. The build fetches its own wasi-sdk |
 
 On macOS with Homebrew:
 
 ```sh
 curl -sSf https://elan.lean-lang.org/elan-init.sh | sh
-brew install ruby python@3.12 uv
+brew install ruby python@3.12 uv node wasmtime
 export PATH="$(brew --prefix ruby)/bin:$PATH"
 make deps        # the gems pinned in Gemfile.lock, Sorbet among them
 ```
@@ -64,7 +65,10 @@ the first failure, and continuous integration runs the same targets. It:
    (`make desugar-unit`, `make emitter-unit`, `make difftest-test`), tests the
    desugarer against CRuby (`make desugar-test`), and compares each program
    book's theorem with what CRuby does (`make book-checks`);
-7. builds this documentation with link checking (`make docs`), and checks that
+7. builds the browser playground, with the model, the checker and CRuby compiled
+   to WebAssembly, and checks every call the page makes against those modules
+   (`make playground-check`);
+8. builds this documentation with link checking (`make docs`), and checks that
    continuous integration runs every one of these targets (`make ci-sync`).
 
 `make help` lists every target with a one-line description. The first

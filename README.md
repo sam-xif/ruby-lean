@@ -32,11 +32,12 @@ explains the motivation.
 ## Quick start
 
 You need [elan](https://github.com/leanprover/elan) (Lean), CRuby 4.0.x,
-[uv](https://docs.astral.sh/uv/) and Python 3.12 or newer. On macOS:
+[uv](https://docs.astral.sh/uv/) and Python 3.12 or newer, and for the browser
+playground Node and [wasmtime](https://wasmtime.dev). On macOS:
 
 ```sh
 curl -sSf https://elan.lean-lang.org/elan-init.sh | sh
-brew install ruby python@3.12 uv
+brew install ruby python@3.12 uv node wasmtime
 export PATH="$(brew --prefix ruby)/bin:$PATH"
 make deps       # the pinned gems, Sorbet among them
 make prereqs    # reports anything missing

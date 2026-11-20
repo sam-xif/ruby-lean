@@ -1,5 +1,5 @@
-# CI runs `make check`, split across seven jobs so they run in parallel, and an
-# eighth, `CI`, that passes only if all seven did.
+# CI runs `make check`, split across eight jobs so they run in parallel, and a
+# ninth, `CI`, that passes only if all eight did.
 #
 # Every job runs on every pull request and every push to main, and every step
 # blocks: there is no report-only step and no path filter. Each step is a `make`
@@ -15,6 +15,8 @@
 #   front-end     the desugarer against CRuby; the desugarer's and the emitter's unit tests
 #   lint          formatting and lint over the Python, the Ruby tooling, the shell scripts
 #                 and the workflows
+#   playground    the browser playground builds, and its backend works against the
+#                 real WebAssembly modules
 #   docs          the documentation site builds with no broken links
 #   CI            the workflow's verdict: the one check the ruleset on main requires
 name: CI
@@ -251,6 +253,58 @@ jobs:
       - run: make deps
       - run: make lint
 
+  playground:
+    name: playground (the browser build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lean (toolchain pinned in ruby-lean/lean-toolchain)
+        uses: leanprover/lean-action@v1
+        with:
+          auto-config: false
+          lake-package-directory: ruby-lean
+          use-github-cache: false # lean-action saves before anything is built
+
+      # The proofs job's cache, restored and never saved: this job builds only the
+      # model's and the checker's executables, which wasm/build.sh compiles again.
+      - name: Restore the Lean build
+        uses: actions/cache/restore@v4
+        with: *lake-cache
+
+      # wasi-sdk, the Lean runtime sources and the prebuilt ruby.wasm, all
+      # fetched at pinned versions, and the compiled Init/Std objects.
+      - name: Cache the WebAssembly toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ruby-lean-wasm
+          key: ${{ runner.os }}-wasm-${{ hashFiles('ruby-lean/lean-toolchain', 'ruby-lean/wasm/build.sh', 'ruby-lean/wasm/ruby/build.sh', 'ruby-lean/wasm/patch-runtime.py') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install wasmtime (version pinned in mise.toml)
+        run: |
+          curl -fsSL https://wasmtime.dev/install.sh | bash -s -- --version v48.0.0
+          echo "$HOME/.wasmtime/bin" >> "$GITHUB_PATH"
+
+      - run: make deps
+      - run: make playground-check
+
+      - name: Upload the built playground
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playground
+          path: playground/dist.tar.gz
+
   docs:
     name: docs
     runs-on: ubuntu-latest
@@ -269,7 +323,7 @@ jobs:
   # required check waiting.
   ci:
     name: CI
-    needs: [proofs, soundness, comparator, conformance, front-end, lint, docs]
+    needs: [proofs, soundness, comparator, conformance, front-end, lint, playground, docs]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
