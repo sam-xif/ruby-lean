@@ -49,11 +49,12 @@ def boot : Except String Machine :=
     -- Filesystem singleton methods (issue #7 step 1): the `File.`/`Dir.`/`IO.`
     -- class methods that actually exist in CRuby and are modeled, installed on
     -- the constants' eigenclasses here exactly like `Exception.exception`, and
-    -- reached by ordinary dispatch — no interpreter special case, and the
-    -- prelude's own `File.basename`/`method_missing` continue to resolve as
-    -- before. Only real CRuby class methods are installed, so an unknown call
-    -- still reaches the prelude's `method_missing` and gates rather than
-    -- answering.
+    -- reached by ordinary dispatch — no interpreter special case. The prelude's
+    -- own `File.basename` still resolves first; every other class-side send is a
+    -- lookup miss that `Interp.dispatchMiss` classifies against the generated
+    -- `crubySingletonNames` table, so a real but unmodeled CRuby class method
+    -- (`File.mtime`, `Dir.mkdir`) gates by name and a name no Ruby defines
+    -- (`File.zzz_does_not_exist`) raises CRuby's `NoMethodError`.
     let fsSingleton : List (ObjId × List String) :=
       [ (Boot.fileId, ["read", "write", "exist?", "file?", "directory?", "size"]),
         (Boot.dirId, ["exist?"]),

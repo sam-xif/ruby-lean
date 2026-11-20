@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_by": "Jiro (agent), 2026-11-15 — `Integer#round`/`#truncate` step away from zero on a negative receiver",
+  "filed_by": "hand, issue #108",
+  "arm": "probe",
+  "case_id": "integer-round-negative-count",
+  "first_reconciled": "2026-11-15, lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: '-195.round(-1) = -210' vs '-195.round(-1) = -200'",
+  "note": "A negative count read the remainder of a floor division (`n / p`, `n % p`) as if it were signed, so a negative receiver stepped one granularity the wrong way: `-195.round(-1)` was -210, `-204.round(-1)` was -220, `-15.round(-2)` was -200, `-195.truncate(-1)` was -200 and `-5.truncate(-1)` was -10, against CRuby's -200, -200, 0, -190 and 0. Positive receivers and `floor`/`ceil` on both signs happened to agree, which is why the arm looked right. CRuby's four rules each take the magnitude first (`neg ? -x`, then round, then the sign back), so `round` is half away from zero on both signs, `truncate` moves toward zero, and `floor`/`ceil` are the multiple chosen by the receiver's sign; the arm now does the same on `Nat` and answers 0 for `round`/`truncate` when the granularity has more digits than the receiver, as CRuby's `int_round_zero_p` does. Exact program agrees with CRuby 4.0.5."
+}

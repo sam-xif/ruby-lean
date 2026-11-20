@@ -1,4 +1,5 @@
 import RubyCore.Builtins.Complex
+import RubyCore.Numeric.FloatMod
 
 /-!
 Integer and Float rules.
@@ -136,9 +137,11 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
           if y == 0 then .err Boot.zeroDivisionErrorId "divided by 0" m
           else .ok (.int (Int.fmod x y)) m)  -- sign follows divisor [V]
         (fun x y =>
-          -- Float modulo: `x - y * (x/y).floor`, sign follows the divisor (Ruby).
-          if y == 0 then .unsupported "Float modulo by zero"
-          else .ok (.flt (x - y * (x / y).floor)) m)
+          -- CRuby's `flodivmod` with only the remainder wanted: `fmod`, then the
+          -- divisor's sign. `x - y * (x/y).floor` is not the same number.
+          match floDivmod x y false with
+          | none => .err Boot.zeroDivisionErrorId "divided by 0" m
+          | some (_, md) => .ok (.flt md) m)
   | "Integer#**" =>
     -- `**` coerces like the rest, so a non-numeric argument that answered
     -- nothing gets the coercion TypeError rather than a gate. Negative Integer
@@ -219,24 +222,40 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
     | _, _ => .unsupported "Integer#to_s on a non-Integer"
   | "Integer#round" | "Integer#ceil" | "Integer#floor" | "Integer#truncate" =>
     -- An Integer rounds to itself for ndigits ≥ 0; a negative count rounds to a
-    -- power of ten, and `round` there is half **up** away from zero (`25.round(-1)`
-    -- is 30, not 20) while `ceil`/`floor` go their own ways [V].
+    -- power of ten. CRuby takes the **magnitude** first — `rb_int_round`,
+    -- `rb_int_floor`, `rb_int_ceil` and `rb_int_truncate` each do `neg ? -x`, round
+    -- the positive value, and put the sign back — so all four rules are one-sided
+    -- in `|n|` and the receiver's sign only selects which multiple of the
+    -- granularity is wanted: `round` is half **away from zero** on both sides
+    -- (`(-25).round(-1)` is -30 and `25.round(-1)` is 30), `truncate` moves toward
+    -- zero (`(-195).truncate(-1)` is -190), and `floor`/`ceil` go their own ways.
+    -- Reading a floor-division remainder as a *signed* one, as this arm used to,
+    -- stepped a negative receiver the wrong way [V].
     match recv, args with
     | .int n, [] => .ok (.int n) m
     | .int n, [.int d] =>
       if d ≥ 0 then .ok (.int n) m
       else
-        let p : Int := 10 ^ (-d).toNat
-        let q := n / p
-        let r := n % p
+        let mag := n.natAbs
         let kind := (bid.drop 8).toString
-        let adj : Int :=
-          if kind == "round" then
-            (if r.natAbs * 2 ≥ p.natAbs then (if n ≥ 0 then 1 else -1) else 0)
-          else if kind == "ceil" then (if r > 0 then 1 else 0)
-          else if kind == "floor" then (if r < 0 then -1 else 0)
-          else 0
-        .ok (.int ((q + adj) * p)) m
+        -- When the granularity has more digits than the receiver, `10 ^ k` is more
+        -- than twice `|n|`, so `round` and `truncate` answer 0 without building it:
+        -- `(-5).round(-100)` is 0, and `(-5).round(-1000000000)` must not try to
+        -- materialize `10 ^ 1000000000`. CRuby stops at the same place, from its
+        -- byte-size estimate in `int_round_zero_p`.
+        if (kind == "round" || kind == "truncate") && (-d).toNat ≥ (toString mag).length + 1 then
+          .ok (.int 0) m
+        else
+          let p := 10 ^ (-d).toNat
+          let towardZero := mag / p * p
+          let awayFromZero := (mag + p - 1) / p * p
+          let halfAwayFromZero := (mag + p / 2) / p * p
+          let out : Nat :=
+            if kind == "round" then halfAwayFromZero
+            else if kind == "truncate" then towardZero
+            else if kind == "floor" then (if n < 0 then awayFromZero else towardZero)
+            else (if n < 0 then towardZero else awayFromZero)  -- ceil
+          .ok (.int (if n < 0 then -(Int.ofNat out) else Int.ofNat out)) m
     | _, _ => .unsupported "Integer#round/ceil/floor arity"
   | "Integer#divmod" =>
     binArg m args fun b =>
@@ -374,12 +393,17 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
         match (match b with | .flt y => some y | .int i => some (Float.ofInt i) | _ => none) with
         | none => coerceFailed (owner bid) m b     -- coerces
         | some c =>
-          if c == 0.0 then .err Boot.zeroDivisionErrorId "divided by 0" m
-          else
-            -- floored division, so the remainder takes the divisor's sign [V]
-            let q := (a / c).floor
-            let (v, m) := allocArr m #[.int (floatTruncBits q), .flt (a - q * c)]
-            .ok v m
+          -- floored division, so the remainder takes the divisor's sign [V]
+          match floDivmod a c true with
+          | none => .err Boot.zeroDivisionErrorId "divided by 0" m
+          -- CRuby converts the quotient with `dbl2ival`, which raises
+          -- `FloatDomainError`; that class is not modeled, so this declines.
+          | some (q, md) =>
+            if q.isNaN || q.isInf then
+              .unsupported "Float#divmod with a NaN or Infinity quotient (FloatDomainError)"
+            else
+              let (v, m) := allocArr m #[.int (floatTruncBits q), .flt md]
+              .ok v m
       | _, _ => .unsupported "Float#divmod"
   | "Float#abs" =>
     match recv with | .flt x => .ok (.flt x.abs) m | _ => .unsupported "abs"
