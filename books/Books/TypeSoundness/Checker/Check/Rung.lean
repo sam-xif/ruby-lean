@@ -2,7 +2,7 @@ import Books.TypeSoundness.Checker.Check.Check
 import Books.TypeSoundness.Checker.Lang.Expr
 
 /-!
-One rung of the **typed** ladder, as `books/scripts/build_corpus.py` leaves it in `books/build/`.
+One rung of the **typed** ladder, as `books/Books/TypeSoundness/scripts/build_corpus.py` leaves it in `books/Books/TypeSoundness/build/`.
 
 This is the replacement for `Checker/Corpus.lean`'s `CorpusEntry`, and the difference is
 the whole reshaping in one field: a rung no longer carries only a program and a target,
@@ -55,7 +55,7 @@ structure Rung where
   falseReason : Option String
   /-- A stage *before* the emitter that is recorded as declining -- today the eleven
       `slice/` rungs whose whole-file sources `difftest/ruby/sig_strip.rb` cannot strip.
-      Recorded (`books/scripts/record_baseline.py`) so that a **new** upstream failure is red
+      Recorded (`books/Books/TypeSoundness/scripts/record_baseline.py`) so that a **new** upstream failure is red
       while a known one is a number. -/
   knownUpstreamFailure : Option String
 deriving Inhabited

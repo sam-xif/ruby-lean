@@ -84,7 +84,7 @@ evaluation order:
 
 | Directory | Contents |
 |---|---|
-| `Numeric/` | `Float#to_s` (shortest round-trip), the Mersenne Twister behind `Random`, `Rational`, `Complex` |
+| `Numeric/` | `Float#to_s` (shortest round-trip), the `fmod` behind `Float#%` and `Float#divmod`, the Mersenne Twister behind `Random`, `Rational`, `Complex` |
 | `Regex/` | A regular-expression parser and a backtracking matcher |
 | `Generated/` | Tables written by scripts: the prelude as Lean terms (`Prelude.lean`), the names of CRuby's built-in methods (`CRubyNames.lean`), Unicode character classes (`Unicode.lean`). `make gen` regenerates them and `make gen-check` fails if one is stale |
 | `Sorbet/` | Reads `sig` declarations out of a program without running it (`rubycore --sigs`, `--fragment`) |

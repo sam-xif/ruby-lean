@@ -18,6 +18,17 @@ requires_rubycore = pytest.mark.skipif(
     reason="Lean rubycore binary not built",
 )
 
+# A `sig`-annotated method in a class body, the declaration a displacing
+# `define_method` below it would replace.
+SIG_ANNOTATED_F = (
+    "class C\n  extend T::Sig\n"
+    "  sig { params(x: Integer).returns(String) }\n  def f(x)\n    x.to_s\n  end\n"
+)
+SIG_ANNOTATED_SELF_F = (
+    "class C\n  extend T::Sig\n"
+    "  sig { params(x: Integer).returns(String) }\n  def self.f(x)\n    x.to_s\n  end\n"
+)
+
 
 def test_runtime_kind_vocabulary():
     assert runtime_kind(None) == "value"
@@ -80,22 +91,19 @@ def test_no_unsoundness_witness_is_in_the_fragment(tmp_path):
     ever slips in, any theorem stated over it would be false — so this is the
     regression guard that matters most.
 
-    Exclusion has two halves since D10 (`RubyCore/Sorbet/Fragment.lean`): the
-    syntactic fragment refuses removal, dynamic dispatch and unchecked sigs,
-    but *admits* a method redefinition — `define_method` over a declared name
-    is exactly what the sig wrapper itself does — with an obligation left to
-    the checker. So a witness that works by redefinition
-    (`escape-hatches/002.rb`) is in the fragment. It is the one named
-    exception here; every other witness must still be outside, and a new
-    witness landing in the fragment fails this test.
+    D10 (`RubyCore/Sorbet/Fragment.lean`) admits a method *addition* and, with
+    one syntactic exception, a method *redefinition*: a `define_method` over a
+    `sig`-annotated name in the same body displaces that declaration without
+    anything checking the replacement conforms, so the fragment refuses it.
+    Every witness must therefore be outside the fragment, with no exception —
+    a new witness landing in it fails this test.
     """
     from difftest.sorbet_check import run_check
 
     summary = run_check(load_sorbet_corpus(), tmp_path)
     witnesses = set(summary["unsoundness_witnesses"])
     assert witnesses, "corpus lost its witnesses; the guard is now vacuous"
-    by_redefinition = {"escape-hatches/002.rb"}
-    assert witnesses & set(summary["in_fragment"]) <= by_redefinition
+    assert witnesses & set(summary["in_fragment"]) == set()
 
 
 @requires_toolchain
@@ -122,8 +130,63 @@ def test_fragment_checker_classifies_the_hatches():
     for source, expected in [
         ("T.unsafe(nil).foo\n", "T.unsafe"),
         ("def g(x)\n  x\nend\n", "g"),
+        (
+            SIG_ANNOTATED_F + "  define_method(:f) { |x| x.no_such_method }\nend\n",
+            "define_method :f",
+        ),
+        # The explicit-Proc form installs the same name as the block form, so the
+        # match must not require a one-element argument list.
+        (
+            SIG_ANNOTATED_F + "  define_method(:f, proc { |x| x.no_such_method })\nend\n",
+            "define_method :f",
+        ),
+        # Same hazard on the singleton table.
+        (
+            SIG_ANNOTATED_SELF_F
+            + "  define_singleton_method(:f, proc { |x| x.no_such_method })\nend\n",
+            "define_singleton_method :f",
+        ),
+        # `attr_*` declares the names it generates, so replacing one is the same
+        # displacing redefinition. The writer an accessor generates is `name=`.
+        (
+            (
+                "class C\n  extend T::Sig\n  sig { returns(String) }\n"
+                "  attr_reader :name\n  define_method(:name) { 1 }\nend\n"
+            ),
+            "define_method :name",
+        ),
+        (
+            (
+                "class C\n  extend T::Sig\n  sig { returns(String) }\n"
+                "  attr_accessor :name\n  define_method(:name=) { |v| v }\nend\n"
+            ),
+            "define_method :name=",
+        ),
     ]:
         r = fc.check('# typed: true\nrequire "sorbet-runtime"\n' + source)
         assert r is not None
         assert not r.in_fragment
         assert expected in [v["what"] for v in r.violations], r.violations
+
+
+@requires_rubycore
+def test_fragment_checker_admits_a_non_displacing_define_method():
+    """D10 still admits a redefinition the declarations cannot see.
+
+    The exclusion is narrow on purpose: only a literal `define_method` over a
+    name a `sig` in the *same* body declares is refused. A `define_method`
+    installing a name nothing annotated, one whose name is computed rather than
+    literal, and one that displaces a `def` with no `sig` (outside the fragment
+    for its own reason) stay admitted — refusing them would exclude ordinary
+    Ruby without buying any soundness.
+    """
+    from difftest.sorbet import FragmentChecker
+
+    fc = FragmentChecker()
+    for source in [
+        SIG_ANNOTATED_F + "  define_method(:g) { |x| x }\nend\n",
+        SIG_ANNOTATED_F + "  name = :f\n  define_method(name) { |x| x }\nend\n",
+    ]:
+        r = fc.check('# typed: true\nrequire "sorbet-runtime"\n' + source)
+        assert r is not None
+        assert r.in_fragment, (source, r.violations)
