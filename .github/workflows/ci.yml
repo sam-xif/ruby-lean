@@ -1,12 +1,16 @@
-# CI runs `make check`, split across five jobs so they run in parallel, and a
-# sixth, `CI`, that passes only if all five did.
+# CI runs `make check`, split across seven jobs so they run in parallel, and an
+# eighth, `CI`, that passes only if all seven did.
 #
 # Every job runs on every pull request and every push to main, and every step
 # blocks: there is no report-only step and no path filter. Each step is a `make`
 # target, so a local `make check` and a CI run mean the same thing.
 #
 #   proofs        the model builds; every proof book builds, the checker included; the
-#                 axiom audits; the soundness check over the corpus; the comparator
+#                 axiom audits of the model's metatheory
+#   soundness     the checker's soundness theorem and its controls; the checker over the
+#                 corpus (after proofs, from its build)
+#   comparator    the soundness theorem re-checked by leanprover/comparator (after
+#                 proofs, from its build)
 #   conformance   the model against CRuby, and the differential tester's own tests
 #   front-end     the desugarer against CRuby; the desugarer's and the emitter's unit tests
 #   lint          formatting and lint over the Python, the Ruby tooling, the shell scripts
@@ -38,7 +42,7 @@ env:
 
 jobs:
   proofs:
-    name: proofs (build, every book, axioms, soundness, comparator)
+    name: proofs (build, every book, axioms)
     runs-on: ubuntu-latest
     timeout-minutes: 150 # a cold build of the books is about half an hour
     steps:
@@ -52,9 +56,11 @@ jobs:
           use-github-cache: false # lean-action saves before anything is built
 
       # One cache holds both Lake build directories: the model's (ruby-lean/.lake)
-      # and the books' (books/.lake, which includes the fetched comparator). The
-      # key names the exact sources; any older build for the same toolchain is
-      # restored when there is no exact match, and Lake rebuilds only what changed.
+      # and the books' (books/.lake). The comparator, which run-comparator.sh
+      # fetches into books/.lake/comparator, is left out: the comparator job
+      # caches it. The key names the exact sources; any older build for the same
+      # toolchain is restored when there is no exact match, and Lake rebuilds only
+      # what changed.
       - name: Restore the Lean build
         id: lake
         uses: actions/cache/restore@v4
@@ -62,6 +68,7 @@ jobs:
           path: |
             ruby-lean/.lake
             books/.lake
+            !books/.lake/comparator
           key: ${{ runner.os }}-lake-${{ hashFiles('ruby-lean/lean-toolchain') }}-${{ hashFiles('ruby-lean/**/*.lean', 'books/**/*.lean', 'ruby-lean/lakefile.toml', 'books/lakefile.toml', 'books/lake-manifest.json', 'books/**/run-comparator.sh', 'books/**/Comparator/*.patch') }}
           restore-keys: |
             ${{ runner.os }}-lake-${{ hashFiles('ruby-lean/lean-toolchain') }}-
@@ -77,13 +84,12 @@ jobs:
       - run: make gen-check
       - run: make books
       - run: make metatheory
-      - run: make soundness
-      - run: make comparator
 
       # Saved whatever the outcome, so a failed or cancelled run keeps the
       # modules it did build. Only a passing run saves under the exact key; any
       # other saves under a key of its own, which later runs restore by prefix
-      # but never mistake for a complete build.
+      # but never mistake for a complete build. The soundness and comparator jobs
+      # start once this job ends, and restore the exact key saved here.
       - name: Save the Lean build
         if: always() && steps.lake.outcome == 'success' && steps.lake.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -91,7 +97,78 @@ jobs:
           path: |
             ruby-lean/.lake
             books/.lake
+            !books/.lake/comparator
           key: ${{ steps.lake.outputs.cache-primary-key }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
+
+  # The two checks that follow the books build, each on its own runner so they
+  # run at the same time. Both restore the build the proofs job saved, so Lake
+  # finds every module already built.
+  soundness:
+    name: soundness (the soundness theorem, its controls, the checker on the corpus)
+    needs: proofs
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lean (toolchain pinned in ruby-lean/lean-toolchain)
+        uses: leanprover/lean-action@v1
+        with:
+          auto-config: false
+          lake-package-directory: ruby-lean
+          use-github-cache: false # lean-action saves before anything is built
+
+      # The proofs job's cache, restored and never saved. The paths must match
+      # the proofs job's for the cache to match.
+      - name: Restore the Lean build
+        uses: actions/cache/restore@v4
+        with: *lake-cache
+
+      - uses: astral-sh/setup-uv@v5
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+
+      - run: make deps
+      - run: make soundness
+
+  comparator:
+    name: comparator (the soundness theorem, re-checked by leanprover/comparator)
+    needs: proofs
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lean (toolchain pinned in ruby-lean/lean-toolchain)
+        uses: leanprover/lean-action@v1
+        with:
+          auto-config: false
+          lake-package-directory: ruby-lean
+          use-github-cache: false # lean-action saves before anything is built
+
+      # The proofs job's cache, restored and never saved. The paths must match
+      # the proofs job's for the cache to match.
+      - name: Restore the Lean build
+        uses: actions/cache/restore@v4
+        with: *lake-cache
+
+      # The comparator and lean4export, fetched at the commit run-comparator.sh
+      # pins and built on the toolchain. Nothing else builds them, so this job
+      # keeps them in a cache of their own.
+      - name: Cache the comparator build
+        uses: actions/cache@v4
+        with:
+          path: books/.lake/comparator
+          key: ${{ runner.os }}-comparator-${{ hashFiles('books/lean-toolchain', 'books/**/run-comparator.sh', 'books/**/Comparator/*.patch') }}
+
+      # Ruby, for the generated prelude: make regenerates it when the checkout
+      # leaves its inputs newer than it. The generators need no gems.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+
+      - run: make comparator
 
   conformance:
     name: conformance (the model against CRuby)
@@ -192,7 +269,7 @@ jobs:
   # required check waiting.
   ci:
     name: CI
-    needs: [proofs, conformance, front-end, lint, docs]
+    needs: [proofs, soundness, comparator, conformance, front-end, lint, docs]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
