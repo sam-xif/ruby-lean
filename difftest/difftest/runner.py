@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 
 from .compare import CaseResult, Verdict, compare
 from .control import CRubyRunner, HarnessError
@@ -59,11 +60,21 @@ def run_campaign(
     control: CRubyRunner,
     sut: SystemUnderTest,
     on_result=None,
+    jobs: int = 1,
 ) -> list[CaseResult]:
+    """Run every case; return the results in the order of `cases`.
+
+    With `jobs` > 1, up to that many cases run at once, on threads. A case's work
+    is all in subprocesses, each with its own temporary file and working
+    directory, so cases share nothing. `on_result` is still called on this
+    thread, once per case, in the order of `cases`, so a report reads the same
+    however many cases ran at once."""
+    if jobs < 1:
+        raise ValueError(f"jobs must be at least 1, got {jobs}")
     results = []
-    for case in cases:
-        result = run_case(case, control, sut)
-        results.append(result)
-        if on_result:
-            on_result(result)
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        for result in pool.map(lambda case: run_case(case, control, sut), cases):
+            results.append(result)
+            if on_result:
+                on_result(result)
     return results

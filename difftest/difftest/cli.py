@@ -190,19 +190,19 @@ def cmd_run(args) -> int:
         if args.n is not None and args.n < total:
             picked = random.Random(args.seed).sample(cases, args.n)
             cases = sorted(picked, key=lambda c: c.id)
-        run_campaign(cases, control, sut, on_result=reporter.record)
+        run_campaign(cases, control, sut, jobs=args.jobs, on_result=reporter.record)
         extra = {"tier0": {"available": total, "ran": len(cases), "seed": args.seed}}
     elif args.tier == "slice":
         # The Homebrew version + vulnerability slice corpus (W4a). Runs whole:
         # it is the population the initiative exists to serve, so sampling it
         # would answer a different question.
         cases = load_slice_corpus(Path(args.corpus) if args.corpus else None)
-        run_campaign(cases, control, sut, on_result=reporter.record)
+        run_campaign(cases, control, sut, jobs=args.jobs, on_result=reporter.record)
         extra = {"slice": {"ran": len(cases), "corpus": "homebrew-slice"}}
     elif args.tier == "domain":
         # W4d: generated *inputs* rather than generated programs. Runs whole.
         cases = load_domain_corpus(Path(args.corpus) if args.corpus else None)
-        run_campaign(cases, control, sut, on_result=reporter.record)
+        run_campaign(cases, control, sut, jobs=args.jobs, on_result=reporter.record)
         total_inputs = sum(c.provenance.get("inputs", 0) for c in cases)
         extra = {"domain": {"programs": len(cases), "inputs": total_inputs}}
     elif args.tier == "advisory":
@@ -211,7 +211,7 @@ def cmd_run(args) -> int:
         # verdicts — `difftest gates` — because a gate here is a coverage
         # measurement, not a pass (`nontrivial-target.md` §3.3).
         cases = load_advisory_corpus(Path(args.corpus) if args.corpus else None)
-        run_campaign(cases, control, sut, on_result=reporter.record)
+        run_campaign(cases, control, sut, jobs=args.jobs, on_result=reporter.record)
         total_inputs = sum(c.provenance.get("inputs", 0) for c in cases)
         extra = {"advisory": {"programs": len(cases), "inputs": total_inputs}}
     elif args.tier == "4":
@@ -219,7 +219,7 @@ def cmd_run(args) -> int:
         # is hand-authored to probe a specific feature, so sampling it would
         # lose the point rather than save time.
         cases = load_sorbet_corpus(Path(args.corpus) if args.corpus else None)
-        run_campaign(cases, control, sut, on_result=reporter.record)
+        run_campaign(cases, control, sut, jobs=args.jobs, on_result=reporter.record)
         extra = {"tier4": {"ran": len(cases), "corpus": "sorbet"}}
     elif args.tier == "regressions":
         # Minimized reproducers of past disagreements, each checked against the
@@ -235,7 +235,7 @@ def cmd_run(args) -> int:
             reporter.record(r)
             results.append(r)
 
-        run_campaign(cases, control, sut, on_result=_record)
+        run_campaign(cases, control, sut, jobs=args.jobs, on_result=_record)
         outcomes = {}
         for r in results:
             status = r.case.provenance.get("status", REGRESSION_DEFAULT_STATUS)
@@ -450,7 +450,7 @@ def cmd_replay(args) -> int:
 
     out_dir = _out_dir(args.out, f"replay-{sut.name}")
     reporter = Reporter(out_dir)
-    run_campaign(cases, control, sut, on_result=reporter.record)
+    run_campaign(cases, control, sut, jobs=args.jobs, on_result=reporter.record)
     summary = reporter.finalize(sut.name)
     _print_summary(summary, out_dir)
     return 1 if summary["verdicts"].get("disagree") else 0
@@ -467,6 +467,13 @@ def main(argv=None) -> int:
         p.add_argument("--inject-bug", action="store_true", help="desugar SUT: enable DESUGAR_BUG")
         p.add_argument("--timeout", type=float, default=10.0)
         p.add_argument("--out", help="report directory (default: reports/<timestamp>-<label>)")
+        p.add_argument(
+            "--jobs",
+            type=int,
+            default=os.cpu_count() or 1,
+            help="cases run at once over a corpus (default: one per CPU); "
+            "a generative or --mix campaign runs one at a time",
+        )
 
     p_run = sub.add_parser("run", help="run a generation-tier or mixed campaign")
     # tier "1.5" is the tier-1 generator with eval-order probes on (no per-tier
