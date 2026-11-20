@@ -1291,7 +1291,17 @@ module Kernel
     raise TypeError, "can't convert " + __conv_desc(arg) + " into Float"
   end
 
-  # `format("%%%02X", n)` and the handful of directives the slice uses.
+  # The `printf` directives this model needs, with CRuby's flags: `-`
+  # left-justifies, `0` zero-pads *after* the sign and the `#` prefix, `+` and
+  # space give a non-negative number its sign, and `#` adds the base prefix. A
+  # numeric directive converts its argument through `Kernel#Integer`, which is
+  # `rb_Integer` — so `%d` of a String parses it and of anything else
+  # uncoercible raises, instead of answering `0` [V].
+  #
+  # A bare `%%` is the only form CRuby accepts; a flag or width on it is
+  # `invalid format character - %`. A negative number in base 2, 8 or 16 is
+  # written in two's-complement (`"0x..f01"`) unless a sign flag asks for
+  # `-0xff`.
   def format(fmt, *args)
     out = ""
     i = 0
@@ -1318,24 +1328,100 @@ module Kernel
       conv = fmt[j]
       i = j + 1
       if conv == "%"
+        unless flags.empty? && width.empty?
+          raise ArgumentError, "invalid format character - %"
+        end
         out += "%"
         next
       end
       v = args[ai]
       ai += 1
-      body = case conv
-             when "d", "i" then v.to_i.to_s
-             when "s" then v.to_s
-             when "X" then __to_base(v.to_i, 16).upcase
-             when "x" then __to_base(v.to_i, 16)
-             when "o" then __to_base(v.to_i, 8)
-             when "b" then __to_base(v.to_i, 2)
+      w = width.empty? ? 0 : width.to_i
+      left = flags.include?("-")
+      zero = flags.include?("0") && !left
+      if conv == "s"
+        # `%s` renders with `to_s`; none of the other flags apply to it.
+        body = v.to_s
+        pad = w - body.length
+        pad = 0 if pad.negative?
+        out += left ? body + " " * pad : " " * pad + body
+        next
+      end
+      base = case conv
+             when "d", "i" then 10
+             when "x", "X" then 16
+             when "o" then 8
+             when "b" then 2
              else return __unsupported__("format directive %" + conv)
              end
-      w = width.empty? ? 0 : width.to_i
-      pad = flags.include?("0") ? "0" : " "
-      body = pad * (w - body.length) + body if body.length < w
-      out += body
+      n = Integer(v)
+      alt = flags.include?("#") && base != 10
+      signed = flags.include?("+") || flags.include?(" ")
+      prefix = ""
+      if alt && !n.zero?
+        prefix = case conv
+                 when "x" then "0x"
+                 when "X" then "0X"
+                 when "b" then "0b"
+                 else "0"
+                 end
+      end
+      if n.negative? && base != 10 && !signed
+        # A negative number in base 2, 8 or 16 is **two's complement**: CRuby
+        # writes the infinite leading run of `b-1` digits as `..`, so -255 in
+        # hex is `..f01` where `-ff` would read as a different number [V]. Its
+        # digit count is the smallest `d` whose top digit is `b-1`, widened to
+        # fill what the `0` flag asks for. A sign flag is what turns this form
+        # off, and then the number is the ordinary `-0xff`. Octal writes no `#`
+        # prefix here: its `0` would be one of the complement digits.
+        prefix = "" if conv == "o"
+        mag = -n
+        e = 0
+        pw = 1
+        while pw < mag
+          pw *= base
+          e += 1
+        end
+        d = e + 1
+        need = w - prefix.length - 2
+        d = need if zero && need > d
+        pw = 1
+        k = 0
+        while k < d
+          pw *= base
+          k += 1
+        end
+        digits = __to_base(pw + n, base)
+        digits = digits.upcase if conv == "X"
+        digits = "0" * (d - digits.length) + digits if digits.length < d
+        core = prefix + ".." + digits
+        pad = w - core.length
+        pad = 0 if pad.negative?
+        out += left ? core + " " * pad : " " * pad + core
+        next
+      end
+
+      sign = ""
+      if n.negative?
+        sign = "-"
+      elsif flags.include?("+")
+        sign = "+"
+      elsif flags.include?(" ")
+        sign = " "
+      end
+      digits = __to_base(n.negative? ? -n : n, base)
+      digits = digits.upcase if conv == "X"
+      core = sign + prefix + digits
+      pad = w - core.length
+      pad = 0 if pad.negative?
+      if left
+        core += " " * pad
+      elsif zero
+        core = sign + prefix + "0" * pad + digits
+      else
+        core = " " * pad + core
+      end
+      out += core
     end
     out
   end

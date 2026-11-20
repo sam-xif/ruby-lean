@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_by": "Jiro (agent), 2026-11-20 — `Kernel#format` honours the flags and converts numerics with `rb_Integer`",
+  "filed_by": "hand, from a probe of `Kernel#format` against CRuby 4.0.5",
+  "arm": "probe",
+  "case_id": "format-flags",
+  "first_reconciled": "2026-11-20, lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 1151 of 1886 lines differed; e.g. '%-4d 0' was \"   0\" vs \"0   \", '%+d 42' was \"42\" vs \"+42\", '%05d -5' was \"000-5\" vs \"-0005\", '%#x 255' was \"ff\" vs \"0xff\", '%x -255' was \"-ff\" vs \"..f01\", and '%d \"abc\"' answered 0 where CRuby raises ArgumentError",
+  "note": "`format` parsed the flag letters and then used only `0`: `-`, `+`, space and `#` were dropped, zero padding went on the left of the sign instead of after it, and a numeric directive read the argument with `to_i`, which answered 0 for a String, nil or Array where CRuby's `rb_Integer` parses or raises. A negative number in base 2/8/16 was also rendered as `-ff` where CRuby writes the two's complement `..f01`, with no `..` at all. The arm now reads every flag, pads after the sign and prefix, converts with `Kernel#Integer` (the model's `rb_Integer`), and writes the two's-complement form for a negative non-decimal base; `%5%` is CRuby's ArgumentError. Exact program agrees with CRuby 4.0.5."
+}
