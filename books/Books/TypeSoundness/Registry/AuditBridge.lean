@@ -1,6 +1,7 @@
 import Books.TypeSoundness.Registry.Registry
 import Books.TypeSoundness.Checker.Audit.Erase
 import Books.TypeSoundness.Checker.Audit.Permissions
+import Books.TypeSoundness.Checker.Audit.Derive
 
 /-! Constructor-derived certification of traced judgments. Only enabled clinks
 are referenced; the permission index accounts for every recursive and uniform

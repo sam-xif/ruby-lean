@@ -3,7 +3,11 @@ import Lean
 
 /-! Derive rule-indexed judgments from the authoring constructors. Each conclusion
 records its own rule and every premise trace, including uniform callback premises.
-The generated declarations are kernel checked against their constructor types. -/
+
+These are the functions only. `Generate.lean` uses them to write the traced
+judgments out as source (`Judgments.lean`), and `JudgmentsCheck.lean` uses them to
+check that file. Nothing the checker's executable imports depends on this module,
+because it needs Lean's metaprogramming library. -/
 open Lean Meta Elab Command
 namespace Checker.Audit
 
@@ -16,6 +20,15 @@ def families : List Name :=
    ``Checker.DMethodFlowSeq]
 
 def auditName (n : Name) : Name := `Checker.Audit ++ n.replacePrefix `Checker .anonymous
+
+/-- The authoring judgment a traced one was derived from. -/
+def rawName (n : Name) : Name := n.replacePrefix `Checker.Audit `Checker
+
+/-- Make the first `n` binders of a `∀` implicit. -/
+def implicitBinders : Nat → Lean.Expr → Lean.Expr
+  | 0, e => e
+  | n+1, .forallE nm dom body _ => .forallE nm dom (implicitBinders n body) .implicit
+  | _, e => e
 
 def ruleName (n : Name) : String :=
   if n.getPrefix == ``Checker.DJudge then n.getString!
@@ -55,18 +68,4 @@ partial def traceConstructor (ty : Lean.Expr) (rule : String) : MetaM Lean.Expr 
       return rewriteJudgments (e.instantiateRev subst) used
   visit ty #[] #[]
 
-elab "derive_audited_judgments" : command => do
-  let groups := [[``Checker.InitJudge, ``Checker.InitJudgeSeq, ``Checker.InitJudgeAll],
-    families.filter fun n => ![``Checker.InitJudge, ``Checker.InitJudgeSeq, ``Checker.InitJudgeAll].contains n]
-  for group in groups do
-    let types ← liftTermElabM <| group.mapM fun n => do
-      let info ← getConstInfoInduct n
-      let ty := mkForall `used .implicit traceTy info.type
-      let ctors ← info.ctors.mapM fun c => do
-        let ci ← getConstInfoCtor c
-        return { name := auditName c, type := ← traceConstructor ci.type (ruleName c) : Constructor }
-      return { name := auditName n, type := ty, ctors := ctors : InductiveType }
-    liftCoreM <| addAndCompile (.inductDecl [] 0 types false)
-
-derive_audited_judgments
 end Checker.Audit

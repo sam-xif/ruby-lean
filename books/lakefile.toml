@@ -64,3 +64,11 @@ name = "LoopSum"
 srcDir = "."
 roots = ["Books"]
 globs = ["Books.LoopSum.+"]
+
+# Writes `Books/TypeSoundness/Checker/Audit/Judgments.lean`, the checker's traced
+# judgments as source, so that the checker's executable need not import Lean's
+# metaprogramming library. `make gen` runs it; `make gen-check` fails if the file is stale.
+[[lean_exe]]
+name = "gen-audit-judgments"
+root = "Books.TypeSoundness.Checker.Audit.Generate"
+supportInterpreter = true

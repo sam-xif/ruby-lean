@@ -34,7 +34,7 @@ does, and `make soundness` runs it first.
 | `Judgment/` | The typing rules, as inductive judgments: `DJudge` and its companions |
 | `Guards/` | The decidable side conditions the rules use |
 | `Check/` | The executable checker: `Deriv` and `validateD` |
-| `Audit/` | Generated from `Check/` by `scripts/generate_audited_checker.py`: the same checker, also returning which rules a derivation used. Do not edit |
+| `Audit/` | The checker that runs: the same checker as `Check/`, also returning which rules a derivation used. Mostly generated, by `make gen`; do not edit the generated files. `Judgments.lean` (the traced judgments) is written by `Generate.lean` from the metaprogram in `Derive.lean`, and `JudgmentsCheck.lean` fails the build if it differs from what the metaprogram derives. The checker's other modules are generated from `Check/` by `scripts/generate_audited_checker.py` |
 | `Controls/` | Derivations the checker must refuse. Built with everything else, so a control that stops holding fails the build |
 | `ClinkPolicy.lean` | The list of enabled typing rules. `validateD` refuses a derivation that uses any other |
 
@@ -45,6 +45,15 @@ A typing rule says nothing here about why it is sound. That is a proof about the
 model's `stepFn`, and it is in [`../Rules/`](../Rules/).
 [Adding a typing rule](../../../../docs/contributing.md#adding-a-typing-rule)
 describes the steps.
+
+## Why the traced judgments are written out
+
+Deriving the traced judgments needs Lean's metaprogramming library. An
+executable whose imports reach that library links all of Lean: `validate-one`
+would be a hundred megabytes, and could not be compiled for the browser. So the
+derivation is run once, by `make gen`, and its result is ordinary source that
+the checker imports. `scripts/check-isolation.sh` fails if the executable's
+imports ever reach `import Lean` again.
 
 ## The scripts in front of it
 
