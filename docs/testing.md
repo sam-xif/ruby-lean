@@ -32,6 +32,7 @@ build.
 | `make conformance` | Hand-written adversarial programs for blocks and jumps, dispatch, evaluation order, exceptions, keyword arguments, metaprogramming and namespaces (`difftest/corpus/tier3/`) | Any disagrees |
 | `make soundness` | The 268 typed programs of `books/Books/TypeSoundness/corpus/` | Any disagrees |
 | `make feature-loading` | `require`: scope, caching, re-entry and retry after a failed load | The model and CRuby differ |
+| `make playground-check` | One corpus program through every call the browser playground makes, with the model, the checker and CRuby compiled to WebAssembly | A call fails, or the model and CRuby disagree |
 | `make book-checks` | Each program book's program, on a grid of inputs | CRuby, the model and the theorem do not all agree |
 | `make difftest-test` | The differential tester's own unit tests, including the Sorbet probes | Any test fails, is skipped because a tool is missing, or coverage falls below the recorded baseline |
 | `make desugar-test` | Every program in `desugar/corpus/` | The desugared program behaves differently from the original under CRuby |

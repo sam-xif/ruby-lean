@@ -1,4 +1,4 @@
-import Books.TypeSoundness.Checker.Audit.Derive
+import Books.TypeSoundness.Checker.Audit.Judgments
 
 namespace Checker.Audit
 

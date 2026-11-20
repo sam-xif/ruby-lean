@@ -57,6 +57,20 @@ else
   bad "python3" "install Python 3.12 or newer"
 fi
 
+# 6. Node and wasmtime — the browser playground. `make playground-check` builds
+#    the WebAssembly modules (the build runs wasmtime on the Ruby module) and
+#    checks the page's backend in Node. The build fetches its own wasi-sdk.
+if have node; then
+  say "node" "$(node --version)"
+else
+  bad "node" "brew install node   (22 or newer)"
+fi
+if have wasmtime; then
+  say "wasmtime" "$(wasmtime --version)"
+else
+  bad "wasmtime" "brew install wasmtime   (or: curl https://wasmtime.dev/install.sh -sSf | bash)"
+fi
+
 echo
 if [[ $ok == 0 ]]; then
   echo "All prerequisites present. Next: make check"

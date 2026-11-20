@@ -18,6 +18,8 @@ books/Books/TypeSoundness/build/
 difftest/reports/
 # The heap the prelude boot produces, as Lean terms: written by `make` (genbootedheap)
 ruby-lean/RubyCore/Generated/BootedHeap.lean
+# The checker's traced judgments, as source: written by `make` (gen-audit-judgments)
+books/Books/TypeSoundness/Checker/Audit/Judgments.lean
 # playground/build.sh output: the assembled static site and its archive.
 playground/dist/
 playground/dist.tar.gz

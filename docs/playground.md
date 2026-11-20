@@ -68,10 +68,12 @@ corpus program the page shows the recorded verdict, and once you edit it shows
 ## Testing it
 
 ```sh
-cd playground && ./build.sh && node --experimental-wasm-exnref check.mjs
+make playground-check
 ```
 
-This runs every backend call against the real WebAssembly modules in `dist/`.
+This builds the three WebAssembly modules and `dist/`, then runs every backend
+call against the real modules in `dist/`. `make check` and continuous
+integration run it.
 It does not render the page, so it checks the pipeline and not the layout.
 
 ## Files
