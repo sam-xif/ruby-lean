@@ -27,6 +27,30 @@ theorem slow_computes_power : ComputesPower Slow.program :=
 theorem fast_computes_power : ComputesPower Fast.program :=
   Fast.computes_power.computesPower
 
+/-- `fast_power.rb` written out: for every base `b` and exponent `n`, run the way
+    `rubycore` runs it, the program terminates normally, prints `b ** n` and has
+    the value `b ** n`. This is `fast_computes_power` with the specification
+    unfolded. -/
+theorem fast_power_correct (b : Int) (n : Nat) :
+    ∃ v m', Runs (Fast.program b n) v m' ∧
+      v = .int (b ^ n) ∧ m'.out = toString (b ^ n) ++ "\n" :=
+  fast_computes_power b n
+
+/-- The same, read as a statement about the interpreter at any fuel: the run is
+    either still going, or it has returned `b ** n` having printed it. It never
+    raises, never leaves the modeled fragment, and never gets stuck. -/
+theorem fast_power_run (b : Int) (n : Nat) (fuel : Nat) :
+    ∃ m₀, Prelude.initWithPrelude (Fast.program b n) = .ok m₀ ∧
+      ((∃ m, Interp.run fuel m₀ = .outOfFuel m) ∨
+       ∃ m, Interp.run fuel m₀ = .value (.int (b ^ n)) m ∧
+         m.out = toString (b ^ n) ++ "\n") := by
+  obtain ⟨v, m', ⟨m₀, hboot, hret⟩, hv, hout⟩ := fast_power_correct b n
+  subst hv
+  refine ⟨m₀, hboot, ?_⟩
+  rcases hret.run_eq fuel with h | h
+  · exact .inr ⟨m', h, hout⟩
+  · exact .inl h
+
 /-! ## The number of binary digits -/
 
 /-- The number of binary digits of `k`: `0` for `0`, otherwise `⌊log₂ k⌋ + 1`. -/
