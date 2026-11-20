@@ -38,6 +38,14 @@ for the `.rb` beside it, whose literals are base 3 and exponent 13. -/
 #guard_msgs in
 #print axioms Fast.computes_power
 
+/-- info: 'Books.FastPower.fast_power_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms fast_power_correct
+
+/-- info: 'Books.FastPower.fast_power_run' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms fast_power_run
+
 /-- info: 'Books.FastPower.fast_is_faster' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms fast_is_faster
