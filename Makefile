@@ -150,11 +150,22 @@ $(BOOTED_LEAN): $(BOOTED_SRC)
 	cd $(PKG) && $(GENBOOTED) > RubyCore/Generated/BootedHeap.lean.tmp
 	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
 
-# The type checker's traced judgments, written out as source by a metaprogram so
-# that the checker's executable does not link Lean's metaprogramming library.
-JUDGMENTS    := Books/TypeSoundness/Checker/Audit/Judgments.lean
-GENJUDGMENTS := $(LAKE) build --log-level=error gen-audit-judgments >&2 && \
-                $(LAKE) env .lake/build/bin/gen-audit-judgments
+# The type checker's traced judgments, written out as source by a metaprogram
+# (Checker/Audit/Generate.lean) so that the checker's executable does not link
+# Lean's metaprogramming library. A build output, not committed: the checker
+# imports it, so every target that builds the checker or the books depends on
+# it. Its input is the authoring judgments and the metaprogram.
+JUDGMENTS      := Books/TypeSoundness/Checker/Audit/Judgments.lean
+JUDGMENTS_LEAN := books/$(JUDGMENTS)
+JUDGMENTS_SRC  := $(shell find books/Books/TypeSoundness/Checker -name '*.lean' ! -path '*/Audit/*') \
+                  books/Books/TypeSoundness/Checker/Audit/Derive.lean \
+                  books/Books/TypeSoundness/Checker/Audit/Generate.lean
+GENJUDGMENTS   := $(LAKE) build --log-level=error gen-audit-judgments >&2 && \
+                  $(LAKE) env .lake/build/bin/gen-audit-judgments
+
+$(JUDGMENTS_LEAN): $(JUDGMENTS_SRC)
+	cd books && $(GENJUDGMENTS) > $(JUDGMENTS).tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
 
 gen: ## Regenerate every generated Lean source
 	cd $(PKG) && $(RUBY) scripts/gen_prelude.rb      > RubyCore/Generated/PreludeJson.lean
@@ -178,10 +189,8 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	else echo "  STALE  RubyCore/Generated/Prelude.lean  (run: make gen)"; \
 	  diff $(PRELUDE_LEAN) $(STAMP)/Prelude.lean | head -40 | cut -c1-600; fail=1; fi; \
 	python3 books/Books/TypeSoundness/scripts/generate_audited_checker.py --check || fail=1; \
-	(cd books && $(GENJUDGMENTS)) > $(STAMP)/Judgments.lean; \
-	if cmp -s $(STAMP)/Judgments.lean books/$(JUDGMENTS); then echo "  fresh  $(JUDGMENTS)"; \
-	else echo "  STALE  $(JUDGMENTS)  (run: make gen)"; \
-	  diff books/$(JUDGMENTS) $(STAMP)/Judgments.lean | head -40 | cut -c1-600; fail=1; fi; \
+	if git ls-files --error-unmatch $(JUDGMENTS_LEAN) >/dev/null 2>&1; then \
+	  echo "  generated, so must not be committed (git rm --cached): $(JUDGMENTS_LEAN)"; fail=1; fi; \
 	exit $$fail
 
 # ── Lean ─────────────────────────────────────────────────────────────────────
@@ -194,7 +203,7 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 
 CHECKER_BIN := books/.lake/build/bin
 
-lean-exes: $(PRELUDE_LEAN) $(BOOTED_LEAN) ## Just the rubycore and validate-one executables
+lean-exes: $(PRELUDE_LEAN) $(BOOTED_LEAN) $(JUDGMENTS_LEAN) ## Just the rubycore and validate-one executables
 	cd $(PKG) && $(LAKE) build --log-level=error rubycore
 	cd books && $(LAKE) build --log-level=error validate-one
 
@@ -213,7 +222,7 @@ books: lean-exes ## Build every proof book: every file under books/Books/
 metatheory: lean-exes ## The model's metatheory: build it, audit its axioms, check the booted heap's assumptions
 	books/Books/Metatheory/scripts/check-metatheory.sh
 
-soundness: $(PRELUDE_LEAN) $(BOOTED_LEAN) $(STAMP)/uv deps ## The checker's soundness theorem, its controls, and the checker on the corpus
+soundness: $(PRELUDE_LEAN) $(BOOTED_LEAN) $(JUDGMENTS_LEAN) $(STAMP)/uv deps ## The checker's soundness theorem, its controls, and the checker on the corpus
 	books/Books/TypeSoundness/scripts/check-soundness.sh
 
 comparator: lean-exes ## Re-check the soundness theorem with leanprover/comparator (fetches and builds it)
@@ -370,7 +379,7 @@ check-not-weakened: ## Fail if the working tree weakens a check relative to BASE
 # ── Cleanup ─────────────────────────────────────────────────────────────────
 
 clean: ## Remove build outputs in the tree (keeps .lake, venvs and caches)
-	rm -rf $(STAMP) site playground/dist playground/dist.tar.gz $(WASM_OUT)/*.wasm books/Books/TypeSoundness/build $(BOOTED_LEAN)
+	rm -rf $(STAMP) site playground/dist playground/dist.tar.gz $(WASM_OUT)/*.wasm books/Books/TypeSoundness/build $(BOOTED_LEAN) $(JUDGMENTS_LEAN)
 
 distclean: clean ## Also remove .lake, the difftest venv, harvested corpora and download caches
 	rm -rf $(PKG)/.lake books/.lake difftest/.venv $(BOOTSTRAP) $(CACHE) $(WASM_CACHE)

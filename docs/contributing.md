@@ -112,6 +112,13 @@ whenever the model has changed. The proof books import it, so build them with
 fresh checkout. `Books/Metatheory/Heap/BootedHeap.lean` proves the file equal to
 the boot.
 
+`books/Books/TypeSoundness/Checker/Audit/Judgments.lean`, the checker's traced
+judgments written out as source, is a build artifact in the same way: `make`
+writes it with `lake exe gen-audit-judgments` before building the checker, and
+`make gen-check` fails if it is ever committed. `JudgmentsCheck.lean` fails the
+build if it differs from what the metaprogram in `Checker/Audit/Derive.lean`
+derives.
+
 ## Adding Ruby to the model
 
 1. **Find what is missing.** `bin/ruby-lean --compare prog.rb` prints why a
