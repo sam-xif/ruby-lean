@@ -27,6 +27,11 @@ Check that everything is found:
 make prereqs
 ```
 
+`make prereqs` and the corpus pipeline resolve Sorbet through one definition,
+`find_sorbet()` in `books/Books/TypeSoundness/scripts/srb_sigs.py`. Set `$SORBET`
+to point at a different binary; a `$SORBET` that is set but not executable is an
+error rather than a fallback to another Sorbet.
+
 ## Build and run
 
 ```sh

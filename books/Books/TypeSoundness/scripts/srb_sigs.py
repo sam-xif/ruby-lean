@@ -29,15 +29,33 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
 
+class SorbetNotFound(RuntimeError):
+    """No Sorbet binary to run, said plainly rather than degraded to a guess."""
+
+
+SORBET_RECIPE = "set $SORBET to an executable file, or install the pinned gem with `make deps`"
+
+
 def find_sorbet() -> str:
-    """The Sorbet binary: `$SORBET` if set, else the one inside the installed
-    `sorbet-static` gem (which RubyGems locates), else `srb` on PATH."""
-    if os.environ.get("SORBET"):
-        return os.environ["SORBET"]
+    """Where Sorbet is: the one definition, shared with `scripts/check-prereqs.sh`.
+
+    `$SORBET` if it names an executable file -- a set-but-unusable `$SORBET` is an
+    error, never a silent fallback to a different Sorbet, because the binary chosen
+    is what every corpus verdict is graded with. Else the `sorbet-static` gem's own
+    binary, which RubyGems locates through `$RUBY`. Else `srb` on `$PATH`.
+    """
+    explicit = os.environ.get("SORBET")
+    if explicit:
+        if os.path.isfile(explicit) and os.access(explicit, os.X_OK):
+            return explicit
+        raise SorbetNotFound(
+            f"$SORBET={explicit} is not an executable file; unset $SORBET to use the installed Sorbet"
+        )
     ruby = os.environ.get("RUBY", "ruby")
     try:
         p = subprocess.run(
@@ -54,11 +72,14 @@ def find_sorbet() -> str:
             timeout=30,
             check=False,
         )
-        if p.returncode == 0 and os.path.exists(p.stdout):
+        if p.returncode == 0 and os.path.isfile(p.stdout) and os.access(p.stdout, os.X_OK):
             return p.stdout
     except (OSError, subprocess.SubprocessError):
         pass
-    return "srb"
+    found = shutil.which("srb")
+    if found:
+        return found
+    raise SorbetNotFound(f"no Sorbet binary; {SORBET_RECIPE}")
 
 
 # --------------------------------------------------------------------------
@@ -304,12 +325,28 @@ def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("file")
+    ap.add_argument("file", nargs="?", help="the Sorbet-annotated Ruby file")
     ap.add_argument("--untyped", choices=["exclude", "any"], default="exclude")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument(
+        "--print-sorbet",
+        action="store_true",
+        help="print the binary find_sorbet() resolves and exit (scripts/check-prereqs.sh asks here)",
+    )
     args = ap.parse_args(argv)
 
-    binary = find_sorbet()
+    try:
+        binary = find_sorbet()
+    except SorbetNotFound as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    if args.print_sorbet:
+        print(binary)
+        return 0
+    if not args.file:
+        ap.error("a file is required unless --print-sorbet is given")
+    if not args.quiet:
+        print(f"  sorbet: {binary}", file=sys.stderr)
     # Two passes: the symbol table (which srb prints even for a file with type errors),
     # and a plain check whose diagnostics are the rung's `expect_sorbet` answer.
     table = run(args.file, binary, ["-p", "symbol-table"])

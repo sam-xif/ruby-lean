@@ -70,7 +70,7 @@ Everything the checker is measured with is in this directory too.
 | `scripts/run-comparator.sh` | What `make comparator` runs |
 | `Report/` | The corpus report that `make soundness` prints, and its executable (`corpus-report`) |
 | `Probes/AxiomAudit.lean` | Prints the axioms of the supporting lemmas and of a few worked end-to-end theorems; the check fails on any outside Lean's three |
-| `build/` | Output of `build_corpus.py`. Not committed |
+| `build/` | Output of `build_corpus.py`. Not committed; each `*.sigs.json` names the Sorbet binary that read its signatures |
 
 `Conformance/` is grouped by the part of the machine state a lemma is about:
 

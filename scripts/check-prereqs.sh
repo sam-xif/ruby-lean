@@ -30,17 +30,21 @@ else
   bad "ruby" "brew install ruby   (then put it on PATH, or set \$RUBY)"
 fi
 
-# 3. Sorbet — reads the signatures of a typed program. The pipeline uses the
-#    binary inside the `sorbet-static` gem, so the gem is enough; `srb` need not
-#    be on PATH. $SORBET overrides it.
-SORBET_BIN="${SORBET:-}"
-if [[ -z "$SORBET_BIN" && -n "$RUBY_BIN" ]]; then
-  SORBET_BIN="$("$RUBY_BIN" -e 'print File.join(Gem::Specification.find_by_name("sorbet-static").full_gem_path, "libexec", "sorbet")' 2>/dev/null || true)"
+# 3. Sorbet — reads the signatures of a typed program. Its location is defined
+#    once, by `find_sorbet()` in the corpus pipeline's `srb_sigs.py`, which this
+#    script asks rather than re-implements: two copies of "where is Sorbet" are
+#    two ways to grade with the wrong one. The gem's binary is enough, so `srb`
+#    need not be on PATH; `$SORBET` overrides it and must be executable.
+SORBET_HELPER="books/Books/TypeSoundness/scripts/srb_sigs.py"
+if [[ -n "$RUBY_BIN" ]]; then
+  export RUBY="$RUBY_BIN"
 fi
-if [[ -n "$SORBET_BIN" && -x "$SORBET_BIN" ]] || have srb; then
-  say "sorbet" "${SORBET_BIN:-$(command -v srb)}"
+if ! have python3; then
+  bad "sorbet" "cannot locate it without python3 (checked below)"
+elif SORBET_BIN="$(python3 "$SORBET_HELPER" --print-sorbet 2>&1)"; then
+  say "sorbet" "$SORBET_BIN"
 else
-  bad "sorbet" "make deps   (installs the gems pinned in Gemfile.lock)"
+  bad "sorbet" "$SORBET_BIN"
 fi
 
 # 4. uv — runs the differential tests in their own environment.
