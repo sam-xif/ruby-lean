@@ -15,9 +15,10 @@ Numeric→Integer/Float, Enumerable→Array/Hash.
 -/
 namespace RubyCore
 
-/-- Method names each bootstrap class defines directly in CRuby
+/-- Method names each class of the L0 model defines directly in CRuby
     (instance_methods(false) ∪ private_instance_methods(false), modules
-    folded as above). -/
+    folded as above), plus the instance surface of the filesystem classes
+    dispatch guards by name. -/
 def crubyMethodNames : List (String × List String) := [
   ("BasicObject", [
     "!", "!=", "==", "__id__", "__send__", "equal?", "initialize", "instance_eval",
@@ -286,6 +287,26 @@ def crubyMethodNames : List (String × List String) := [
   ]),
   ("ScriptError", [
 
+  ]),
+  ("File", [
+    "atime", "birthtime", "chmod", "chown", "ctime", "flock", "initialize", "lstat",
+    "mtime", "size", "truncate"
+  ]),
+  ("IO", [
+    "<<", "advise", "autoclose=", "autoclose?", "binmode", "binmode?", "close", "close_on_exec=",
+    "close_on_exec?", "close_read", "close_write", "closed?", "each", "each_byte", "each_char", "each_codepoint",
+    "each_line", "eof", "eof?", "external_encoding", "fcntl", "fdatasync", "fileno", "flush",
+    "fsync", "getbyte", "getc", "gets", "initialize", "initialize_copy", "inspect", "internal_encoding",
+    "ioctl", "isatty", "lineno", "lineno=", "path", "pid", "pos", "pos=",
+    "pread", "print", "printf", "putc", "puts", "pwrite", "read", "read_nonblock",
+    "readbyte", "readchar", "readline", "readlines", "readpartial", "reopen", "rewind", "seek",
+    "set_encoding", "set_encoding_by_bom", "stat", "sync", "sync=", "sysread", "sysseek", "syswrite",
+    "tell", "timeout", "timeout=", "to_i", "to_io", "to_path", "tty?", "ungetbyte",
+    "ungetc", "wait", "wait_priority", "wait_readable", "wait_writable", "write", "write_nonblock"
+  ]),
+  ("Dir", [
+    "chdir", "children", "close", "each", "each_child", "fileno", "initialize", "inspect",
+    "path", "pos", "pos=", "read", "rewind", "seek", "tell", "to_path"
   ])
 ]
 
@@ -294,8 +315,11 @@ def crubyMainSingletonNames : List String := [
   "define_method", "include", "inspect", "private", "public", "ruby2_keywords", "to_s", "using"
 ]
 /-- Singleton (class-side) method names each bootstrap class defines in
-    CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]): a send to a class
-    object resolving past these must gate. -/
+    CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]), plus the class-side
+    surface of the non-bootstrap classes dispatch guards by name (the
+    filesystem's `File`/`IO`/`Dir` and `Pathname`): a send to a class object
+    resolving past these must gate, and a name absent from them is not Ruby
+    and raises a real `NoMethodError`. -/
 def crubySingletonNames : List (String × List String) := [
   ("BasicObject", [
 
@@ -413,6 +437,28 @@ def crubySingletonNames : List (String × List String) := [
   ]),
   ("ScriptError", [
 
+  ]),
+  ("File", [
+    "absolute_path", "absolute_path?", "atime", "basename", "birthtime", "blockdev?", "chardev?", "chmod",
+    "chown", "ctime", "delete", "directory?", "dirname", "empty?", "executable?", "executable_real?",
+    "exist?", "expand_path", "extname", "file?", "fnmatch", "fnmatch?", "ftype", "grpowned?",
+    "identical?", "join", "lchmod", "lchown", "link", "lstat", "lutime", "mkfifo",
+    "mtime", "owned?", "path", "pipe?", "readable?", "readable_real?", "readlink", "realdirpath",
+    "realpath", "rename", "setgid?", "setuid?", "size", "size?", "socket?", "split",
+    "stat", "sticky?", "symlink", "symlink?", "truncate", "umask", "unlink", "utime",
+    "world_readable?", "world_writable?", "writable?", "writable_real?", "zero?"
+  ]),
+  ("IO", [
+    "binread", "binwrite", "copy_stream", "for_fd", "foreach", "new", "open", "pipe",
+    "popen", "read", "readlines", "select", "sysopen", "try_convert", "write"
+  ]),
+  ("Dir", [
+    "[]", "chdir", "children", "chroot", "delete", "each_child", "empty?", "entries",
+    "exist?", "fchdir", "for_fd", "foreach", "getwd", "glob", "home", "mkdir",
+    "open", "pwd", "rmdir", "unlink"
+  ]),
+  ("Pathname", [
+    "getwd", "glob", "pwd"
   ])
 ]
 

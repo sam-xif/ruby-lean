@@ -85,7 +85,21 @@ def nativeInstanceNames : List String := [
   "uniq", "uniq!", "unpack", "unpack1", "unshift", "untrace_var", "upcase",
   "upcase!", "update", "upto", "using", "valid_encoding?", "value?", "values",
   "values_at", "warn", "yield", "yield_self", "zero?", "zip", "|",
-  "~"
+  "~",
+  -- The instance surface of the filesystem classes (issue #27): CRuby's
+  -- `File`, `IO` and `Dir` define these and the model does not, so no user
+  -- method of one of these names is free of native interception.
+  "advise", "atime", "autoclose=", "autoclose?", "binmode", "binmode?", "birthtime",
+  "chdir", "children", "chmod", "chown", "close", "close_on_exec=", "close_on_exec?",
+  "close_read", "close_write", "closed?", "ctime", "each_child", "eof", "eof?",
+  "external_encoding", "fcntl", "fdatasync", "fileno", "flock", "flush", "fsync",
+  "getc", "internal_encoding", "ioctl", "isatty", "lineno", "lineno=", "lstat",
+  "mtime", "path", "pid", "pos", "pos=", "pread", "pwrite",
+  "read", "read_nonblock", "readbyte", "readchar", "readpartial", "reopen", "seek",
+  "set_encoding", "set_encoding_by_bom", "stat", "sync", "sync=", "sysread", "sysseek",
+  "syswrite", "tell", "timeout", "timeout=", "to_io", "to_path", "tty?",
+  "ungetbyte", "ungetc", "wait", "wait_priority", "wait_readable", "wait_writable", "write",
+  "write_nonblock"
 ]
 
 /-- Sufficient for any inherited native prefix; own calls still use their empty prefix.

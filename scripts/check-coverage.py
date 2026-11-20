@@ -35,7 +35,7 @@ SUITES = {
     "emitter": (
         ".make/coverage/emitter/.resultset.json",
         "simplecov",
-        "books/scripts/test/coverage-baseline.json",
+        "books/Books/TypeSoundness/scripts/test/coverage-baseline.json",
     ),
     "difftest": (
         ".make/coverage/difftest.json",

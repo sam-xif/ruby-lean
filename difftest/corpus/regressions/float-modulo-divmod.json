@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, issue #140",
+  "arm": "probe",
+  "case_id": "float-modulo-divmod",
+  "note": "Float#% and Float#divmod computed x - y * (x/y).floor instead of CRuby's flodivmod (fmod, then the divisor's sign rule, and round() on the quotient only for divmod), so inexact divisors answered the wrong remainder (100.0 % 0.1 was 0.0, not 0.09999999999999445), denormal or extreme divisors overflowed the product to -Infinity, an infinite divisor answered NaN, and modulo by zero gated instead of raising ZeroDivisionError."
+}

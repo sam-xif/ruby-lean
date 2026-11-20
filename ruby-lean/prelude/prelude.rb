@@ -2014,9 +2014,12 @@ end
 # `to_s`, `basename`, `dirname` and Homebrew's own `stem` — all pure string
 # operations on the path, with no filesystem access anywhere in the slice. So
 # `Pathname` is a wrapper over a String with exactly those, plus the
-# `extname`/`sub`/`==`/`inspect` that fall out; anything else routes to
-# `method_missing` and gates by name, the same guard `File` and `URI` use, so
-# `Pathname#exist?` refuses rather than answering.
+# `extname`/`sub`/`==`/`inspect` that fall out; anything else on an *instance*
+# routes to `method_missing` and gates by name, the same guard `URI` uses, so
+# `Pathname#exist?` refuses rather than answering. The class-side surface needs
+# no guard: `Pathname.glob` and its siblings are a lookup miss that dispatch
+# resolves against the generated CRuby name tables, so a real one gates by name
+# and a name no Ruby defines raises the ordinary `NoMethodError`.
 #
 # `Pathname#stem`, which `Version.detect` also calls, is deliberately **not**
 # here: it is Homebrew's own extension (`extend/pathname.rb:187`), not Ruby's, so
@@ -2074,10 +2077,12 @@ end
 # `File` is a filesystem class, and the slice reaches exactly one of its
 # methods: `File.basename(url)` in `vulns/identify.rb`, used to chop the last
 # component off a *URL*. That operation is pure string manipulation with no
-# effect at all, so it is modeled; everything else routes to `method_missing`
-# and gates by name. Defining the constant without that guard would turn
-# `File.read` from an honest Unsupported into a NoMethodError, which is a wrong
-# answer rather than a refusal.
+# effect at all, so it is modeled. Every other class method of CRuby's `File` is
+# a lookup miss that dispatch resolves against the generated CRuby name tables:
+# a real one (`File.mtime`) declines with a named reason, and a name that is not
+# Ruby's (`File.zzz`) raises the ordinary `NoMethodError`, as CRuby does. There
+# is no blanket `method_missing` here: it would answer a gate for a name no
+# Ruby defines, and hide the real method set.
 class File
   SEPARATOR = "/"
 
@@ -2124,14 +2129,6 @@ class File
 
   def self.join(*parts)
     parts.map { |x| x.to_s }.join("/")
-  end
-
-  def self.method_missing(name, *args, **kw, &blk)
-    __unsupported__("File." + name.to_s + " (only the pure path operations are modeled)")
-  end
-
-  def self.respond_to_missing?(name, include_private = false)
-    true
   end
 end
 

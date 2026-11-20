@@ -9,7 +9,7 @@ says the change did not lower that standard to get there. It compares the two
 versions file by file and fails if any of these moved the wrong way:
 
   recorded results   difftest/coverage-baseline.json, desugar/coverage-baseline.json,
-                     books/corpus/accepted.txt, and each unit-test suite's
+                     books/Books/TypeSoundness/corpus/accepted.txt, and each unit-test suite's
                      coverage-baseline.json: no number may fall, and no accepted
                      program or measured file may disappear. A file the change
                      moves is followed to its new name, as git's rename
@@ -201,7 +201,7 @@ NUMBERS = {
 
 COVERAGE_BASELINES = [
     "desugar/test/coverage-baseline.json",
-    "books/scripts/test/coverage-baseline.json",
+    "books/Books/TypeSoundness/scripts/test/coverage-baseline.json",
     "difftest/tests/coverage-baseline.json",
 ]
 
@@ -255,7 +255,7 @@ def check_coverage(base: Tree, head: Tree, r: Report) -> None:
 
 
 def check_accepted(base: Tree, head: Tree, r: Report) -> None:
-    path = "books/corpus/accepted.txt"
+    path = "books/Books/TypeSoundness/corpus/accepted.txt"
     old, new = base.read(path), head.read(head.follow(path))
     if old is None:
         return

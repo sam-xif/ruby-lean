@@ -1,4 +1,4 @@
--- Generated from Checker/Check/Raw.lean by books/scripts/generate_audited_checker.py.
+-- Generated from Checker/Check/Raw.lean by scripts/generate_audited_checker.py.
 -- Edit the raw source and regenerate; Lean checks the indexed proof and trace.
 import Books.TypeSoundness.Checker.Audit.Erase
 import Books.TypeSoundness.Checker.Audit.CallbackCache
